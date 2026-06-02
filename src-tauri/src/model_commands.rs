@@ -1,10 +1,7 @@
 use tauri::{Emitter, AppHandle, Manager, WebviewWindow};
 use std::sync::atomic::Ordering;
 use ort::execution_providers::{CUDAExecutionProvider, CPUExecutionProvider};
-#[cfg(target_os = "windows")]
 use ort::execution_providers::DirectMLExecutionProvider;
-#[cfg(target_os = "macos")]
-use ort::execution_providers::CoreMLExecutionProvider;
 use crate::model_manager::ModelManager;
 use crate::types::{Status, PlaybackStatus, SongMetadata};
 use crate::audio_player::sys_log;
@@ -62,30 +59,16 @@ pub(crate) fn mr_separated_files_exist(paths: &crate::state::AppPaths, path: &st
 #[serde(rename_all = "camelCase")]
 pub struct GpuStatus { pub has_nvidia: bool, pub is_cuda_available: bool, pub is_directml_available: bool, pub recommend_cuda: bool }
 
-#[cfg(target_os = "windows")]
-fn dml_or_coreml_available() -> bool {
+fn directml_available() -> bool {
     DirectMLExecutionProvider::default().is_available().unwrap_or(false)
-}
-
-#[cfg(target_os = "macos")]
-fn dml_or_coreml_available() -> bool {
-    CoreMLExecutionProvider::default().is_available().unwrap_or(false)
-}
-
-#[cfg(not(any(target_os = "windows", target_os = "macos")))]
-fn dml_or_coreml_available() -> bool {
-    false
 }
 
 #[tauri::command]
 pub async fn check_ai_runtime() -> Result<Vec<String>, String> {
     let mut providers = Vec::new();
     if CUDAExecutionProvider::default().is_available().unwrap_or(false) { providers.push("CUDA".to_string()); }
-    if dml_or_coreml_available() {
-        #[cfg(target_os = "windows")]
+    if directml_available() {
         providers.push("DirectML".to_string());
-        #[cfg(target_os = "macos")]
-        providers.push("CoreML".to_string());
     }
     if CPUExecutionProvider::default().is_available().unwrap_or(false) { providers.push("CPU".to_string()); }
     Ok(providers)
@@ -93,11 +76,7 @@ pub async fn check_ai_runtime() -> Result<Vec<String>, String> {
 
 #[tauri::command]
 pub async fn get_gpu_recommendation() -> Result<GpuStatus, String> {
-    #[cfg(target_os = "windows")]
     let mut has_nvidia = false;
-    #[cfg(not(target_os = "windows"))]
-    let has_nvidia = false;
-    #[cfg(target_os = "windows")]
     {
         use std::os::windows::process::CommandExt;
         let mut cmd = std::process::Command::new("wmic");
@@ -107,7 +86,7 @@ pub async fn get_gpu_recommendation() -> Result<GpuStatus, String> {
         }
     }
     let cuda = CUDAExecutionProvider::default().is_available().unwrap_or(false);
-    let dml = dml_or_coreml_available();
+    let dml = directml_available();
     Ok(GpuStatus { has_nvidia, is_cuda_available: cuda, is_directml_available: dml, recommend_cuda: has_nvidia && !cuda && !dml })
 }
 

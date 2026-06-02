@@ -129,12 +129,6 @@ html[data-theme="sky"] {
     overflow: hidden; /* 내부 스크롤 활성화를 위해 다시 hidden으로 변경 */
 }
 
-html.platform-macos .alignment-card {
-    background: var(--card-bg);
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-}
-
 .alignment-card:hover {
     background: var(--align-surface-input);
     border-color: var(--align-btn-hover-border);

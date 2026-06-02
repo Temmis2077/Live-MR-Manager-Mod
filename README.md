@@ -109,12 +109,7 @@
 - **OBS 오버레이 서버 내장 운영**: 앱 시작 시 WebSocket(`14201`) + 페이지 서버(`14202`)를 자동 기동하고, 곡정보/가사 URL을 분리해 OBS 구성 유연성을 높였습니다.
 - **메타데이터 편집 생산성 향상**: 메타데이터 모달에서 `KEY/BPM 분석`을 즉시 실행해 결과를 편집 필드에 자동 반영할 수 있습니다.
 
-### 🆕 v0.4.9 업데이트
-
-- **버전 정합성 업데이트**: 앱 메타데이터(`package`, `cargo`, `tauri`)를 `0.4.9`로 통일했습니다.
-- **문서/타이틀 버전 표기 정리**: 사용자 매뉴얼 및 앱 타이틀에 노출되는 버전을 `v0.4.9`로 갱신했습니다.
-
-### 🆕 v0.4.10 업데이트 (안정화 패치)
+### 🆕 v0.4.10 업데이트 (안정화 패치 · 2026-06-02)
 
 - **MR 캐시 경로 통일 (`cache_key_variants`)**: 유튜브 URL 형식(`youtu.be`, `watch?v=` 등) 차이로 MR 파일·배지·KEY/BPM 분석 경로가 어긋나던 문제를 재생/삭제 로직과 동일한 변형 키 탐색으로 통일했습니다.
 - **MR 배지 신뢰성 개선**: 라이브러리 로드 시 `vocal.wav`/`inst.wav` 존재 여부를 변형 키로 판별하고, 카드 렌더 시 `check_mr_separated`로 한 번 더 확인해 F5 이후에도 배지가 유지됩니다.
@@ -122,6 +117,47 @@
 - **카테고리 필터 드롭다운 정합성**: 실제 곡에 쓰인 카테고리만 표시하고, 메타데이터·관리자 저장·곡 추가/삭제 후 **재시작 없이** 목록이 갱신됩니다.
 - **카테고리 표시/저장 동기화**: `categories`와 `curationCategory` 우선순위를 정리해 카드·필터·편집 모달이 같은 값을 보여 주며, 저장 시 DB에 일관되게 반영됩니다.
 - **Windows 개발 환경 가이드 보강**: `signalsmith-stretch` 빌드용 **LLVM(libclang)** 및 PowerShell 실행 정책/`npm.cmd` 안내를 추가했습니다.
+- **스프레드시트 가져오기/보내기**: 설정에서 라이브러리를 CSV/XLSX로 보내고 병합 가져오기(한글 헤더 지원).
+- **GitHub 업데이트 알림**: 최신 릴리즈를 주기적으로 확인해 앱 내에서 새 버전을 안내합니다.
+
+### 🆕 v0.4.9 업데이트
+
+- **버전 정합성 업데이트**: 앱 메타데이터(`package`, `cargo`, `tauri`)를 `0.4.9`로 통일했습니다.
+- **문서/타이틀 버전 표기 정리**: 사용자 매뉴얼 및 앱 타이틀에 노출되는 버전을 `v0.4.9`로 갱신했습니다.
+
+---
+
+## 🔗 예정: 멜로밍 노래책 연동 (Roadmap)
+
+로컬 MR 라이브러리와 [멜로밍 OpenAPI](https://developers.meloming.com/docs/openapi) 채널 노래책을 **양방향으로 메타데이터만** 맞추는 기능입니다. ([노래책 API 레퍼런스](https://developers.meloming.com/docs/openapi/reference/songbook))
+
+| 원칙 | 내용 |
+| :--- | :--- |
+| **P1 유지** | 음원·AI 분리 결과는 로컬만. 멜로밍에는 제목·URL·가사 텍스트·숙련도/난이도·KEY/BPM 등 **메타만** 전송 |
+| **읽기** | `GET /v1/...` — 개발자 등록 **없이** 채널 ID만으로 Pull·검색 가능 |
+| **쓰기** | `POST`/`PATCH`/`DELETE` — OAuth 필요. 문서 「애플리케이션 등록」→ 콘솔 **미니앱(앱) 등록·심사** 경로 |
+
+### 구현 단계
+
+| 단계 | 내용 |
+| :--- | :--- |
+| **Phase 0** | KEY/BPM·숙련도·난이도 DB/UI 영속화 (현재 KEY/BPM은 UI만 있고 저장 안 됨) |
+| **Phase 1** | Rust `meloming` 모듈, 설정·Pull, 아티스트/카테고리 Map |
+| **Phase 2A** | **Vercel** companion (`/`, `/oauth/callback`, FAQ/Q&A) + 미니앱 등록·심사 |
+| **Phase 2B** | OAuth PKCE, Push(노래 추가·수정·삭제) |
+| **Phase 3** | 양방향 동기화, 충돌 해결, 삭제·고아 정책 |
+| **Phase 4** | companion changelog·`/api/releases/latest`, 앱 업데이트 알림 (`updater.rs` 보강) |
+
+### Vercel companion (미니앱·OAuth·서비스 허브)
+
+단일 HTTPS 도메인으로 다음을 운영할 예정입니다.
+
+- **미니앱 iframe** — 연동 안내, 다운로드
+- **OAuth Redirect** — `https://{domain}/oauth/callback` → 데스크톱 커스텀 스킴으로 `code` 전달 (PKCE, `client_secret`은 Tauri만)
+- **FAQ / Q&A** — 동기화·숙련도/난이도 등
+- **changelog·업데이트 API** — GitHub Releases(설치 파일) + companion(릴리즈 노트·manifest)
+
+작업 체크리스트: [ToDo.md §7](ToDo.md). 상세 기획: [docs/MELOMING_SONGBOOK_INTEGRATION.md](docs/MELOMING_SONGBOOK_INTEGRATION.md).
 
 ---
 
@@ -132,7 +168,7 @@
 | 레이어        | 명칭             | 기술 구성 및 역할                                                      |
 | :------------ | :--------------- | :--------------------------------------------------------------------- |
 | **Layer 3**   | **UI Layer**     | JavaScript/UI 컴포넌트 기반 퍼포머 대시보드. Tauri Event API 연동.     |
-| **Layer 2**   | **IPC Layer**    | Tauri 커맨드 핸들러. Rust 기반 비동기 스트리밍 설계.                   |
+| **Layer 2**   | **IPC Layer**    | Tauri 커맨드 핸들러. Rust 기반 비동기 스트리밍 설계. (예정: `meloming` OpenAPI 클라이언트) |
 | **Layer 1.5** | **AI Inference** | **ONNX Runtime Engine**. BS-RoFormer/MDX 모델 기반 음원 분리.          |
 | **Layer 1**   | **Audio Engine** | **audio_player.rs (Modularized Engine)**. Rodio 0.22 기반 저수준 제어. |
 | **Layer 0**   | **DSP Engine**   | **signalsmith-stretch 0.1.3**. 실시간 샘플 도메인 오디오 변환.         |
@@ -156,6 +192,7 @@
 
 ### 사전 요구 사항
 
+- **Windows 10/11** (릴리스·개발 타깃은 Windows 전용입니다)
 - [Rust](https://www.rust-lang.org/tools/install) (rustup + stable toolchain)
 - [Node.js](https://nodejs.org/) (LTS, v18+)
 - [LLVM](https://releases.llvm.org/) 또는 `winget install LLVM.LLVM` — `signalsmith-stretch` 빌드 시 **libclang** 필요 (`LIBCLANG_PATH` → `...\LLVM\bin`)

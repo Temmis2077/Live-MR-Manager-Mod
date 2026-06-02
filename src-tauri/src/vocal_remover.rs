@@ -1,7 +1,6 @@
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::process::Command;
 use ort::session::Session;
 use ort::value::{Value, ValueType};
 use ndarray::{self, Array4};
@@ -10,10 +9,7 @@ use parking_lot::Mutex;
 use once_cell::sync::Lazy;
 use crate::audio_player::sys_log;
 use ort::execution_providers::{CUDAExecutionProvider, CPUExecutionProvider};
-#[cfg(target_os = "windows")]
 use ort::execution_providers::DirectMLExecutionProvider;
-#[cfg(target_os = "macos")]
-use ort::execution_providers::CoreMLExecutionProvider;
 use rustfft::{FftPlanner, num_complex::Complex};
 use symphonia::core::formats::FormatOptions;
 use symphonia::core::meta::MetadataOptions;
@@ -233,121 +229,7 @@ pub struct WaveformRemover {
     outputs_instrumental: bool,
 }
 
-/// Intel mac: ONNX Runtime `libonnxruntime*.dylib` 위치(환경/일반 경로)를 찾는다. 부작용(set_var) 없음.
-#[cfg(all(target_os = "macos", target_arch = "x86_64"))]
-pub fn find_intel_mac_ort_dylib() -> Option<PathBuf> {
-    use std::path::{Path, PathBuf};
-    use std::fs;
-
-    fn first_matching_dylib(dir: &Path) -> Option<PathBuf> {
-        let entries = fs::read_dir(dir).ok()?;
-        for entry in entries.flatten() {
-            let p = entry.path();
-            let name = p.file_name()?.to_string_lossy().to_string();
-            if name.starts_with("libonnxruntime") && name.ends_with(".dylib") && p.is_file() {
-                return Some(p);
-            }
-        }
-        None
-    }
-
-    fn scan_cellar(root: &Path) -> Option<PathBuf> {
-        let versions = fs::read_dir(root).ok()?;
-        for version in versions.flatten() {
-            let lib_dir = version.path().join("lib");
-            if let Some(found) = first_matching_dylib(&lib_dir) {
-                return Some(found);
-            }
-        }
-        None
-    }
-
-    fn scan_brew_prefix_formula(formula: &str) -> Option<PathBuf> {
-        let out = Command::new("brew")
-            .args(["--prefix", formula])
-            .output()
-            .ok()?;
-        if !out.status.success() {
-            return None;
-        }
-        let prefix = String::from_utf8(out.stdout).ok()?.trim().to_string();
-        if prefix.is_empty() {
-            return None;
-        }
-        let lib_dir = Path::new(&prefix).join("lib");
-        first_matching_dylib(&lib_dir)
-    }
-
-    if let Ok(v) = std::env::var("ORT_DYLIB_PATH") {
-        let p = Path::new(&v);
-        if p.exists() {
-            return Some(p.to_path_buf());
-        }
-    }
-
-    let direct_dirs = [
-        Path::new("/usr/local/lib"),
-        Path::new("/opt/homebrew/lib"),
-        Path::new("/usr/lib"),
-        Path::new("/opt/local/lib"),
-    ];
-    for dir in direct_dirs {
-        if let Some(found) = first_matching_dylib(dir) {
-            return Some(found);
-        }
-    }
-
-    let cellar_roots = [
-        Path::new("/usr/local/Cellar/onnxruntime"),
-        Path::new("/opt/homebrew/Cellar/onnxruntime"),
-    ];
-    for root in cellar_roots {
-        if let Some(found) = scan_cellar(root) {
-            return Some(found);
-        }
-    }
-
-    scan_brew_prefix_formula("onnxruntime")
-}
-
-#[cfg(not(all(target_os = "macos", target_arch = "x86_64")))]
-pub fn find_intel_mac_ort_dylib() -> Option<std::path::PathBuf> {
-    None
-}
-
 impl WaveformRemover {
-    #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
-    fn ensure_macos_intel_ort_dylib_path() -> Result<()> {
-        use std::path::Path;
-
-        if let Ok(v) = std::env::var("ORT_DYLIB_PATH") {
-            let p = Path::new(&v);
-            if p.exists() {
-                sys_log(&format!("[AI-ENGINE] ORT_DYLIB_PATH already set: {}", v));
-                return Ok(());
-            }
-            sys_log(&format!("[AI-ENGINE] ORT_DYLIB_PATH is set but missing: {}", v));
-        }
-
-        if let Some(found) = find_intel_mac_ort_dylib() {
-            let path_str = found.to_string_lossy().to_string();
-            std::env::set_var("ORT_DYLIB_PATH", &path_str);
-            sys_log(&format!("[AI-ENGINE] ORT_DYLIB_PATH auto-detected: {}", path_str));
-            return Ok(());
-        }
-
-        Err(anyhow!(
-            "Intel macOS에서 ONNX Runtime 동적 라이브러리를 찾지 못했습니다. \
-앱이 자동으로 Microsoft 공식 바이너리를 내려받는 데에도 실패한 경우, \
-ORT_DYLIB_PATH에 libonnxruntime.dylib의 전체 경로를 수동으로 지정해 주세요."
-        ))
-    }
-
-    #[cfg(not(all(target_os = "macos", target_arch = "x86_64")))]
-    fn ensure_macos_intel_ort_dylib_path() -> Result<()> {
-        Ok(())
-    }
-
     fn log_runtime_diagnostics_once() {
         if RUNTIME_DIAGNOSTICS_LOGGED.swap(true, Ordering::Relaxed) {
             return;
@@ -359,27 +241,6 @@ ORT_DYLIB_PATH에 libonnxruntime.dylib의 전체 경로를 수동으로 지정�
             std::env::consts::ARCH,
             std::env::consts::FAMILY
         ));
-
-        #[cfg(target_os = "macos")]
-        {
-            let uname_arch = Command::new("uname")
-                .arg("-m")
-                .output()
-                .ok()
-                .and_then(|o| String::from_utf8(o.stdout).ok())
-                .map(|s| s.trim().to_string())
-                .unwrap_or_else(|| "unknown".to_string());
-            sys_log(&format!("[AI-ENGINE] Runtime diagnostics: uname_arch={}", uname_arch));
-
-            let trans = Command::new("sysctl")
-                .args(["-in", "sysctl.proc_translated"])
-                .output()
-                .ok()
-                .and_then(|o| String::from_utf8(o.stdout).ok())
-                .map(|s| s.trim().to_string())
-                .unwrap_or_else(|| "unknown".to_string());
-            sys_log(&format!("[AI-ENGINE] Runtime diagnostics: rosetta_translated={}", trans));
-        }
     }
 
     fn detect_instrumental_output(model_id_hint: Option<&str>, model_name: &str) -> bool {
@@ -401,7 +262,6 @@ ORT_DYLIB_PATH에 libonnxruntime.dylib의 전체 경로를 수동으로 지정�
 
     pub fn new(model_path: &Path, model_id_hint: Option<&str>) -> Result<Self> {
         Self::log_runtime_diagnostics_once();
-        Self::ensure_macos_intel_ort_dylib_path()?;
         let threads: usize = 1;
         sys_log(&format!("[AI-ENGINE] Initializing with conservative settings (intra-op threads: {})", threads));
         let init_started = Instant::now();
@@ -412,19 +272,12 @@ ORT_DYLIB_PATH에 libonnxruntime.dylib의 전체 경로를 수동으로 지정�
         // opt-in/opt-out via env var across platforms.
         let gpu_opt_in = match std::env::var("LIVE_MR_ENABLE_GPU") {
             Ok(v) => v == "1" || v.eq_ignore_ascii_case("true"),
-            Err(_) => cfg!(target_os = "windows"),
+            Err(_) => true,
         };
 
         let mut providers_to_try = Vec::new();
         if gpu_opt_in {
-            #[cfg(target_os = "windows")]
-            {
-                providers_to_try.push(("GPU (DirectML)", DirectMLExecutionProvider::default().build()));
-            }
-            #[cfg(target_os = "macos")]
-            {
-                providers_to_try.push(("GPU (CoreML)", CoreMLExecutionProvider::default().build()));
-            }
+            providers_to_try.push(("GPU (DirectML)", DirectMLExecutionProvider::default().build()));
             providers_to_try.push((
                 "GPU (CUDA)",
                 CUDAExecutionProvider::default().with_device_id(0).build(),
@@ -445,25 +298,6 @@ ORT_DYLIB_PATH에 libonnxruntime.dylib의 전체 경로를 수동으로 지정�
             let session_res: Result<Session, ort::Error> = (|| {
                 sys_log(&format!("[AI-ENGINE] Provider {} builder start", name));
 
-                #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
-                if name == "CPU" {
-                    // Intel macOS fallback: keep init path minimal to avoid hangs seen
-                    // in EP registration / builder option chains on older runtimes.
-                    let builder_started = Instant::now();
-                    let mut builder = Session::builder()?;
-                    sys_log(&format!(
-                        "[AI-ENGINE] Provider CPU intel-minimal builder ready in {} ms",
-                        builder_started.elapsed().as_millis()
-                    ));
-                    let commit_started = Instant::now();
-                    let result = builder.commit_from_file(model_path);
-                    sys_log(&format!(
-                        "[AI-ENGINE] Provider CPU intel-minimal commit finished in {} ms",
-                        commit_started.elapsed().as_millis()
-                    ));
-                    return result;
-                }
-
                 let builder_started = Instant::now();
                 let mut builder = Session::builder()?
                     .with_intra_threads(threads)?
@@ -474,57 +308,7 @@ ORT_DYLIB_PATH에 libonnxruntime.dylib의 전체 경로를 수동으로 지정�
                     builder_started.elapsed().as_millis()
                 ));
 
-                // For CPU on Windows, avoid forcing EP registration path and use ORT defaults.
-                // For non-Windows, we can still use explicit EP registration.
-                #[cfg(target_os = "windows")]
                 let use_default_cpu_path = name == "CPU";
-                #[cfg(not(target_os = "windows"))]
-                let use_default_cpu_path = false;
-
-                #[cfg(target_os = "macos")]
-                if name == "CPU" {
-                    // Strategy A (macOS): explicit CPU EP registration path.
-                    sys_log("[AI-ENGINE] Provider CPU strategy A start (explicit EP path)");
-                    let builder_a = Session::builder()?
-                        .with_intra_threads(threads)?
-                        .with_optimization_level(ort::session::builder::GraphOptimizationLevel::Level1)?;
-                    let ep_started = Instant::now();
-                    if let Ok(mut builder_a) =
-                        builder_a.with_execution_providers([CPUExecutionProvider::default().build()])
-                    {
-                        sys_log(&format!(
-                            "[AI-ENGINE] Provider CPU strategy A EP registration done in {} ms",
-                            ep_started.elapsed().as_millis()
-                        ));
-                        let commit_started = Instant::now();
-                        let explicit_result = builder_a.commit_from_file(model_path);
-                        sys_log(&format!(
-                            "[AI-ENGINE] Provider CPU strategy A commit finished in {} ms",
-                            commit_started.elapsed().as_millis()
-                        ));
-                        if let Ok(session) = explicit_result {
-                            return Ok(session);
-                        }
-                        if let Err(e) = explicit_result {
-                            sys_log(&format!("[AI-ENGINE] Provider CPU strategy A failed: {}", e));
-                        }
-                    } else {
-                        sys_log("[AI-ENGINE] Provider CPU strategy A EP registration failed");
-                    }
-
-                    // Strategy B (macOS): default commit path.
-                    sys_log("[AI-ENGINE] Provider CPU strategy B start (default path)");
-                    let mut builder_b = Session::builder()?
-                        .with_intra_threads(threads)?
-                        .with_optimization_level(ort::session::builder::GraphOptimizationLevel::Level1)?;
-                    let commit_started = Instant::now();
-                    let result = builder_b.commit_from_file(model_path);
-                    sys_log(&format!(
-                        "[AI-ENGINE] Provider CPU strategy B commit finished in {} ms",
-                        commit_started.elapsed().as_millis()
-                    ));
-                    return result;
-                }
 
                 if use_default_cpu_path {
                     sys_log(&format!("[AI-ENGINE] Provider {} commit start (default path)", name));

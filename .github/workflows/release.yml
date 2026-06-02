@@ -17,14 +17,6 @@ jobs:
         include:
           - platform: windows-latest
             bundleArgs: --bundles nsis
-          - platform: macos-latest
-            rustTarget: aarch64-apple-darwin
-            bundleArgs: --bundles dmg,app --target aarch64-apple-darwin
-          # macos-13 runner 이미지는 GitHub에서 폐기됨 (2025-12-04). Intel(x86_64) 빌드는 macos-15-intel 사용.
-          # https://github.blog/changelog/2025-09-19-github-actions-macos-13-runner-image-is-closing-down/
-          - platform: macos-15-intel
-            rustTarget: x86_64-apple-darwin
-            bundleArgs: --bundles dmg,app --target x86_64-apple-darwin
 
     runs-on: ${{ matrix.platform }}
     steps:
@@ -38,21 +30,8 @@ jobs:
       - name: install Rust stable
         uses: dtolnay/rust-toolchain@stable
 
-      - name: add rust target
-        if: matrix.rustTarget != ''
-        run: rustup target add ${{ matrix.rustTarget }}
-
       - name: install frontend dependencies
         run: npm install
-
-      - name: cleanup stale macOS dmg artifacts
-        if: matrix.platform == 'macos-latest' || matrix.platform == 'macos-15-intel'
-        run: |
-          set +e
-          hdiutil info | awk '/\/Volumes\/dmg\./ {print $1}' | xargs -I {} hdiutil detach {} -force
-          rm -f src-tauri/target/release/bundle/macos/rw.*.dmg
-          rm -f src-tauri/target/release/bundle/dmg/*.dmg
-          set -e
 
       - name: build and upload release
         uses: tauri-apps/tauri-action@v0
@@ -66,9 +45,9 @@ jobs:
 
             AI 기반 오디오 분리 및 정밀 제어를 지원하는 Live MR Manager(Beta)의 최신 릴리즈입니다.
 
-            macOS 설치 파일 선택 가이드:
-            - `aarch64-apple-darwin` 표기가 포함된 파일: Apple Silicon(M1/M2/M3/M4)용
-            - `x86_64-apple-darwin` 표기가 포함된 파일: Intel Mac용
+            **Windows용 NSIS 설치 파일**을 다운로드하세요.
+
+            상세 변경 사항: [RELEASE_NOTES.md](https://github.com/AutumnColor77/Live-MR-Manager/blob/main/RELEASE_NOTES.md)
           releaseDraft: true
           prerelease: false
           args: "--verbose ${{ matrix.bundleArgs }}"

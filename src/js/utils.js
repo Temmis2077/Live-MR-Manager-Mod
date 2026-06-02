@@ -56,3 +56,59 @@ export function showNotification(msg, type = "info") {
   }, 3000);
 }
 
+const DISMISSED_UPDATE_KEY = "dismissedAppUpdateVersion";
+
+export function showUpdateAvailable(info) {
+  if (!info?.hasUpdate) return;
+
+  const latest = info.latestVersion || info.latest_version;
+  const current = info.currentVersion || info.current_version;
+  const releaseUrl = info.releaseUrl || info.release_url;
+  if (!latest) return;
+
+  if (localStorage.getItem(DISMISSED_UPDATE_KEY) === latest) return;
+
+  const container = document.getElementById("notification-container");
+  if (!container) return;
+
+  const existing = container.querySelector(".toast.update-available");
+  if (existing) existing.remove();
+
+  const toast = document.createElement("div");
+  toast.className = "toast info update-available";
+  toast.innerHTML = `
+    <div class="toast-icon">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+        <polyline points="7 10 12 15 17 10"/>
+        <line x1="12" y1="15" x2="12" y2="3"/>
+      </svg>
+    </div>
+    <div class="toast-body">
+      <div class="toast-message">새 버전 v${latest}이(가) 있습니다. (현재 v${current})</div>
+      <div class="toast-actions">
+        <button type="button" class="toast-btn primary" data-action="download">다운로드</button>
+        <button type="button" class="toast-btn" data-action="dismiss">나중에</button>
+      </div>
+    </div>
+  `;
+
+  toast.querySelector('[data-action="download"]')?.addEventListener("click", async () => {
+    try {
+      await invoke("open_app_update_page", { url: releaseUrl || "" });
+    } catch (err) {
+      console.error("[Updater] Failed to open release page:", err);
+      showNotification("릴리스 페이지를 열지 못했습니다.", "error");
+    }
+  });
+
+  toast.querySelector('[data-action="dismiss"]')?.addEventListener("click", () => {
+    localStorage.setItem(DISMISSED_UPDATE_KEY, latest);
+    toast.classList.add("removing");
+    setTimeout(() => toast.remove(), 300);
+  });
+
+  container.appendChild(toast);
+  invoke("remote_js_log", { msg: `[Updater] Notified user: v${latest} available` }).catch(() => {});
+}
+

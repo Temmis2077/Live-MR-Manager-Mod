@@ -11,6 +11,7 @@ import {
 import { initAllEvents, switchTab } from './js/events/index.js';
 import { loadLibrary, checkAiModelStatus, cancelSeparation } from './js/audio.js';
 import { showNotification } from './js/utils.js';
+import { initUpdateChecker } from './js/update-check.js';
 
 import { invoke, appWindow } from './js/tauri-bridge.js';
 
@@ -24,11 +25,8 @@ function normalizeTheme(value) {
 function applyPlatformClass() {
   const ua = navigator.userAgent || "";
   const platform = navigator.platform || "";
-  const isMac = /Mac/i.test(platform) || /Mac OS X/i.test(ua);
   const isWindows = /Win/i.test(platform) || /Windows/i.test(ua);
-  const root = document.documentElement;
-  root.classList.toggle("platform-macos", isMac);
-  root.classList.toggle("platform-windows", isWindows);
+  document.documentElement.classList.toggle("platform-windows", isWindows);
 }
 
 export function applyTheme(theme, { persist = true } = {}) {
@@ -243,6 +241,7 @@ function blockNativeContextMenu() {
 // Start
 window.addEventListener("DOMContentLoaded", async () => {
   blockNativeContextMenu();
+  initUpdateChecker();
   await initApp();
 });
 

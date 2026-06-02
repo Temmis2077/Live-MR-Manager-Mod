@@ -7,7 +7,6 @@ mod model_manager;
 pub mod vocal_remover;
 pub mod audio_player;
 mod separation;
-mod onnx_runtime_bootstrap;
 pub mod state;
 mod alignment;
 mod metadata_fetcher;
@@ -21,8 +20,8 @@ mod system;
 mod spreadsheet;
 mod rescue;
 mod overlay_server;
+mod updater;
 
-#[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_window_state::Builder::default().build())
@@ -43,7 +42,8 @@ pub fn run() {
             crate::overlay_server::init(app.handle().clone());
             tauri::async_runtime::spawn(crate::overlay_server::start_overlay_server());
 
-            
+            crate::updater::start_update_checker(app.handle().clone());
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -83,7 +83,10 @@ pub fn run() {
             alignment::apply_alignment_tuning,
             alignment::get_waveform_summary, alignment::get_model_list,
             alignment::save_lrc_file, alignment::load_lrc_file,
-            system::remote_js_log,            metadata_fetcher::search_track_metadata, metadata_fetcher::fetch_and_process_tags,
+            system::remote_js_log,
+            updater::check_for_app_update,
+            updater::open_app_update_page,
+            metadata_fetcher::search_track_metadata, metadata_fetcher::fetch_and_process_tags,
             metadata_fetcher::init_metadata_context, metadata_fetcher::get_unclassified_tags,
             metadata_fetcher::update_custom_dictionary, metadata_fetcher::sync_dictionary_to_db,
             overlay_server::update_overlay_state,

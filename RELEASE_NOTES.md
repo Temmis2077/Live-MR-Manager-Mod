@@ -1,7 +1,30 @@
 # Release Notes
 
+## v0.4.10 (2026-06-02)
+
+안정화 패치 및 라이브러리 일괄 편집 워크플로우를 추가한 릴리즈입니다. **Windows용 NSIS 설치 파일**을 제공합니다.
+
+### 라이브러리 · 메타데이터
+
+- **스프레드시트 가져오기/보내기**: 설정에서 라이브러리를 **CSV(UTF-8 BOM)** 또는 **XLSX**로 보내고, 엑셀·구글 시트에서 편집한 목록을 병합 가져오기할 수 있습니다. 한글 헤더(경로·제목·아티스트·장르·카테고리 등)를 인식하며, 동일 `path`는 갱신·신규 경로는 추가합니다.
+- **카테고리 필터 정합성**: 실제 곡에 사용 중인 카테고리만 드롭다운에 표시하고, 저장·곡 추가/삭제 후 재시작 없이 목록이 갱신됩니다.
+- **카테고리 표시/저장 동기화**: `categories` → `curationCategory` 우선순위로 카드·필터·편집 모달·DB 값이 일치합니다.
+
+### MR · 오디오 분석
+
+- **MR 캐시 경로 통일 (`cache_key_variants`)**: YouTube URL 형식(`youtu.be`, `watch?v=` 등) 차이로 MR 파일·배지·삭제 경로가 어긋나던 문제를 재생 로직과 동일한 변형 키 탐색으로 통일했습니다.
+- **MR 배지 신뢰성**: 라이브러리 로드 시 `vocal.wav`/`inst.wav` 존재를 변형 키로 판별하고, 카드 렌더 시 `check_mr_separated`로 재확인해 F5 이후에도 배지가 유지됩니다.
+- **KEY/BPM 분석 MR 연동**: MR `inst.wav` 탐색 경로를 배지·재생과 동일하게 맞춰, 분리 완료 후 온라인 곡에서도 MR 기반 분석이 동작합니다.
+
+### 앱 · 배포
+
+- **GitHub 릴리즈 업데이트 알림**: 6시간 간격으로 최신 릴리즈를 확인하고, 새 버전이 있으면 앱 내에서 안내합니다.
+- **버전 메타데이터 통일**: `package.json`, `Cargo.toml`, `tauri.conf.json`, UI 타이틀을 `0.4.10`으로 맞췄습니다.
+- **CI**: Windows NSIS 빌드만 유지(이번 릴리즈 아티팩트는 Windows 설치 파일).
+- **문서**: Windows 개발 환경(LLVM/`cargo fetch`/PowerShell) 가이드 보강, 멜로밍 노래책 연동 기획 문서(`docs/MELOMING_SONGBOOK_INTEGRATION.md`) 추가.
+
+---
+
 ## v0.4.9 (2026-04-27)
 
-### macOS 설치 파일 선택 가이드
-- `aarch64-apple-darwin` 표기가 포함된 파일: Apple Silicon(M1/M2/M3/M4)용
-- `x86_64-apple-darwin` 표기가 포함된 파일: Intel Mac용
+Windows용 NSIS 설치 파일을 제공합니다.

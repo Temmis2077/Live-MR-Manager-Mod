@@ -34,7 +34,6 @@
 - [X] **AI 분리 취소 안정화 (v0.4.8)**: 경로 정규화 기반 취소 키 통일 및 분리 스레드/진행률 루프 cancel flag 연동 완료
 - [X] **MR 배지·캐시 경로 통일 (v0.4.10)**: `cache_key_variants` 기반 MR 파일 탐색으로 라이브러리 로드/F5 후 MR 배지 유지, 카드에서 `check_mr_separated` 재확인
 - [X] **KEY/BPM 분석 MR 경로 수정 (v0.4.10)**: MR `inst.wav` 탐색을 재생·`check_mr_separated`와 동일한 URL 변형 키로 통일
-- [ ] **AI 스레드 OS 레벨 최적화**: 방송 모드 안정성 극대화를 위한 `thread-priority` 라이브러리 도입 및 OS 계층 권한 제어 검토
 - [ ] **오디오 출력 장치 설정 (Audio Device Selection)**: 다중 사운드 카드 및 가상 오디오 채널 환경을 위한 출력 장치 선택/전환 기능
 - [X] **정밀 가사 동기화 도구 (Manual Sync Tool)**: 탭-투-싱크(Tap-to-Sync) 기반의 네이티브 Lyric Sync 시스템 구축 완료
 - [X] **Lyric Sync 오디오 엔진 안정화**: 60fps 동기화 루프 및 탐색/재생 상태 불일치 문제 완전 해결
@@ -81,14 +80,67 @@
 - [X] **지능형 작업 큐**: `Queued`, `Running` 상태 추적 및 전역 AI 락을 통한 시스템 안정성 확보 완료
 - [X] **메타데이터 KEY/BPM 분석 버튼 (v0.4.8)**: 편집 모달에서 키/템포 자동 분석 후 필드 즉시 반영 기능 완료
 - [X] **MR 캐시 키 헬퍼 통합 (v0.4.10)**: `mr_separated_files_exist` / `cache_key_variants`로 재생·배지·KEY/BPM·삭제 경로 일원화
+- [X] **스프레드시트 가져오기/보내기 (v0.4.10)**: CSV(UTF-8 BOM)·XLSX 병합 가져오기 및 CSV보내기·양식 다운로드
+- [X] **GitHub 업데이트 알림 (v0.4.10)**: `updater.rs` + `app-update-available` 이벤트로 최신 릴리즈 안내
 - [ ] **에러 핸들링 강화**: 오디오 디코딩 및 AI 추론 시 발생할 수 있는 예외 상황에 대한 상세 리포팅 시스템
-- [ ] **자동 업데이트**: 앱 및 AI 모델의 최신 버전 자동 체크 및 업데이트 기능
+- [ ] **자동 업데이트**: 앱 및 AI 모델의 최신 버전 자동 체크 및 업데이트 기능 (GitHub Releases + §7 Phase 4 Vercel companion manifest 연동 예정)
 
 ## 🛠️ 6. 개발 환경 및 문서 (DevEx)
 
 - [X] **README 개발 환경 가이드 보강 (v0.4.10)**: LLVM(libclang), `cargo fetch`, Windows PowerShell/`npm.cmd` 안내 반영
-- [ ] **앱 버전 v0.4.10 메타데이터 정합성**: `package.json`, `Cargo.toml`, `tauri.conf.json` 버전 번호 일괄 갱신 (문서만 반영된 상태)
+- [X] **앱 버전 v0.4.10 메타데이터 정합성**: `package.json`, `Cargo.toml`, `tauri.conf.json` 버전 번호 일괄 갱신
+- [X] **멜로밍 연동 기획 문서**: [`docs/MELOMING_SONGBOOK_INTEGRATION.md`](docs/MELOMING_SONGBOOK_INTEGRATION.md) (API·OAuth·필드 매핑·Vercel companion·동기화·업데이트 알림)
+
+## 🎵 7. 멜로밍 노래책 연동 (Meloming OpenAPI)
+
+[멜로밍 채널 노래책 API](https://developers.meloming.com/docs/openapi/reference/songbook)와 로컬 라이브러리 **양방향 메타데이터 동기화**. 음원·AI 분리 파일은 로컬만(P1); 멜로밍에는 제목·URL·가사·숙련도/난이도 등만 전송.
+
+**인증 참고**: 문서의 「애플리케이션 등록」 링크는 개발자 센터 **미니앱(앱) 등록** UI로 연결됨. `GET` 읽기는 등록 없이 가능, `POST`/`PATCH`/`DELETE`는 OAuth 필요.
+
+**Companion (Vercel)**: 미니앱 iframe·OAuth Redirect·FAQ/Q&A·changelog·업데이트 manifest — 별도 Next.js 프로젝트.
+
+### Phase 0 — 로컬 메타데이터 (선행)
+
+- [ ] **KEY/BPM DB 영속화**: 편집 모달 UI는 있으나 `SongMetadata`/SQLite 미저장 → 재시작 시 유실 수정
+- [ ] **숙련도·난이도 필드**: `difficulty`/`proficiency` (1–5) — DB·`SongMetadata`·편집 모달·저장 경로
+- [ ] **songKey 명칭 통일**: UI `edit-key` ↔ DB `song_key` ↔ 멜로밍 `songKey`
+
+### Phase 1 — 읽기 동기화 (인증 불필요)
+
+- [ ] **Rust `meloming` 모듈**: `meloming_client` — 목록·상세·검색·카테고리·아티스트 (`GET`)
+- [ ] **설정 UI**: 채널 ID, 연결 테스트, 「멜로밍에서 가져오기」(Pull)
+- [ ] **아티스트·카테고리 Map 테이블**: 로컬 문자열 ↔ 멜로밍 `artistId`/`categoryIds`
+- [ ] **확장 DB 컬럼**: `meloming_song_id`, URL 필드, `sync_status` 등 (기획 문서 스키마)
+
+### Phase 2A — Vercel companion + 미니앱 등록·심사
+
+- [ ] **Vercel companion 배포**: `/`, `/oauth/callback`, `/faq`·`/qa` 골격
+- [ ] **미니앱(앱) 등록**: iframe URL = companion, Redirect URI = `https://{domain}/oauth/callback`
+- [ ] **심사 준비**: MR↔노래책 동기화 안내·Q&A로 유용성 설명
+- [ ] **OAuth 클라이언트 확보**: Client ID/Secret, API Key
+- [ ] **(병행) 멜로밍 문의**: 데스크톱 전용 OAuth 분리 발급 가능 여부
+
+### Phase 2B — OAuth 쓰기 (2A 이후)
+
+- [ ] **Tauri OAuth PKCE**: Authorization Code + refresh, 토큰 Rust/keyring 저장
+- [ ] **Push**: `POST`/`PATCH`/`DELETE` 노래책 API
+- [ ] **YouTube `path` → `originalUrl`** 자동 매핑
+- [ ] **2A 미완 시**: 읽기만·`pending_push` 큐 또는 웹 수동 안내
+
+### Phase 3 — 양방향·충돌
+
+- [ ] **동기화 엔진**: `local_updated_at`/`remote_updated_at`, `content_hash`
+- [ ] **충돌 UI**: `newer_wins` / `local_wins` / `remote_wins` / `ask`
+- [ ] **삭제·고아 정책**: 자동 삭제 전파 없음, 사용자 확인
+- [ ] **일괄 Pull/Push·진행률 UI**
+
+### Phase 4 — Companion 확장·업데이트 알림
+
+- [ ] **Vercel `/changelog`**, `/qa` 본문, `GET /api/releases/latest`
+- [ ] **`updater.rs` 연동**: GitHub Releases 유지 + companion manifest/changelog URL 폴백
+- [ ] **`RELEASE_NOTES.md` ↔ changelog** 동기화 (CI 또는 릴리즈 스크립트)
+- [ ] **(선택) 오버레이 숙련도/난이도 표시**
 
 ---
 
-💡 **참고**: 이 목록은 우선순위에 따라 유동적으로 조정될 수 있습니다. v0.4.10 항목은 2026-05 기준 안정화 패치이며, 앱 버전 번호는 다음 릴리즈 때 일괄 올릴 예정입니다.
+💡 **참고**: 이 목록은 우선순위에 따라 유동적으로 조정될 수 있습니다. v0.4.10은 2026-06-02 릴리즈된 안정화 패치입니다. 멜로밍 연동 상세는 [`docs/MELOMING_SONGBOOK_INTEGRATION.md`](docs/MELOMING_SONGBOOK_INTEGRATION.md) 및 [README](README.md) 로드맵을 참고하세요.

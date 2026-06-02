@@ -818,6 +818,32 @@ export function initControlListeners() {
     };
   }
 
+  const btnCheckAppUpdate = document.getElementById("btn-check-app-update");
+  const appVersionDesc = document.getElementById("app-version-desc");
+  if (btnCheckAppUpdate) {
+    btnCheckAppUpdate.onclick = async () => {
+      const { showNotification, showUpdateAvailable } = await import('../utils.js');
+      btnCheckAppUpdate.disabled = true;
+      try {
+        const info = await invoke("check_for_app_update");
+        const current = info?.currentVersion || info?.current_version || "?";
+        const latest = info?.latestVersion || info?.latest_version || "?";
+        if (appVersionDesc) {
+          appVersionDesc.textContent = `현재 v${current} · GitHub 최신 v${latest}`;
+        }
+        if (info?.hasUpdate) {
+          showUpdateAvailable(info);
+        } else {
+          showNotification("이미 최신 버전을 사용 중입니다.", "success");
+        }
+      } catch (err) {
+        showNotification("업데이트 확인 실패: " + err, "error");
+      } finally {
+        btnCheckAppUpdate.disabled = false;
+      }
+    };
+  }
+
   // AI Model Selection & Actions
   const aiModelSelect = document.getElementById("ai-model-select-dropdown");
   const aiModelDesc = document.getElementById("ai-model-desc");

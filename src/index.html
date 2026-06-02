@@ -8,7 +8,7 @@
   <link rel="stylesheet" href="styles/lyric-drawer.css" />
   <script src="js/libs/Sortable.min.js"></script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Live MR Manager(Beta) v0.4.9 | Performer Dash</title>
+  <title>Live MR Manager(Beta) v0.4.10 | Performer Dash</title>
   <style>
     /* --- Color Palette UI --- */
     .color-palette-wrapper { display: flex; flex-direction: column; }
@@ -75,7 +75,7 @@
   <div class="titlebar">
     <div class="titlebar-logo" data-tauri-drag-region>
       <img src="./assets/images/app-icon.png" alt="Logo" style="width: 18px; height: 18px; object-fit: contain;"> Live
-      MR Manager(Beta) v0.4.9
+      MR Manager(Beta) v0.4.10
     </div>
     <div data-tauri-drag-region class="titlebar-drag-handle" style="flex: 1; height: 100%;"></div>
     <div class="titlebar-actions">
@@ -560,6 +560,29 @@
         <!-- 설정 페이지 -->
         <div class="tab-content" id="settings-page" style="display: none; padding: 0 30px 30px 30px;">
           <div class="settings-container">
+            <section class="settings-group">
+              <div class="group-header">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                  <polyline points="7 10 12 15 17 10"></polyline>
+                  <line x1="12" y1="15" x2="12" y2="3"></line>
+                </svg>
+                <h3>앱 업데이트</h3>
+              </div>
+              <div class="ai-model-card">
+                <div class="ai-info-left">
+                  <h2 class="ai-title-large">버전 확인</h2>
+                  <div class="ai-model-desc" id="app-version-desc">
+                    GitHub 릴리스를 확인해 새 버전이 있으면 알림을 표시합니다. 앱 실행 시·6시간마다 자동 확인합니다.
+                  </div>
+                </div>
+                <div class="ai-actions-right">
+                  <button id="btn-check-app-update" class="btn-ai-action">업데이트 확인</button>
+                </div>
+              </div>
+            </section>
+
             <section class="settings-group">
               <div class="group-header">
                 <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
