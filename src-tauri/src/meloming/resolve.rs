@@ -1,4 +1,4 @@
-//! Resolve user input (Chzzk URL, SOOP URL, webPath, numeric ID) to Meloming channel ID.
+//! Resolve user input (Chzzk, SOOP, CIME URLs, webPath, numeric ID) to Meloming channel ID.
 
 use serde::Deserialize;
 
@@ -10,7 +10,7 @@ pub struct ResolvedChannel {
     pub id: i64,
     pub name: String,
     pub web_path: Option<String>,
-    /// How the ID was resolved: numeric | chzzk | soop | web_path
+    /// How the ID was resolved: numeric | chzzk | soop | cime | web_path
     pub resolved_from: String,
 }
 
@@ -56,6 +56,30 @@ fn extract_soop_id(input: &str) -> Option<String> {
             if !id.is_empty() && id != "station" {
                 return Some(id);
             }
+        }
+    }
+    None
+}
+
+fn extract_cime_id(input: &str) -> Option<String> {
+    let s = input.trim();
+    if let Some(idx) = s.find("ci.me/@") {
+        let tail = &s[idx + "ci.me/@".len()..];
+        let id: String = tail
+            .chars()
+            .take_while(|c| *c != '/' && *c != '?' && *c != '#' && !c.is_whitespace())
+            .collect();
+        if !id.is_empty() {
+            return Some(id);
+        }
+    }
+    if s.starts_with('@') {
+        let id: String = s[1..]
+            .chars()
+            .take_while(|c| *c != '/' && *c != '?' && *c != '#' && !c.is_whitespace())
+            .collect();
+        if !id.is_empty() {
+            return Some(id);
         }
     }
     None
@@ -121,6 +145,17 @@ impl MelomingClient {
             });
         }
 
+        if let Some(cime_id) = extract_cime_id(trimmed) {
+            let ch: ChannelLookup =
+                Self::get_json(&format!("{BASE_URL}/v1/channels/platforms/CIME/{cime_id}")).await?;
+            return Ok(ResolvedChannel {
+                id: ch.id,
+                name: ch.name,
+                web_path: ch.web_path,
+                resolved_from: "cime".into(),
+            });
+        }
+
         let identifier = extract_web_path(trimmed).unwrap_or_else(|| trimmed.to_string());
         let encoded = urlencoding::encode(&identifier);
         let ch: ChannelLookup = Self::get_json(&format!("{BASE_URL}/v1/channels/{encoded}")).await?;
@@ -147,5 +182,17 @@ mod tests {
     fn parses_bare_chzzk_id() {
         let id = extract_chzzk_id("b26947470f4361083ac58fc2f822d517").unwrap();
         assert_eq!(id, "b26947470f4361083ac58fc2f822d517");
+    }
+
+    #[test]
+    fn parses_cime_url() {
+        let id = extract_cime_id("https://ci.me/@lumoungs2/live").unwrap();
+        assert_eq!(id, "lumoungs2");
+    }
+
+    #[test]
+    fn parses_cime_handle() {
+        let id = extract_cime_id("@maehee").unwrap();
+        assert_eq!(id, "maehee");
     }
 }

@@ -6,6 +6,10 @@ import { showNotification } from '../utils.js';
 import { switchTab } from './navigation.js';
 
 const PLACEHOLDER_AVATAR = './assets/images/app-icon.png';
+/** OAuth·보내기 API 안정화 전까지 UI 잠금 */
+const MELOMING_COMING_SOON = true;
+const COMING_SOON_MSG = '개발 중입니다.';
+
 let pendingOAuthState = null;
 let accountMenuOpen = false;
 
@@ -99,6 +103,10 @@ async function loadChannelId() {
 }
 
 async function startMelomingLogin(triggerBtn) {
+  if (MELOMING_COMING_SOON) {
+    showNotification(COMING_SOON_MSG, 'info');
+    return;
+  }
   if (triggerBtn) triggerBtn.disabled = true;
   try {
     const res = await invoke('meloming_oauth_start');
@@ -251,6 +259,10 @@ export async function initMelomingListeners() {
 
   if (btnPush) {
     btnPush.onclick = async () => {
+      if (MELOMING_COMING_SOON) {
+        showNotification(COMING_SOON_MSG, 'info');
+        return;
+      }
       const channelId = input?.value?.trim() || null;
       btnPush.disabled = true;
       setStatus('멜로밍에 보내는 중… (로그인 필요)');

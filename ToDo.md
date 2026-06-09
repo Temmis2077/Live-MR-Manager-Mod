@@ -81,7 +81,8 @@
 - [X] **메타데이터 KEY/BPM 분석 버튼 (v0.4.8)**: 편집 모달에서 키/템포 자동 분석 후 필드 즉시 반영 기능 완료
 - [X] **MR 캐시 키 헬퍼 통합 (v0.4.10)**: `mr_separated_files_exist` / `cache_key_variants`로 재생·배지·KEY/BPM·삭제 경로 일원화
 - [X] **스프레드시트 가져오기/보내기 (v0.4.10)**: CSV(UTF-8 BOM)·XLSX 병합 가져오기 및 CSV보내기·양식 다운로드
-- [X] **GitHub 업데이트 알림 (v0.4.10)**: `updater.rs` + `app-update-available` 이벤트로 최신 릴리즈 안내
+- [X] **곡 정보 편집 저장 안정화 (v0.4.11)**: DB 데드락 수정, 저장 후 모달 즉시 닫기
+- [X] **타이틀바 창 드래그 (v0.4.11)**: 커스텀 타이틀바 이동·capability
 - [ ] **에러 핸들링 강화**: 오디오 디코딩 및 AI 추론 시 발생할 수 있는 예외 상황에 대한 상세 리포팅 시스템
 - [ ] **자동 업데이트**: 앱 및 AI 모델의 최신 버전 자동 체크 및 업데이트 기능 (GitHub Releases + §7 Phase 4 Vercel companion manifest 연동 예정)
 
@@ -108,7 +109,7 @@
 - [X] **미니앱(앱) 등록**: iframe `https://lmrm.vercel.app/`, Redirect `https://lmrm.vercel.app/oauth/callback`
 - [X] **심사 제출** (승인 대기)
 - [X] **OAuth 클라이언트 확보**: Client ID/Secret, API Key (미니앱 승인)
-- [ ] **(병행) 멜로밍 문의**: 데스크톱 전용 OAuth 분리 발급 가능 여부
+- [ ] **(병행) 멜로밍 문의**: OAuth 토큰 교환 500/401 — Redirect URI·Client 승인 상태 확인 (2026-06 진행 중)
 
 ### Phase 0 — 로컬 메타데이터 (2A 대기 중 병행)
 
@@ -118,8 +119,9 @@
 
 ### Phase 1 — 읽기 동기화 (인증 불필요)
 
-- [X] **Rust `meloming` 모듈**: `client`·`sync`·`commands` — 목록·아티스트 (`GET`)
-- [X] **설정 UI**: 채널 ID, 연결 테스트, 「멜로밍에서 가져오기」(Pull)
+- [X] **Rust `meloming` 모듈**: `client`·`sync`·`commands`·`resolve` — 목록·아티스트 (`GET`)
+- [X] **설정 UI**: 방송 채널 주소(치지직·SOOP·씨미), 연결 테스트, 「가져오기」(Pull)
+- [X] **플랫폼 채널 해석 (v0.4.11)**: `CHZZK` / `SOOP` / `CIME` URL·ID → `GET /v1/channels/platforms/{platform}/{id}`
 - [X] **아티스트 Map 테이블**: `Meloming_Artist_Map`
 - [X] **확장 DB 컬럼**: `meloming_song_id`, URL 필드, `sync_status` 등
 - [ ] **카테고리 Map 갱신·매칭 UI**: Pull 시 `Meloming_Category_Map` + 로컬 카테고리 연동
@@ -127,11 +129,19 @@
 
 ### Phase 2B — OAuth 쓰기 (2A 승인 후 실연동)
 
-- [X] **Tauri OAuth PKCE**: Authorization Code + refresh, 토큰 Settings 저장, deep-link + 수동 code
-- [X] **Push**: `POST`/`PATCH` 노래책 API (일괄 보내기)
+- [X] **Tauri OAuth PKCE**: Authorization Code + refresh, 토큰 Settings 저장, deep-link + companion `/api/oauth/exchange`
+- [X] **Push 코드**: `POST`/`PATCH` 노래책 API (일괄 보내기)
+- [ ] **OAuth 실연동 (블로킹)**: 멜로밍 `POST /oauth/token` 500 INTERNAL_ERROR·401 Invalid redirect_uri — **멜로밍 지원 문의 중**
+- [X] **UI 잠금 (임시)**: `MELOMING_COMING_SOON` — 「멜로밍 로그인」·「멜로밍에 보내기」→ 「개발 중입니다.」
 - [ ] **DELETE** 노래 삭제 Push
 - [ ] **YouTube `path` → `originalUrl`** 자동 매핑
 - [ ] **2A 미완 시**: 읽기만·`pending_push` 큐 또는 웹 수동 안내
+
+### Phase 2A+ — Companion 웹 (테스트·추후 정리)
+
+- [X] **웹 OAuth 테스트**: `/login`, `/account`, `/api/oauth/login|complete|exchange`, `/api/auth/session`
+- [X] **OAuth 콜백 분기**: 웹 PKCE 쿠키 있으면 웹 세션, 없으면 앱 딥링크
+- [ ] **웹 로그인 UI 제거 또는 정식화** (OAuth 안정화 후 결정)
 
 ### Phase 3 — 양방향·충돌
 
@@ -149,4 +159,4 @@
 
 ---
 
-💡 **참고**: 이 목록은 우선순위에 따라 유동적으로 조정될 수 있습니다. v0.4.10은 2026-06-02 릴리즈된 안정화 패치입니다. 멜로밍 연동 상세는 [`docs/MELOMING_SONGBOOK_INTEGRATION.md`](docs/MELOMING_SONGBOOK_INTEGRATION.md) 및 [README](README.md) 로드맵을 참고하세요.
+💡 **참고**: 이 목록은 우선순위에 따라 유동적으로 조정될 수 있습니다. v0.4.10은 2026-06-02 릴리즈, v0.4.11은 2026-06-09 기준 개발 빌드(멜로밍 OAuth 보류)입니다. 멜로밍 연동 상세는 [`docs/MELOMING_SONGBOOK_INTEGRATION.md`](docs/MELOMING_SONGBOOK_INTEGRATION.md) 및 [README](README.md) 로드맵을 참고하세요.

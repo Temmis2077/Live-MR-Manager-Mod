@@ -38,7 +38,7 @@ export default function DownloadPage() {
         <article className="card" style={{ marginTop: "1rem" }}>
           <h2>설치 후</h2>
           <p>
-            유튜브·로컬 음원을 추가하고, 설정 → 멜로밍 노래책에서 채널 ID를
+            유튜브·로컬 음원을 추가하고, 설정 → 멜로밍 노래책에서 방송 채널 주소를
             입력해 노래 목록을 가져올 수 있습니다.
           </p>
           <Link href="/faq" className="btn btn-secondary">

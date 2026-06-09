@@ -120,6 +120,15 @@
 - **스프레드시트 가져오기/보내기**: 설정에서 라이브러리를 CSV/XLSX로 보내고 병합 가져오기(한글 헤더 지원).
 - **GitHub 업데이트 알림**: 최신 릴리즈를 주기적으로 확인해 앱 내에서 새 버전을 안내합니다.
 
+### 🆕 v0.4.11 업데이트 (개발 빌드 · 2026-06-09)
+
+- **멜로밍 노래책 — 다중 플랫폼 채널 주소**: 설정 「방송 채널 주소」에 **치지직 · SOOP(숲) · 씨미(CIME)** URL·ID를 입력해 Pull·연결 테스트 가능. (`resolve.rs` → `GET /v1/channels/platforms/{CHZZK|SOOP|CIME}/…`)
+- **멜로밍 OAuth (코드 구현·실연동 보류)**: PKCE·deep-link·companion 토큰 프록시까지 구현했으나, 멜로밍 `POST /oauth/token`에서 **500 INTERNAL_ERROR**·**401 Invalid redirect_uri**가 지속. 우측 상단 **「멜로밍 로그인」**·설정 **「멜로밍에 보내기」**는 **「개발 중입니다.」** 안내만 표시 (`MELOMING_COMING_SOON`). **가져오기·연결 테스트·채널 저장**은 OAuth 없이 사용 가능.
+- **곡 정보 저장 안정화**: 메타데이터 저장 시 DB 락 데드락 수정, 저장 후 전체 `loadLibrary()` 대신 로컬 state 갱신·모달 즉시 닫기.
+- **타이틀바 창 이동**: 커스텀 타이틀바 드래그 영역·`startDragging` 폴백, Tauri capability(`core:window:allow-start-dragging`) 반영.
+- **Vercel companion 확장** ([lmrm.vercel.app](https://lmrm.vercel.app)): `/login`, `/account`, 웹 OAuth 테스트 API, `/api/oauth/exchange`(앱용). OAuth 콜백은 웹 PKCE 세션이 있으면 웹 로그인, 없으면 앱 딥링크(`live-mr-manager://`)로 분기.
+- **채널 주소 저장**: 설정 입력값은 **로컬 SQLite**에만 저장. 신규 설치·배포본에는 기본값 없음(빈 칸).
+
 ### 🆕 v0.4.9 업데이트
 
 - **버전 정합성 업데이트**: 앱 메타데이터(`package`, `cargo`, `tauri`)를 `0.4.9`로 통일했습니다.
@@ -153,12 +162,16 @@
 
 ### Vercel companion (미니앱·OAuth·서비스 허브)
 
-단일 HTTPS 도메인으로 다음을 운영할 예정입니다.
+단일 HTTPS 도메인([lmrm.vercel.app](https://lmrm.vercel.app))으로 다음을 운영합니다.
 
 - **미니앱 iframe** — 연동 안내, 다운로드
-- **OAuth Redirect** — `https://{domain}/oauth/callback` → 데스크톱 커스텀 스킴으로 `code` 전달 (PKCE, `client_secret`은 Tauri만)
+- **OAuth Redirect** — `https://lmrm.vercel.app/oauth/callback` (웹 PKCE 로그인 또는 앱 딥링크 브릿지)
+- **OAuth 토큰 프록시** — `POST /api/oauth/exchange` (선택, `MELOMING_USE_COMPANION_EXCHANGE`)
 - **FAQ / Q&A** — 동기화·숙련도/난이도 등
-- **changelog·업데이트 API** — GitHub Releases(설치 파일) + companion(릴리즈 노트·manifest)
+- **(테스트) 웹 로그인** — `/login`, `/account` (OAuth API 검증용, 추후 정리 예정)
+- **changelog·업데이트 API** — GitHub Releases(설치 파일) + companion(릴리즈 노트·manifest) (Phase 4)
+
+**현재 상태 (2026-06)**: Pull·채널 조회(치지직/SOOP/씨미)는 동작. OAuth 토큰 교환은 멜로밍 서버 이슈로 **로그인·보내기 UI 잠금** 중.
 
 작업 체크리스트: [ToDo.md §7](ToDo.md). 상세 기획: [docs/MELOMING_SONGBOOK_INTEGRATION.md](docs/MELOMING_SONGBOOK_INTEGRATION.md).
 

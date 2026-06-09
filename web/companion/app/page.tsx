@@ -30,8 +30,8 @@ export default function HomePage() {
           <article className="card">
             <h2>멜로밍 노래책 연동</h2>
             <p>
-              채널 ID로 노래책을 가져오고, KEY·숙련도·난이도 등을 한곳에서
-              관리합니다.
+              치지직·SOOP(숲)·씨미 채널 주소로 노래책을 가져오고, KEY·숙련도·난이도 등을
+              한곳에서 관리합니다.
             </p>
             <Link href="/faq#channel-id" className="btn btn-secondary">
               연동 방법 보기
@@ -67,8 +67,8 @@ export default function HomePage() {
             <li>
               <strong>3. 멜로밍 채널 연결</strong>
               <span>
-                앱 설정에 멜로밍 채널 ID를 입력하고 「노래책 가져오기」로 기존
-                목록을 불러옵니다.
+                앱 설정에 방송 채널 주소(치지직·SOOP·씨미 등)를 입력하고
+                「가져오기」로 기존 목록을 불러옵니다.
               </span>
             </li>
             <li>

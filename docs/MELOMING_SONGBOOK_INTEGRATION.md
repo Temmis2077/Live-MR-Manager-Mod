@@ -282,13 +282,41 @@ sequenceDiagram
   App->>Browser: authorize URL
   Browser->>Meloming: 로그인 및 동의
   Meloming->>Web: redirect ?code= and state=
-  Web->>App: live-mr-manager://oauth/callback?code=
-  App->>Meloming: POST token code+verifier
-  App->>App: 토큰 keyring/Settings 저장
+  alt 웹 PKCE 쿠키 있음
+    Web->>Web: POST /api/oauth/complete → httpOnly 세션
+  else 앱 로그인
+    Web->>App: live-mr-manager://oauth/callback?code=
+    App->>Meloming: POST /oauth/token (직접 또는 /api/oauth/exchange)
+    App->>App: 토큰 Settings 저장
+  end
 ```
 
-- Companion `/oauth/callback`: `code`·`state` 파싱 → 커스텀 스킴 리다이렉트만
-- **`client_secret`을 Vercel에 두지 않음** (교환은 Rust)
+- Companion `/oauth/callback`: `code`·`state` 파싱 → **웹 PKCE 세션** 또는 **커스텀 스킴**으로 분기
+- **토큰 교환**: Tauri에서 `MELOMING_USE_COMPANION_EXCHANGE=true` 시 `POST https://lmrm.vercel.app/api/oauth/exchange` (Client Secret은 Vercel env)
+- Redirect URI (등록·코드 공통): `https://lmrm.vercel.app/oauth/callback`
+
+### 6.7 OAuth 실연동 상태 (2026-06-09)
+
+| 단계 | 상태 |
+|------|------|
+| authorize · code · deep-link | ✅ 동작 |
+| `POST /oauth/token` | ❌ 500 INTERNAL_ERROR 또는 401 Invalid redirect_uri (멜로밍 측 확인 중) |
+| 앱 UI | 「멜로밍 로그인」「멜로밍에 보내기」→ **「개발 중입니다.」** (`MELOMING_COMING_SOON`) |
+| Pull · 연결 테스트 · 채널 저장 | ✅ OAuth 불필요, 사용 가능 |
+
+### 6.8 플랫폼 채널 주소 (Pull용)
+
+[`resolve.rs`](../src-tauri/src/meloming/resolve.rs)가 입력을 멜로밍 채널 ID로 변환한다.
+
+| 플랫폼 | API | 입력 예 |
+|--------|-----|---------|
+| 치지직 (CHZZK) | `GET /v1/channels/platforms/CHZZK/{id}` | `https://chzzk.naver.com/…`, 32자 hex ID |
+| SOOP (숲) | `GET /v1/channels/platforms/SOOP/{id}` | `https://sooplive.co.kr/station/…` |
+| 씨미 (CIME) | `GET /v1/channels/platforms/CIME/{id}` | `https://ci.me/@아이디`, `@아이디` |
+| 멜로밍 | `GET /v1/channels/{webPath}` | webPath, `meloming.com/…` |
+| 숫자 ID | `GET /v1/channels/{id}` | `12345` |
+
+채널 주소는 **로컬 SQLite Settings**에만 저장. 배포본·신규 설치 시 빈 값.
 
 ---
 
@@ -301,10 +329,15 @@ sequenceDiagram
 | 경로 | Phase | 용도 |
 |------|-------|------|
 | `/` | 2A | 연동 안내, 다운로드, 미니앱 iframe |
-| `/oauth/callback` | 2A | 멜로밍 Redirect URI |
-| `/faq`, `/qa` | 2A 골격 → 4 본문 | 동기화·숙련도/난이도 Q&A |
+| `/oauth/callback` | 2A | 멜로밍 Redirect URI (웹·앱 분기) |
+| `/login`, `/account` | 2A+ | 웹 OAuth 테스트 (추후 정리 예정) |
+| `/faq`, `/qa` | 2A | 동기화·숙련도/난이도 Q&A |
+| `/download` | 2A | GitHub Releases 링크 |
 | `/changelog` | 4 | 릴리즈 노트 |
-| `/download` | 4 | GitHub Releases 링크 |
+| `POST /api/oauth/exchange` | 2B | 앱 토큰 교환 프록시 |
+| `GET /api/oauth/login` | 2A+ | 웹 authorize 시작 |
+| `POST /api/oauth/complete` | 2A+ | 웹 토큰 교환·세션 |
+| `GET /api/auth/session` | 2A+ | 웹 로그인 상태 |
 | `GET /api/releases/latest` | 4 | 앱 업데이트 manifest JSON |
 
 **등록 예시**
@@ -380,7 +413,8 @@ flowchart TB
 | `src-tauri/src/meloming/mod.rs` | 모듈 루트 |
 | `src-tauri/src/meloming/client.rs` | HTTP, 타입, 에러 |
 | `src-tauri/src/meloming/sync.rs` | Pull/Push, diff, 충돌 |
-| `src-tauri/src/meloming/oauth.rs` | PKCE, 토큰 갱신 |
+| `src-tauri/src/meloming/oauth.rs` | PKCE, 토큰 갱신, companion exchange |
+| `src-tauri/src/meloming/resolve.rs` | CHZZK/SOOP/CIME/webPath 채널 해석 |
 | `src-tauri/src/lib.rs` | command 등록 |
 
 ### 8.2 Tauri Commands (예상)
@@ -399,7 +433,7 @@ flowchart TB
 
 | 위치 | 변경 |
 |------|------|
-| `settings-page` | 채널 ID, 로그인, 동기화, 충돌 정책 |
+| settings-page | 방송 채널 주소(치지직·SOOP·씨미), Pull, (로그인·보내기 — 개발 중) |
 | 메타데이터 모달 | 숙련도·난이도 1–5, URL 접이식 |
 | 라이브러리 / 관리자 | 동기화 상태 배지, 일괄 Pull/Push |
 | 컨텍스트 메뉴 | 「멜로밍에 업로드」「가져오기」 |
@@ -494,7 +528,7 @@ flowchart LR
 | **2 (병행)** | 0 | 없음 | KEY/BPM·숙련도·난이도 DB/UI (멜로밍 필드 기반) |
 | **2 (병행)** | 1 | 없음 | `meloming_client`, Pull, Map — **OAuth 없이** 즉시 가능 |
 | **2 (병행)** | 2B 준비 | 테스트만 블로킹 | PKCE·토큰 저장·Push API **코드** 작성 (실연동은 2A 완료 후) |
-| **3** | 2B 완료 | OAuth | Push·PATCH·DELETE 실연동·E2E |
+| **3** | 2B 완료 | OAuth | Push·PATCH·DELETE 실연동 (토큰 API 안정화 후) |
 | **4** | 3 | | 양방향·충돌 |
 | **5** | 4 | | changelog·releases API·업데이트 알림 |
 
@@ -525,6 +559,7 @@ flowchart LR
 | 리스크 | 완화 |
 |--------|------|
 | 앱등록 링크 → 미니앱 페이지 | 2A 전제, 경로 B/C |
+| OAuth 심사·토큰 500/401 | 2A·멜로밍 지원, UI `MELOMING_COMING_SOON` 잠금 |
 | KEY/BPM 미저장 | Phase 0 필수 |
 | `artistId` 필수 | Map + 선택 UI |
 | 아티스트 생성 API 없음 | 멜로밍 웹 선등록 안내 |

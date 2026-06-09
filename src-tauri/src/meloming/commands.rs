@@ -22,7 +22,7 @@ async fn resolve_input(input: Option<String>) -> Result<(ResolvedChannel, String
         .filter(|s| !s.trim().is_empty())
         .or_else(|| get_setting(KEY_CHANNEL_INPUT))
         .or_else(|| get_setting(KEY_CHANNEL_ID))
-        .ok_or_else(|| "치지직 주소 또는 채널 정보를 입력해 주세요.".to_string())?;
+        .ok_or_else(|| "치지직·SOOP(숲)·씨미 주소 또는 채널 정보를 입력해 주세요.".to_string())?;
     let resolved = MelomingClient::resolve_channel(&raw)
         .await
         .map_err(|e| e.to_string())?;
