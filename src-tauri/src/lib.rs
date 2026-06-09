@@ -13,8 +13,11 @@ mod metadata_fetcher;
 pub mod audio;
 pub mod onnx_engine;
 mod library;
+mod meloming;
 mod key_bpm;
 mod audio_commands;
+mod mr_cache;
+mod mr_encode;
 mod model_commands;
 mod system;
 mod spreadsheet;
@@ -22,12 +25,71 @@ mod rescue;
 mod overlay_server;
 mod updater;
 
+fn load_env_files() {
+    let manifest_env = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(".env");
+    let _ = dotenvy::from_path(&manifest_env);
+    let _ = dotenvy::dotenv();
+}
+
+fn focus_main_window(app: &tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.unminimize();
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+}
+
 pub fn run() {
-    tauri::Builder::default()
+    load_env_files();
+    let mut builder = tauri::Builder::default();
+
+    #[cfg(desktop)]
+    {
+        builder = builder.plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            crate::audio_player::sys_log(&format!(
+                "[App] deep-link forwarded to running instance (argv={argv:?})"
+            ));
+            // deep-link 플러그인이 on_open_url로 OAuth URL을 전달하므로 argv는 여기서 다시 처리하지 않음
+            focus_main_window(app);
+        }));
+    }
+
+    builder
         .plugin(tauri_plugin_window_state::Builder::default().build())
+        .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_deep_link::init())
         .setup(|app| {
+            crate::meloming::oauth::sync_credentials_from_env();
             if let Some(window) = app.get_webview_window("main") {
                 *crate::state::MAIN_WINDOW.lock() = Some(window);
+            }
+
+            #[cfg(desktop)]
+            {
+                use tauri_plugin_deep_link::DeepLinkExt;
+                let handle = app.handle().clone();
+
+                #[cfg(any(windows, target_os = "linux"))]
+                {
+                    app.deep_link().register_all()?;
+                }
+                #[cfg(not(any(windows, target_os = "linux")))]
+                {
+                    let _ = app.deep_link().register("live-mr-manager");
+                }
+
+                if let Ok(Some(urls)) = app.deep_link().get_current() {
+                    for url in urls {
+                        crate::meloming::oauth::handle_deep_link(&handle, url.as_ref());
+                    }
+                }
+
+                app.deep_link().on_open_url(move |event| {
+                    focus_main_window(&handle);
+                    for url in event.urls() {
+                        crate::meloming::oauth::handle_deep_link(&handle, url.as_ref());
+                    }
+                });
             }
 
             let paths = crate::state::AppPaths::from_handle(app.handle());
@@ -60,6 +122,8 @@ pub fn run() {
             library::get_track_count, 
             model_commands::cancel_separation, 
             model_commands::set_broadcast_mode,
+            model_commands::get_mr_cache_format,
+            model_commands::set_mr_cache_format,
             system::get_audio_devices, 
             system::open_cache_folder, 
             model_commands::delete_ai_model, 
@@ -92,7 +156,19 @@ pub fn run() {
             overlay_server::update_overlay_state,
             overlay_server::update_overlay_style,
             overlay_server::update_overlay_lyrics,
-            overlay_server::get_overlay_state
+            overlay_server::get_overlay_state,
+            meloming::meloming_get_user_profile,
+            meloming::meloming_get_channel_id,
+            meloming::meloming_set_channel_id,
+            meloming::meloming_test_connection,
+            meloming::meloming_pull_songs,
+            meloming::meloming_get_credentials,
+            meloming::meloming_set_credentials,
+            meloming::meloming_oauth_status,
+            meloming::meloming_oauth_start,
+            meloming::meloming_oauth_finish,
+            meloming::meloming_oauth_logout,
+            meloming::meloming_push_songs
         ])
 
         .run(tauri::generate_context!())

@@ -429,7 +429,12 @@ export function initControlListeners() {
         }
         
         if (selectedText) {
-          selectedText.textContent = optionItem.textContent;
+          if (customSelect.classList.contains('meta-rating-select')) {
+            const starEl = optionItem.querySelector('.rating-stars');
+            selectedText.innerHTML = starEl ? starEl.outerHTML : optionItem.innerHTML;
+          } else {
+            selectedText.textContent = optionItem.textContent;
+          }
         }
         
         customSelect.querySelectorAll(".option-item").forEach(opt => opt.classList.remove("selected"));
@@ -811,6 +816,66 @@ export function initControlListeners() {
   }
   // Initialize both toggle UIs from persisted state
   syncBroadcastModeToggles(state.broadcastMode);
+
+  const syncMrCacheFormatToUi = (format) => {
+    const normalized = format === "wav" ? "wav" : "mp3";
+    const dropdown = document.getElementById("mr-cache-format-dropdown");
+    if (!dropdown) return;
+    const selectedText = dropdown.querySelector(".selected-text");
+    const options = dropdown.querySelectorAll(".option-item");
+    options.forEach((opt) => {
+      const selected = opt.dataset.value === normalized;
+      opt.classList.toggle("selected", selected);
+      if (selected && selectedText) selectedText.textContent = opt.textContent;
+    });
+    if (elements.mrCacheFormatSelect) {
+      elements.mrCacheFormatSelect.value = normalized;
+    }
+  };
+
+  const applyMrCacheFormat = async (format) => {
+    const normalized = format === "wav" ? "wav" : "mp3";
+    try {
+      await invoke("set_mr_cache_format", { format: normalized });
+      state.mrCacheFormat = normalized;
+      localStorage.setItem("mrCacheFormat", normalized);
+      syncMrCacheFormatToUi(normalized);
+    } catch (err) {
+      syncMrCacheFormatToUi(state.mrCacheFormat);
+      const { showNotification } = await import('../utils.js');
+      showNotification("MR 저장 형식 변경 실패: " + err, "error");
+    }
+  };
+
+  if (elements.mrCacheFormatSelect) {
+    const initMrCacheFormat = async () => {
+      let format = state.mrCacheFormat || "mp3";
+      try {
+        const backend = await invoke("get_mr_cache_format");
+        if (backend === "mp3" || backend === "wav") {
+          format = backend;
+        }
+      } catch (_) {
+        /* use localStorage fallback */
+      }
+      state.mrCacheFormat = format;
+      localStorage.setItem("mrCacheFormat", format);
+      syncMrCacheFormatToUi(format);
+      try {
+        await invoke("set_mr_cache_format", { format });
+      } catch (_) {
+        /* backend may be unavailable during early init */
+      }
+    };
+    initMrCacheFormat();
+
+    elements.mrCacheFormatSelect.addEventListener("change", async (e) => {
+      await applyMrCacheFormat(e.target.value);
+      const { showNotification } = await import('../utils.js');
+      const label = e.target.value === "wav" ? "WAV (32비트 무손실)" : "MP3 (320kbps)";
+      showNotification(`MR 저장 형식이 ${label}로 변경되었습니다.`, "info");
+    });
+  }
   const btnOpenCache = document.getElementById("btn-open-cache");
   if (btnOpenCache) {
     btnOpenCache.onclick = async () => {
@@ -848,8 +913,8 @@ export function initControlListeners() {
   const aiModelSelect = document.getElementById("ai-model-select-dropdown");
   const aiModelDesc = document.getElementById("ai-model-desc");
   const modelDescMap = {
-    kim: "기본 고성능 보컬용 모델입니다. 배경 반주(MR)의 고품질 분리가 필요하다면 Inst HQ 3 모델을 권장합니다.",
-    inst_hq_3: "고품질 MR 추출에 특화된 모델입니다. 보컬 분리보다는 배경 음악을 깔끔하게 추출하는 데 최적화되어 있습니다.",
+    kim: "일반적인 보컬·MR 분리에 적합합니다.",
+    inst_hq_3: "MR(반주) 품질이 더 중요할 때 추천합니다.",
   };
 
   const hasPendingSeparations = async () => {

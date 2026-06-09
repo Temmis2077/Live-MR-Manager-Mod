@@ -874,12 +874,19 @@ impl InferenceEngine for WaveformRemover {
             trimmed_inst = final_inst_inner;
         }
 
-        // 7. Save Results
-        let vocal_path = output_dir.join("vocal.wav");
-        let inst_path = output_dir.join("inst.wav");
-        
-        self.save_wav(&trimmed_vocal, &vocal_path, target_sample_rate)?;
-        self.save_wav(&trimmed_inst, &inst_path, target_sample_rate)?;
+        // 7. Save Results (post-process once; MP3 = pcm16 temp → encode, WAV = 32-bit float)
+        let format = crate::mr_cache::current_format();
+        let (vocal_path, inst_path) = crate::mr_cache::mr_output_paths_for(output_dir, format);
+        sys_log(&format!(
+            "DEBUG: [WaveformRemover] Saving MR cache as {} ({:?}, {:?})",
+            format.as_str(),
+            vocal_path.file_name(),
+            inst_path.file_name()
+        ));
+        self.save_mr(&trimmed_vocal, &vocal_path, target_sample_rate)
+            .map_err(|e| anyhow!("Vocal save failed: {}", e))?;
+        self.save_mr(&trimmed_inst, &inst_path, target_sample_rate)
+            .map_err(|e| anyhow!("Inst save failed: {}", e))?;
 
         sys_log(&format!("PERF: [WaveformRemover] Finalize & Save took: {:?}", finalize_start.elapsed()));
         sys_log(&format!("PERF: [WaveformRemover] Total separation time for track: {:?}", start_time.elapsed()));
@@ -1018,50 +1025,89 @@ impl WaveformRemover {
         Ok(result)
     }
 
-    fn save_wav(&self, samples: &Vec<Vec<f32>>, path: &Path, rate: u32) -> Result<()> {
-        let is_instrumental = self.outputs_instrumental;
-        if is_instrumental {
-            self.save_wav_inst(samples, path, rate)
-        } else {
-            self.save_wav_kim(samples, path, rate)
+    fn save_mr(&self, samples: &Vec<Vec<f32>>, path: &Path, rate: u32) -> Result<()> {
+        match crate::mr_cache::current_format() {
+            crate::mr_cache::MrCacheFormat::Mp3 => self.save_mp3(samples, path, rate),
+            crate::mr_cache::MrCacheFormat::Wav => self.save_wav(samples, path, rate),
         }
     }
 
-    /// Optimized logic for Kim model (User tuned)
-    fn save_wav_kim(&self, samples: &Vec<Vec<f32>>, path: &Path, rate: u32) -> Result<()> {
+    fn save_wav(&self, samples: &Vec<Vec<f32>>, path: &Path, rate: u32) -> Result<()> {
+        let processed = if self.outputs_instrumental {
+            self.process_inst_stem(samples, rate)?
+        } else {
+            self.process_kim_stem(samples, rate)?
+        };
+        Self::write_float_wav(&processed, path, rate)
+    }
+
+    /// MP3: post-process → 16-bit temp WAV → ffmpeg 320k (no giant float WAV on disk).
+    fn save_mp3(&self, samples: &Vec<Vec<f32>>, path: &Path, rate: u32) -> Result<()> {
+        let processed = if self.outputs_instrumental {
+            self.process_inst_stem(samples, rate)?
+        } else {
+            self.process_kim_stem(samples, rate)?
+        };
+        let temp_wav = crate::mr_encode::mp3_encode_temp_wav_path(path);
+        crate::mr_encode::write_stereo_wav_pcm16(&temp_wav, rate, &processed)?;
+        let result = crate::mr_encode::encode_wav_file_to_mp3(&temp_wav, path);
+        let _ = std::fs::remove_file(&temp_wav);
+        result
+    }
+
+    fn write_float_wav(processed: &[Vec<f32>], path: &Path, rate: u32) -> Result<()> {
+        let num_channels = processed.len();
+        if num_channels == 0 {
+            return Ok(());
+        }
         let spec = hound::WavSpec {
-            channels: samples.len() as u16,
+            channels: num_channels as u16,
             sample_rate: rate,
             bits_per_sample: 32,
             sample_format: hound::SampleFormat::Float,
         };
         let mut writer = hound::WavWriter::create(path, spec)?;
+        let num_frames = processed[0].len();
+        for i in 0..num_frames {
+            for ch in 0..num_channels {
+                writer.write_sample(processed[ch][i])?;
+            }
+        }
+        writer.finalize()?;
+        Ok(())
+    }
+
+    fn process_kim_stem(&self, samples: &Vec<Vec<f32>>, rate: u32) -> Result<Vec<Vec<f32>>> {
         let num_channels = samples.len();
-        if num_channels == 0 { return Ok(()); }
+        if num_channels == 0 {
+            return Ok(Vec::new());
+        }
         let num_frames = samples[0].len();
-        
-        if num_frames < 200 { 
+        let out_ch = num_channels.min(2);
+        let mut out: Vec<Vec<f32>> = (0..out_ch)
+            .map(|_| Vec::with_capacity(num_frames))
+            .collect();
+
+        if num_frames < 200 {
             if num_frames > 0 {
                 for i in 0..num_frames {
-                    for ch in 0..num_channels {
-                        writer.write_sample(samples[ch][i].clamp(-1.0, 1.0))?;
+                    for ch in 0..out_ch {
+                        out[ch].push(samples[ch][i].clamp(-1.0, 1.0));
                     }
                 }
             }
-            writer.finalize()?;
-            return Ok(());
+            return Ok(out);
         }
 
         let total_samples_f64 = (num_channels * num_frames) as f64;
-
-        // 1. DC Offset (Kim version)
         let mut dc_offset_sum = 0.0f64;
         for ch_samples in samples {
-            for s in ch_samples { dc_offset_sum += *s as f64; }
+            for s in ch_samples {
+                dc_offset_sum += *s as f64;
+            }
         }
         let dc_offset = (dc_offset_sum / total_samples_f64) as f32;
 
-        // 2. RMS Normalization
         let mut sum_sq = 0.0f64;
         for ch_samples in samples {
             for s in ch_samples {
@@ -1071,116 +1117,102 @@ impl WaveformRemover {
         }
         let rms = (sum_sq / total_samples_f64).sqrt() as f32;
         let target_rms = 10.0_f32.powf(-16.0 / 20.0);
-        let max_gain = 8.0; 
-        let gain = if rms > 1e-6 { (target_rms / rms).min(max_gain) } else { 1.0 };
+        let gain = if rms > 1e-6 {
+            (target_rms / rms).min(8.0)
+        } else {
+            1.0
+        };
 
-        // 3. Limiter & Fade Params
         let threshold = 0.90f32;
         let margin = 1.0 - threshold;
         let fade_frames = (rate as f32 * (15.0 / 1000.0)) as usize;
-        let fade_in_end = fade_frames.min(num_frames / 2);
+        let fade_in_end = fade_frames.min(num_frames / 2).max(1);
         let fade_out_start = num_frames.saturating_sub(fade_frames);
+        let fade_out_len = (num_frames - fade_out_start).max(1);
 
         for i in 0..num_frames {
             let fade_multiplier = if i < fade_in_end {
                 (i as f32 / fade_in_end as f32).powi(2)
             } else if i >= fade_out_start {
-                let progress = (i - fade_out_start) as f32 / (num_frames - fade_out_start) as f32;
+                let progress = (i - fade_out_start) as f32 / fade_out_len as f32;
                 (1.0 - progress.min(1.0)).powi(2)
             } else {
                 1.0
             };
 
-            for ch in 0..num_channels {
+            for ch in 0..out_ch {
                 let mut s = (samples[ch][i] - dc_offset) * gain * fade_multiplier;
                 let abs_s = s.abs();
-                
                 if abs_s > threshold {
                     let sign = s.signum();
                     s = sign * (threshold + margin * ((abs_s - threshold) / margin).tanh());
                 }
-                
-                writer.write_sample(s.clamp(-1.0, 1.0))?;
+                out[ch].push(s.clamp(-1.0, 1.0));
             }
         }
-
-        writer.finalize()?;
-        Ok(())
+        Ok(out)
     }
 
-    /// Specialized logic for Instrumental models (Optimized for Peak/MR quality)
-    fn save_wav_inst(&self, samples: &Vec<Vec<f32>>, path: &Path, rate: u32) -> Result<()> {
-        let spec = hound::WavSpec {
-            channels: samples.len() as u16,
-            sample_rate: rate,
-            bits_per_sample: 32,
-            sample_format: hound::SampleFormat::Float,
-        };
-        let mut writer = hound::WavWriter::create(path, spec)?;
+    fn process_inst_stem(&self, samples: &Vec<Vec<f32>>, rate: u32) -> Result<Vec<Vec<f32>>> {
         let num_channels = samples.len();
-        if num_channels == 0 { return Ok(()); }
+        if num_channels == 0 {
+            return Ok(Vec::new());
+        }
         let num_frames = samples[0].len();
-        
-        let total_samples_f64 = (num_channels * num_frames) as f64;
+        let out_ch = num_channels.min(2);
+        let mut out: Vec<Vec<f32>> = (0..out_ch)
+            .map(|_| Vec::with_capacity(num_frames))
+            .collect();
 
-        // 1. DC Offset Removal
+        let total_samples_f64 = (num_channels * num_frames) as f64;
         let mut dc_offset_sum = 0.0f64;
         for ch_samples in samples {
-            for s in ch_samples { dc_offset_sum += *s as f64; }
+            for s in ch_samples {
+                dc_offset_sum += *s as f64;
+            }
         }
         let dc_offset = (dc_offset_sum / total_samples_f64) as f32;
 
-        // 2. Peak Normalization (To prevent clipping)
         let mut max_peak = 0.0f32;
         for ch_samples in samples {
             for s in ch_samples {
-                let abs_s = (*s - dc_offset).abs();
-                if abs_s > max_peak { max_peak = abs_s; }
+                max_peak = max_peak.max((*s - dc_offset).abs());
             }
         }
 
-        // Target: -1.0 dBFS (approx 0.89) to leave some headroom
-        let target_peak = 10.0_f32.powf(-1.0 / 20.0); 
-        let gain = if max_peak > 1e-6 { target_peak / max_peak } else { 1.0 };
-        
-        // We only apply gain if it's necessary to avoid clipping (peak > target)
-        // or if we want to boost a very quiet soul. 
-        // For KARA, let's limit the boost to avoid amplifying model noise too much.
-        let gain = gain.min(2.0); // Don't boost more than +6dB automatically
+        let target_peak = 10.0_f32.powf(-1.0 / 20.0);
+        let gain = if max_peak > 1e-6 {
+            (target_peak / max_peak).min(2.0)
+        } else {
+            1.0
+        };
 
-        // 3. Simple Soft Limiter (Safe ceiling at 0.98)
         let threshold = 0.95f32;
         let margin = 0.98f32 - threshold;
-
-        // 4. Fade Params
-        let fade_frames = (rate as f32 * (5.0 / 1000.0)) as usize; // Shorter fade for KARA
-        let fade_in_end = fade_frames.min(num_frames / 2);
+        let fade_frames = (rate as f32 * (5.0 / 1000.0)) as usize;
+        let fade_in_end = fade_frames.min(num_frames / 2).max(1);
         let fade_out_start = num_frames.saturating_sub(fade_frames);
+        let fade_out_len = (num_frames - fade_out_start).max(1);
 
         for i in 0..num_frames {
             let fade_multiplier = if i < fade_in_end {
                 i as f32 / fade_in_end as f32
             } else if i >= fade_out_start {
-                1.0 - (i - fade_out_start) as f32 / (num_frames - fade_out_start) as f32
+                1.0 - (i - fade_out_start) as f32 / fade_out_len as f32
             } else {
                 1.0
             };
 
-            for ch in 0..num_channels {
+            for ch in 0..out_ch {
                 let mut s = (samples[ch][i] - dc_offset) * gain * fade_multiplier;
                 let abs_s = s.abs();
-                
-                // Very gentle limiting for the last bits
                 if abs_s > threshold {
                     let sign = s.signum();
                     s = sign * (threshold + margin * ((abs_s - threshold) / margin).tanh());
                 }
-                
-                writer.write_sample(s.clamp(-1.0, 1.0))?;
+                out[ch].push(s.clamp(-1.0, 1.0));
             }
         }
-
-        writer.finalize()?;
-        Ok(())
+        Ok(out)
     }
 }

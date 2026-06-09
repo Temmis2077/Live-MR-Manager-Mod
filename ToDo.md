@@ -99,31 +99,37 @@
 
 **Companion (Vercel)**: 미니앱 iframe·OAuth Redirect·FAQ/Q&A·changelog·업데이트 manifest — 별도 Next.js 프로젝트.
 
-### Phase 0 — 로컬 메타데이터 (선행)
+**실행 순서 (2026-06)**: **Phase 2A(companion·미니앱 신청)를 먼저** → 심사·OAuth 대기 중 **Phase 0·1·2B 코드** 병행 → 승인 후 Push 연동.
 
-- [ ] **KEY/BPM DB 영속화**: 편집 모달 UI는 있으나 `SongMetadata`/SQLite 미저장 → 재시작 시 유실 수정
-- [ ] **숙련도·난이도 필드**: `difficulty`/`proficiency` (1–5) — DB·`SongMetadata`·편집 모달·저장 경로
-- [ ] **songKey 명칭 통일**: UI `edit-key` ↔ DB `song_key` ↔ 멜로밍 `songKey`
+### Phase 2A — Vercel companion + 미니앱 등록·심사 (**1순위**)
+
+- [X] **Vercel companion 스캐폴딩**: [`web/companion`](web/companion) — `/`, `/oauth/callback`, `/faq`, `/qa`, `/download` (로컬 `npm run dev` / `npm run build` 확인)
+- [X] **Vercel 프로덕션 배포**: https://lmrm.vercel.app (`web/companion`)
+- [X] **미니앱(앱) 등록**: iframe `https://lmrm.vercel.app/`, Redirect `https://lmrm.vercel.app/oauth/callback`
+- [X] **심사 제출** (승인 대기)
+- [X] **OAuth 클라이언트 확보**: Client ID/Secret, API Key (미니앱 승인)
+- [ ] **(병행) 멜로밍 문의**: 데스크톱 전용 OAuth 분리 발급 가능 여부
+
+### Phase 0 — 로컬 메타데이터 (2A 대기 중 병행)
+
+- [X] **KEY/BPM DB 영속화**: `SongMetadata`/`song_key`·`bpm`·저장·로드
+- [X] **숙련도·난이도 필드**: `difficulty`/`proficiency` (1–5) — DB·편집 모달
+- [X] **songKey 명칭 통일**: UI `edit-key` ↔ DB `song_key` ↔ 멜로밍 `songKey`
 
 ### Phase 1 — 읽기 동기화 (인증 불필요)
 
-- [ ] **Rust `meloming` 모듈**: `meloming_client` — 목록·상세·검색·카테고리·아티스트 (`GET`)
-- [ ] **설정 UI**: 채널 ID, 연결 테스트, 「멜로밍에서 가져오기」(Pull)
-- [ ] **아티스트·카테고리 Map 테이블**: 로컬 문자열 ↔ 멜로밍 `artistId`/`categoryIds`
-- [ ] **확장 DB 컬럼**: `meloming_song_id`, URL 필드, `sync_status` 등 (기획 문서 스키마)
+- [X] **Rust `meloming` 모듈**: `client`·`sync`·`commands` — 목록·아티스트 (`GET`)
+- [X] **설정 UI**: 채널 ID, 연결 테스트, 「멜로밍에서 가져오기」(Pull)
+- [X] **아티스트 Map 테이블**: `Meloming_Artist_Map`
+- [X] **확장 DB 컬럼**: `meloming_song_id`, URL 필드, `sync_status` 등
+- [ ] **카테고리 Map 갱신·매칭 UI**: Pull 시 `Meloming_Category_Map` + 로컬 카테고리 연동
+- [ ] **Pull 매칭 정교화**: YouTube ID·제목+아티스트 중복 최소화, `meloming:` 경로 곡 UX
 
-### Phase 2A — Vercel companion + 미니앱 등록·심사
+### Phase 2B — OAuth 쓰기 (2A 승인 후 실연동)
 
-- [ ] **Vercel companion 배포**: `/`, `/oauth/callback`, `/faq`·`/qa` 골격
-- [ ] **미니앱(앱) 등록**: iframe URL = companion, Redirect URI = `https://{domain}/oauth/callback`
-- [ ] **심사 준비**: MR↔노래책 동기화 안내·Q&A로 유용성 설명
-- [ ] **OAuth 클라이언트 확보**: Client ID/Secret, API Key
-- [ ] **(병행) 멜로밍 문의**: 데스크톱 전용 OAuth 분리 발급 가능 여부
-
-### Phase 2B — OAuth 쓰기 (2A 이후)
-
-- [ ] **Tauri OAuth PKCE**: Authorization Code + refresh, 토큰 Rust/keyring 저장
-- [ ] **Push**: `POST`/`PATCH`/`DELETE` 노래책 API
+- [X] **Tauri OAuth PKCE**: Authorization Code + refresh, 토큰 Settings 저장, deep-link + 수동 code
+- [X] **Push**: `POST`/`PATCH` 노래책 API (일괄 보내기)
+- [ ] **DELETE** 노래 삭제 Push
 - [ ] **YouTube `path` → `originalUrl`** 자동 매핑
 - [ ] **2A 미완 시**: 읽기만·`pending_push` 큐 또는 웹 수동 안내
 

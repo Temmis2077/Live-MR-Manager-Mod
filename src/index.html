@@ -73,11 +73,13 @@
 <body>
   <!-- 커스텀 타이틀바 -->
   <div class="titlebar">
-    <div class="titlebar-logo" data-tauri-drag-region>
-      <img src="./assets/images/app-icon.png" alt="Logo" style="width: 18px; height: 18px; object-fit: contain;"> Live
-      MR Manager(Beta) v0.4.10
+    <div class="titlebar-drag-region" data-tauri-drag-region>
+      <div class="titlebar-logo">
+        <img src="./assets/images/app-icon.png" alt="Logo" style="width: 18px; height: 18px; object-fit: contain;"> Live
+        MR Manager(Beta) v0.4.10
+      </div>
     </div>
-    <div data-tauri-drag-region class="titlebar-drag-handle" style="flex: 1; height: 100%;"></div>
+    <div data-tauri-drag-region class="titlebar-drag-fill"></div>
     <div class="titlebar-actions">
       <div class="titlebar-button" id="titlebar-minimize">
         <svg viewBox="0 0 10 1" width="12" height="12">
@@ -145,6 +147,17 @@
           </svg>
         </i>
         <span>내 파일</span>
+      </div>
+      <div class="nav-item" id="nav-meloming">
+        <i>
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
+            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
+            <line x1="8" y1="7" x2="16" y2="7"></line>
+            <line x1="8" y1="11" x2="14" y2="11"></line>
+          </svg>
+        </i>
+        <span>멜로밍</span>
       </div>
     </div>
 
@@ -241,7 +254,16 @@
           <div id="view-subtitle" class="view-subtitle"></div>
         </div>
 
-
+        <div id="meloming-account" class="meloming-account">
+          <button type="button" id="meloming-account-btn" class="meloming-account-btn" aria-haspopup="menu"
+            aria-expanded="false">
+            <img id="meloming-account-avatar" class="meloming-account-avatar" alt="" hidden>
+            <span id="meloming-account-label" class="meloming-account-label">멜로밍 로그인</span>
+          </button>
+          <div id="meloming-account-menu" class="meloming-account-menu" hidden>
+            <button type="button" id="meloming-account-logout" class="meloming-account-menu-item">로그아웃</button>
+          </div>
+        </div>
       </header>
 
       <div class="page-controls-wrapper">
@@ -362,7 +384,7 @@
               <div class="ai-model-card" style="margin-top: 16px;">
                 <div class="ai-info-left" style="width: 100%;">
                   <div class="ai-title-large">오버레이 디자인 커스텀</div>
-                  <div class="ai-model-desc">아래 설정을 변경하면 실시간으로 미리보기에 반영되며, 복사할 URL이 자동으로 업데이트됩니다.</div>
+                  <div class="ai-model-desc">설정 변경 내용이 미리보기에 바로 반영됩니다.</div>
                   
                   <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin-top: 20px;">
                     <!-- 좌측: 크기 및 투명도, 둥글기 -->
@@ -517,7 +539,7 @@
                 <!-- Header -->
                 <div style="display: flex; flex-direction: column; gap: 4px;">
                   <div class="ai-title-large">OBS 브라우저 소스</div>
-                  <div class="ai-model-desc">OBS 브라우저 소스에 아래 주소를 입력하여 바로 송출하세요.</div>
+                  <div class="ai-model-desc">OBS 브라우저 소스에 아래 주소를 붙여넣으세요.</div>
                 </div>
 
                 <!-- URL 1: Full Info -->
@@ -547,9 +569,8 @@
                     OBS 브라우저 소스 설정 가이드
                   </div>
                   <div style="font-size: 0.75rem; color: var(--text-muted); line-height: 1.5; padding-left: 22px;">
-                    • 곡정보 오버레이 권장: <span style="color: var(--text-main); font-weight: 700;">1760 x 520</span><br>
-                    • 곡정보 최소(좌/우): <span style="color: var(--text-main); font-weight: 700;">1720 x 300</span> / 최소(상/하): <span style="color: var(--text-main); font-weight: 700;">1200 x 500</span><br>
-                    • 가사 오버레이 권장: <span style="color: var(--text-main); font-weight: 700;">1200 x 300</span> <span style="opacity: 0.85;">(기본 범핑 포함)</span>
+                    • 곡 정보: <span style="color: var(--text-main); font-weight: 700;">1760 × 520</span> 권장<br>
+                    • 가사: <span style="color: var(--text-main); font-weight: 700;">1200 × 300</span> 권장
                   </div>
                 </div>
               </div>
@@ -574,7 +595,7 @@
                 <div class="ai-info-left">
                   <h2 class="ai-title-large">버전 확인</h2>
                   <div class="ai-model-desc" id="app-version-desc">
-                    GitHub 릴리스를 확인해 새 버전이 있으면 알림을 표시합니다. 앱 실행 시·6시간마다 자동 확인합니다.
+                    새 버전이 있으면 알림을 표시합니다.
                   </div>
                 </div>
                 <div class="ai-actions-right">
@@ -601,7 +622,7 @@
               <div class="ai-model-card">
                 <div class="ai-info-left">
                   <h2 class="ai-title-large">앱 테마</h2>
-                  <div class="ai-model-desc">다크/라이트/분홍/하늘 테마를 즉시 전환하고, 선택값은 앱 재실행 후에도 유지됩니다.</div>
+                  <div class="ai-model-desc">앱 색상 테마를 선택합니다.</div>
                 </div>
                 <div class="ai-actions-right">
                   <div class="custom-select" id="theme-mode-dropdown" style="width: 100%; min-width: 0;">
@@ -633,7 +654,7 @@
                 <div class="ai-info-left">
                   <h2 class="ai-title-large">곡 정보 일괄 수정</h2>
                   <div class="ai-model-desc">
-                    엑셀 스타일의 관리자 화면을 열어 라이브러리의 모든 곡 정보를 한눈에 확인하고 빠르게 수정할 수 있습니다.
+                    라이브러리 곡 정보를 표 형태로 한꺼번에 수정합니다.
                   </div>
                 </div>
                 <div class="ai-actions-right">
@@ -645,9 +666,7 @@
                 <div class="ai-info-left">
                   <h2 class="ai-title-large">엑셀(CSV) 가져오기 / 보내기</h2>
                   <div class="ai-model-desc">
-                    엑셀·구글 시트에서 편집한 곡 목록을 CSV 또는 XLSX로 가져오거나, 현재 라이브러리를 CSV로 보낼 수 있습니다.
-                    첫 행에 <strong>path</strong>(경로) 열이 필요하며, 한글 헤더(경로·제목·아티스트·장르·카테고리 등)도 인식합니다.
-                    같은 경로는 정보를 갱신하고, 새 경로는 곡을 추가합니다.
+                    곡 목록을 CSV·엑셀로 내보내거나 가져옵니다. 양식 받기로 형식을 확인하세요. 같은 곡은 갱신되고 새 곡은 추가됩니다.
                   </div>
                 </div>
                 <div class="ai-actions-right">
@@ -660,13 +679,45 @@
                 <div class="ai-info-left">
                   <h2 class="ai-title-large">데이터 백업 및 복원 (JSON)</h2>
                   <div class="ai-model-desc">
-                    현재 라이브러리 목록을 JSON 파일로 백업하거나, 기존 목록은 유지하면서 백업본에서 없는 곡만 새로 추가합니다.
+                    곡 목록을 파일로 백업·복원합니다. 복원 시 기존 곡은 유지됩니다.
                   </div>
                 </div>
                 <div class="ai-actions-right">
                   <button id="btn-export-backup" class="btn-ai-action secondary">목록 백업</button>
                   <button id="btn-import-backup" class="btn-ai-action">목록 복원</button>
                   <button id="btn-run-rescue" class="btn-ai-action secondary">목록 자동 복구</button>
+                </div>
+              </div>
+            </section>
+
+            <section class="settings-group">
+              <div class="group-header">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M9 18V5l12-2v13"></path>
+                  <circle cx="6" cy="18" r="3"></circle>
+                  <circle cx="18" cy="16" r="3"></circle>
+                </svg>
+                <h3>멜로밍 노래책</h3>
+              </div>
+              <div class="ai-model-card">
+                <div class="ai-info-left">
+                  <h2 class="ai-title-large">노래책 동기화</h2>
+                  <div class="ai-model-desc" id="meloming-settings-desc">
+                    멜로밍 노래책과 동기화합니다. 가져오기는 로그인 없이, 보내기는 우측 상단 로그인 후 가능합니다.
+                  </div>
+                  <div class="settings-field">
+                    <label for="meloming-channel-id" class="settings-field-label">치지직 채널 주소</label>
+                    <input type="text" id="meloming-channel-id" class="settings-field-input"
+                      placeholder="chzzk.naver.com/… 또는 치지직 채널 ID" autocomplete="off">
+                  </div>
+                  <div id="meloming-status" class="settings-status-text"></div>
+                </div>
+                <div class="ai-actions-right meloming-actions">
+                  <button id="btn-meloming-save-channel" class="btn-ai-action secondary">채널 저장</button>
+                  <button id="btn-meloming-test" class="btn-ai-action secondary">연결 테스트</button>
+                  <button id="btn-meloming-pull" class="btn-ai-action secondary">가져오기</button>
+                  <button id="btn-meloming-push" class="btn-ai-action">멜로밍에 보내기</button>
                 </div>
               </div>
             </section>
@@ -694,8 +745,7 @@
                 <div class="ai-info-left">
                   <h2 class="ai-title-large">방송 제원 보호 모드</h2>
                   <div class="ai-model-desc">
-                    켜두면 AI 분리 중 연산 속도를 늦춰 방송 프로그램(OBS) 및 프레임 드랍을 방지합니다.<br>
-                    (버추얼 스트리머나 고사양 작업 중일 때 추천 / 처리 속도 약 1.5배 감소)
+                    방송 중 끊김을 줄이기 위해 AI 분리 속도를 낮춥니다. 처리 시간은 다소 길어집니다.
                   </div>
                 </div>
                 <div class="ai-actions-right broadcast-mode-card-actions">
@@ -703,6 +753,29 @@
                     <input type="checkbox" id="toggle-broadcast-mode">
                     <span class="slider round"></span>
                   </label>
+                </div>
+              </div>
+
+              <!-- MR 캐시 저장 형식 -->
+              <div class="ai-model-card mr-cache-format-card">
+                <div class="ai-info-left">
+                  <h2 class="ai-title-large">MR 저장 형식</h2>
+                  <div class="ai-model-desc">
+                    MR 파일 저장 형식입니다. MP3는 용량이 작고, WAV는 음질이 좋습니다.
+                  </div>
+                </div>
+                <div class="ai-actions-right">
+                  <div class="custom-select" id="mr-cache-format-dropdown" style="width: 100%; min-width: 180px;">
+                    <div class="select-trigger">
+                      <span class="selected-text">MP3 (320kbps, 기본)</span>
+                      <span class="select-arrow"></span>
+                    </div>
+                    <div class="select-options">
+                      <div class="option-item selected" data-value="mp3">MP3 (320kbps, 기본)</div>
+                      <div class="option-item" data-value="wav">WAV (32비트 무손실)</div>
+                    </div>
+                    <input type="hidden" id="mr-cache-format-select" value="mp3">
+                  </div>
                 </div>
               </div>
 
@@ -743,7 +816,7 @@
                     </div>
                   </div>
                   <div id="ai-model-desc" class="ai-model-desc">
-                    기본 고성능 보컬용 모델입니다. 배경 반주(MR)의 고품질 분리가 필요하다면 Inst HQ 3 모델을 권장합니다.
+                    일반적인 보컬·MR 분리에 적합합니다.
                   </div>
                 </div>
                 <div class="ai-actions-right">
@@ -1048,6 +1121,44 @@
                 <input type="number" id="edit-bpm" placeholder="예: 128" min="1" max="400" step="1">
               </div>
             </div>
+            <div class="meta-inline-row">
+              <div class="meta-field">
+                <label for="edit-difficulty-select">난이도</label>
+                <div class="custom-select meta-rating-select" id="edit-difficulty-dropdown">
+                  <div class="select-trigger">
+                    <span class="selected-text">미설정</span>
+                    <span class="select-arrow"></span>
+                  </div>
+                  <div class="select-options">
+                    <div class="option-item selected" data-value=""></div>
+                    <div class="option-item" data-value="1"></div>
+                    <div class="option-item" data-value="2"></div>
+                    <div class="option-item" data-value="3"></div>
+                    <div class="option-item" data-value="4"></div>
+                    <div class="option-item" data-value="5"></div>
+                  </div>
+                  <input type="hidden" id="edit-difficulty-select" value="">
+                </div>
+              </div>
+              <div class="meta-field">
+                <label for="edit-proficiency-select">숙련도</label>
+                <div class="custom-select meta-rating-select" id="edit-proficiency-dropdown">
+                  <div class="select-trigger">
+                    <span class="selected-text">미설정</span>
+                    <span class="select-arrow"></span>
+                  </div>
+                  <div class="select-options">
+                    <div class="option-item selected" data-value=""></div>
+                    <div class="option-item" data-value="1"></div>
+                    <div class="option-item" data-value="2"></div>
+                    <div class="option-item" data-value="3"></div>
+                    <div class="option-item" data-value="4"></div>
+                    <div class="option-item" data-value="5"></div>
+                  </div>
+                  <input type="hidden" id="edit-proficiency-select" value="">
+                </div>
+              </div>
+            </div>
           </div>
 
         </div>
@@ -1057,7 +1168,7 @@
         <div class="metadata-footer-actions">
           <button type="button" class="secondary-btn meta-analyze-btn" id="btn-analyze-key-bpm">KEY/BPM 분석</button>
           <button class="secondary-btn" id="modal-cancel">취소</button>
-          <button class="primary-btn" id="modal-save">저장</button>
+          <button type="button" class="primary-btn" id="modal-save">저장</button>
         </div>
       </footer>
     </div>

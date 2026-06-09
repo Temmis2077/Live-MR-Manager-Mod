@@ -1,7 +1,40 @@
+use std::path::PathBuf;
+
 use tauri::{AppHandle, Manager, WebviewWindow, State};
 use cpal::traits::{HostTrait, DeviceTrait};
 use crate::types::SongMetadata;
 use crate::library;
+
+/// 저장 대화상자가 프로젝트(src-tauri) 폴더를 열면 dev 모드에서 앱이 재시작됩니다.
+fn user_documents_dir() -> Option<PathBuf> {
+    #[cfg(windows)]
+    {
+        let docs = std::env::var_os("USERPROFILE")
+            .map(PathBuf::from)
+            .map(|p| p.join("Documents"));
+        if docs.as_ref().is_some_and(|p| p.is_dir()) {
+            return docs;
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        if let Some(home) = std::env::var_os("HOME").map(PathBuf::from) {
+            let docs = home.join("Documents");
+            if docs.is_dir() {
+                return Some(docs);
+            }
+        }
+    }
+    None
+}
+
+fn file_dialog_in_documents() -> rfd::AsyncFileDialog {
+    let mut dialog = rfd::AsyncFileDialog::new();
+    if let Some(dir) = user_documents_dir() {
+        dialog = dialog.set_directory(dir);
+    }
+    dialog
+}
 
 #[tauri::command]
 pub fn get_app_paths(handle: AppHandle) -> crate::state::AppPaths { 
@@ -36,7 +69,7 @@ pub async fn open_cache_folder(window: WebviewWindow) -> Result<(), String> {
 
 #[tauri::command]
 pub async fn export_backup(paths: State<'_, crate::state::AppPaths>) -> Result<(), String> {
-    if let Some(path) = rfd::AsyncFileDialog::new()
+    if let Some(path) = file_dialog_in_documents()
         .add_filter("JSON", &["json"])
         .set_file_name("LiveMR_Backup.json")
         .save_file()
@@ -53,7 +86,7 @@ pub async fn export_backup(paths: State<'_, crate::state::AppPaths>) -> Result<(
 
 #[tauri::command]
 pub async fn import_backup(_app: AppHandle, paths: State<'_, crate::state::AppPaths>) -> Result<(), String> {
-    if let Some(path) = rfd::AsyncFileDialog::new()
+    if let Some(path) = file_dialog_in_documents()
         .add_filter("JSON", &["json"])
         .pick_file()
         .await
@@ -88,7 +121,7 @@ pub async fn export_library_spreadsheet(
     } else {
         "LiveMR_Library.csv"
     };
-    if let Some(path) = rfd::AsyncFileDialog::new()
+    if let Some(path) = file_dialog_in_documents()
         .add_filter("CSV (Excel)", &["csv"])
         .set_file_name(default_name)
         .save_file()
@@ -105,7 +138,7 @@ pub async fn export_library_spreadsheet(
 pub async fn import_library_spreadsheet(
     paths: State<'_, crate::state::AppPaths>,
 ) -> Result<crate::spreadsheet::SpreadsheetImportResult, String> {
-    if let Some(path) = rfd::AsyncFileDialog::new()
+    if let Some(path) = file_dialog_in_documents()
         .add_filter("스프레드시트", &["csv", "xlsx", "xls", "xlsm"])
         .pick_file()
         .await

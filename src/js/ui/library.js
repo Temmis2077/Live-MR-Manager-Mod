@@ -26,6 +26,14 @@ export function getSongCategory(song) {
   return "";
 }
 
+/** Meloming pull/push로 연동된 곡인지 판별 */
+export function isMelomingLinkedSong(song) {
+  if (!song) return false;
+  if (song.source === "meloming") return true;
+  const songId = song.melomingSongId ?? song.meloming_song_id;
+  return songId != null && songId !== "";
+}
+
 export function getFilteredSongs() {
   const query = (elements.libSearchInput?.value || "").toLowerCase().trim();
   const genreFilter = elements.libGenreFilter?.value || "all";
@@ -38,6 +46,7 @@ export function getFilteredSongs() {
   // Tab Filter
   if (currentTab === "youtube") filtered = filtered.filter(s => s.source === "youtube");
   else if (currentTab === "local") filtered = filtered.filter(s => s.source === "local");
+  else if (currentTab === "meloming") filtered = filtered.filter(isMelomingLinkedSong);
 
   // Search Filter
   if (query) {
@@ -88,9 +97,12 @@ export function renderLibrary() {
   elements.songGrid.innerHTML = "";
   
   if (filtered.length === 0) {
+    const emptyMessage = (state.activeView === "meloming")
+      ? "멜로밍 연동 곡이 없습니다. 설정에서 노래책을 가져오거나 보내 보세요."
+      : "검색 결과가 없습니다.";
     elements.songGrid.innerHTML = `
       <div class="empty-state" style="grid-column: 1/-1; text-align: center; padding: 40px; color: var(--text-dim);">
-        검색 결과가 없습니다.
+        ${emptyMessage}
       </div>`;
     return;
   }

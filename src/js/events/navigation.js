@@ -57,7 +57,7 @@ export function switchTab(tabId) {
     i.classList.toggle("active", i.id === `nav-${tabId}`);
   });
 
-  const isMusicTab = (tabId === "library" || tabId === "youtube" || tabId === "local");
+  const isMusicTab = (tabId === "library" || tabId === "youtube" || tabId === "local" || tabId === "meloming");
   if (elements.youtubeSection) elements.youtubeSection.style.display = tabId === "youtube" ? "block" : "none";
   if (elements.localSection) elements.localSection.style.display = "none"; // 텅 빈 섹션이므로 gap 발생을 막기 위해 항상 숨김
   if (elements.libraryControls) elements.libraryControls.style.display = isMusicTab ? "flex" : "none";
@@ -172,6 +172,7 @@ function getTabTitle(tabId) {
     library: "라이브러리",
     youtube: "유튜브",
     local: "내 파일",
+    meloming: "멜로밍",
     settings: "설정",
     overlay: "OBS 오버레이",
     tasks: "AI 프로세싱",
@@ -185,6 +186,7 @@ function getTabSubtitle(tabId) {
     library: "라이브러리의 모든 곡을 관리하고 재생합니다.",
     youtube: "유튜브 링크를 통해 곡을 검색하고 가져옵니다.",
     local: "화면 어디든 음원 파일을 드래그 앤 드롭하여 추가할 수 있습니다.",
+    meloming: "멜로밍 노래책과 연동된 곡만 모아서 확인합니다.",
     settings: "애플리케이션 설정을 관리합니다.",
     overlay: "방송에 송출될 오버레이의 실시간 미리보기입니다.",
     tasks: "AI 작업 진행 상태를 확인합니다.",

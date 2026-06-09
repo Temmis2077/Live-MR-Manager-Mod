@@ -112,3 +112,29 @@ export function showUpdateAvailable(info) {
   invoke("remote_js_log", { msg: `[Updater] Notified user: v${latest} available` }).catch(() => {});
 }
 
+export const RATING_MAX = 5;
+
+/** 1–5 → ★★★☆☆ HTML, 빈 값 → 미설정 */
+export function ratingStarsHtml(count) {
+  const n = Number.parseInt(count, 10);
+  if (!Number.isFinite(n) || n < 1 || n > RATING_MAX) {
+    return '<span class="rating-stars rating-stars-unset">미설정</span>';
+  }
+  const filled = '★'.repeat(n);
+  const empty = '☆'.repeat(RATING_MAX - n);
+  return `<span class="rating-stars" aria-label="${n}점"><span class="rating-stars-filled">${filled}</span><span class="rating-stars-empty">${empty}</span></span>`;
+}
+
+export function applyRatingSelectLabel(selectedTextEl, value) {
+  if (!selectedTextEl) return;
+  selectedTextEl.innerHTML = ratingStarsHtml(value);
+}
+
+/** 난이도/숙련도 드롭다운 옵션 라벨을 별 표시로 초기화 */
+export function initRatingSelectOptions(root = document) {
+  root.querySelectorAll('.meta-rating-select .option-item').forEach((opt) => {
+    const v = opt.dataset.value ?? '';
+    opt.innerHTML = v === '' ? '<span class="rating-stars rating-stars-unset">미설정</span>' : ratingStarsHtml(v);
+  });
+}
+

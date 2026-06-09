@@ -309,8 +309,8 @@ sequenceDiagram
 
 **등록 예시**
 
-- iframe: `https://live-mr.vercel.app/`
-- Redirect URI: `https://live-mr.vercel.app/oauth/callback`
+- iframe: `https://lmrm.vercel.app/`
+- Redirect URI: `https://lmrm.vercel.app/oauth/callback`
 
 ### 7.2 레포 구조 (권장)
 
@@ -327,7 +327,7 @@ sequenceDiagram
   "version": "0.4.11",
   "minSupportedVersion": "0.4.0",
   "releaseUrl": "https://github.com/AutumnColor77/Live-MR-Manager/releases/tag/v0.4.11",
-  "changelogUrl": "https://live-mr.vercel.app/changelog#v0.4.11",
+  "changelogUrl": "https://lmrm.vercel.app/changelog#v0.4.11",
   "notes": "멜로밍 Pull, KEY/BPM 영속화 …",
   "publishedAt": "2026-06-02T00:00:00Z",
   "critical": false
@@ -464,16 +464,57 @@ flowchart TB
 
 ## 11. 구현 로드맵
 
+### 11.1 실행 순서 (권장) — **Companion·인증 신청을 먼저**
+
+미니앱 등록·심사는 **플랫폼 대기 시간**이 길 수 있으므로, **Vercel companion을 최우선**으로 배포·신청한 뒤, 심사·OAuth 발급을 기다리는 동안 데스크톱 쪽을 병행 개발한다.
+
+```mermaid
+flowchart LR
+  First[1순위_2A_companion_및_미니앱신청]
+  Wait[심사_OAuth_대기]
+  Par0[병행_Phase0_로컬메타]
+  Par1[병행_Phase1_Pull]
+  Par2Bprep[병행_2B_OAuth코드_스텁]
+  Cred[Client_ID_Secret_확보]
+  Push[2B_Push_연동테스트]
+  P3[Phase3_양방향]
+
+  First --> Wait
+  Wait --> Par0
+  Wait --> Par1
+  Wait --> Par2Bprep
+  Wait --> Cred
+  Cred --> Push
+  Push --> P3
+```
+
+| 순서 | Phase | 블로킹 | 할 일 |
+|------|-------|--------|--------|
+| **1** | **2A** | 없음 | Vercel companion (`/`, `/oauth/callback`, FAQ/Q&A 골격) 배포 → **미니앱 등록·심사 제출** |
+| **2 (병행)** | 0 | 없음 | KEY/BPM·숙련도·난이도 DB/UI (멜로밍 필드 기반) |
+| **2 (병행)** | 1 | 없음 | `meloming_client`, Pull, Map — **OAuth 없이** 즉시 가능 |
+| **2 (병행)** | 2B 준비 | 테스트만 블로킹 | PKCE·토큰 저장·Push API **코드** 작성 (실연동은 2A 완료 후) |
+| **3** | 2B 완료 | OAuth | Push·PATCH·DELETE 실연동·E2E |
+| **4** | 3 | | 양방향·충돌 |
+| **5** | 4 | | changelog·releases API·업데이트 알림 |
+
+**2A를 먼저 하는 이유**
+
+- 심사·승인·Client ID 발급이 **임계 경로(critical path)** — 늦게 신청하면 전체 일정이 밀림
+- companion만으로도 미니앱 iframe·심사 「유용한 가치」 충족 가능 (앱 기능 없이도 제출 가능)
+- `/oauth/callback`은 배포만 해 두면 승인 후 바로 Redirect URI로 사용
+- 대기 중 **Phase 0·1**으로 사용자 가치(Pull·로컬 메타)는 먼저 제공
+
+### 11.2 Phase별 산출물
+
 | Phase | 기간(추정) | 산출물 |
 |-------|------------|--------|
+| **2A** | 2–4일 (+심사 대기) | Vercel companion, 미니앱 등록·심사, OAuth 클라이언트 |
 | **0** | 1–2일 | KEY/BPM·숙련도·난이도 DB/UI 영속화 |
 | **1** | 3–5일 | `meloming_client`, 설정, Pull, Map (무인증) |
-| **2A** | 플랫폼 의존 | Vercel companion, 미니앱 등록·심사, OAuth 클라이언트 |
-| **2B** | 5–7일 | PKCE, POST/PATCH/DELETE, Push |
+| **2B** | 5–7일 | PKCE, POST/PATCH/DELETE, Push (2A 승인 후 검증) |
 | **3** | 5–8일 | 양방향, 충돌 UI, 삭제·고아 |
 | **4** | 선택 | changelog, releases API, updater 연동, Q&A 본문 |
-
-심사 대기 중에도 **Phase 0·1** 병행 개발.
 
 상세 체크리스트: [ToDo.md §7](../ToDo.md).
 

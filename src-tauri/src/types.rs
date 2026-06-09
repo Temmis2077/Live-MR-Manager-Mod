@@ -69,7 +69,7 @@ pub struct Category {
     pub name: String,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct SongMetadata {
     pub id: Option<i64>,
@@ -93,4 +93,19 @@ pub struct SongMetadata {
     pub original_title: Option<String>,
     pub translated_title: Option<String>,
     pub curation_category: Option<String>,
+    #[serde(default, alias = "key")]
+    pub song_key: Option<String>,
+    pub bpm: Option<i32>,
+    pub difficulty: Option<u8>,
+    pub proficiency: Option<u8>,
+    pub karaoke_url: Option<String>,
+    pub cover_url: Option<String>,
+    pub original_url: Option<String>,
+    pub lyrics_link: Option<String>,
+    pub meloming_song_id: Option<i64>,
+    pub meloming_channel_id: Option<i64>,
+    pub meloming_artist_id: Option<i64>,
+    /// 멜로밍 API `categoryIds` (1–N개)
+    pub meloming_category_ids: Option<Vec<i64>>,
+    pub sync_status: Option<String>,
 }

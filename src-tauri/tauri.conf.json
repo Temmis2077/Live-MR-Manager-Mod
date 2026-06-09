@@ -15,9 +15,11 @@
         "title": "Live MR Manager(Beta) v0.4.10",
         "width": 1319,
         "height": 787,
-        "minWidth": 1319,
-        "minHeight": 787,
-        "decorations": false
+        "minWidth": 1024,
+        "minHeight": 600,
+        "resizable": true,
+        "decorations": false,
+        "acceptFirstMouse": true
       }
     ],
     "security": {
@@ -28,6 +30,13 @@
           "$LOCALAPPDATA/**",
           "**"
         ]
+      }
+    }
+  },
+  "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": ["live-mr-manager"]
       }
     }
   },

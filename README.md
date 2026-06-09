@@ -137,16 +137,19 @@
 | **읽기** | `GET /v1/...` — 개발자 등록 **없이** 채널 ID만으로 Pull·검색 가능 |
 | **쓰기** | `POST`/`PATCH`/`DELETE` — OAuth 필요. 문서 「애플리케이션 등록」→ 콘솔 **미니앱(앱) 등록·심사** 경로 |
 
-### 구현 단계
+### 구현 단계 (실행 순서)
 
-| 단계 | 내용 |
-| :--- | :--- |
-| **Phase 0** | KEY/BPM·숙련도·난이도 DB/UI 영속화 (현재 KEY/BPM은 UI만 있고 저장 안 됨) |
-| **Phase 1** | Rust `meloming` 모듈, 설정·Pull, 아티스트/카테고리 Map |
-| **Phase 2A** | **Vercel** companion (`/`, `/oauth/callback`, FAQ/Q&A) + 미니앱 등록·심사 |
-| **Phase 2B** | OAuth PKCE, Push(노래 추가·수정·삭제) |
-| **Phase 3** | 양방향 동기화, 충돌 해결, 삭제·고아 정책 |
-| **Phase 4** | companion changelog·`/api/releases/latest`, 앱 업데이트 알림 (`updater.rs` 보강) |
+**1순위: Vercel companion + 미니앱 신청** → 심사·OAuth 대기 중 **Phase 0·1·2B 코드** 병행 → 승인 후 Push 연동.
+
+| 순서 | 단계 | 내용 |
+| :--- | :--- | :--- |
+| **1** | **Phase 2A** | **Vercel** companion + 미니앱 등록·심사 (임계 경로) |
+| 병행 | **Phase 0** | KEY/BPM·숙련도·난이도 DB/UI 영속화 |
+| 병행 | **Phase 1** | Rust `meloming` 모듈, Pull, Map (무인증) |
+| 병행 | **2B 준비** | OAuth PKCE·Push 코드 (실연동은 2A 승인 후) |
+| **2** | **Phase 2B** | Push·PATCH·DELETE 실연동 |
+| **3** | **Phase 3** | 양방향 동기화, 충돌 해결 |
+| **4** | **Phase 4** | changelog·`/api/releases/latest`, 업데이트 알림 |
 
 ### Vercel companion (미니앱·OAuth·서비스 허브)
 

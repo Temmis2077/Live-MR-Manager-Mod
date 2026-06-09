@@ -4,6 +4,31 @@
 import { state } from '../state.js';
 import { elements } from './elements.js';
 import { getSongCategory } from './library.js';
+import { applyRatingSelectLabel } from '../utils.js';
+
+function setRatingDropdown(dropdownId, hiddenId, value) {
+  const dropdown = document.getElementById(dropdownId);
+  const hidden = document.getElementById(hiddenId);
+  if (!dropdown || !hidden) return;
+
+  const val = value != null && value !== "" ? String(value) : "";
+  hidden.value = val;
+
+  const selectedText = dropdown.querySelector(".selected-text");
+  const options = dropdown.querySelectorAll(".option-item");
+  let matched = false;
+
+  options.forEach((opt) => {
+    const isSelected = opt.dataset.value === val;
+    opt.classList.toggle("selected", isSelected);
+    if (isSelected) matched = true;
+  });
+
+  applyRatingSelectLabel(selectedText, val);
+  if (!matched) {
+    options.forEach((opt) => opt.classList.toggle("selected", opt.dataset.value === ""));
+  }
+}
 
 export function openEditModal(song, index) {
   if (!elements.metadataModal) return;
@@ -63,11 +88,13 @@ export function openEditModal(song, index) {
     if (editVolumeVal) editVolumeVal.textContent = String(Math.round(safeVolume));
   }
   if (editKey) {
-    editKey.value = song.key || "";
+    editKey.value = song.songKey || song.key || "";
   }
   if (editBpm) {
     editBpm.value = song.bpm ?? "";
   }
+  setRatingDropdown("edit-difficulty-dropdown", "edit-difficulty-select", song.difficulty);
+  setRatingDropdown("edit-proficiency-dropdown", "edit-proficiency-select", song.proficiency);
 
   // MR Checkbox initialization
   const mrCheckbox = document.getElementById("edit-is-mr");

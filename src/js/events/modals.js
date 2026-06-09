@@ -4,9 +4,10 @@
 import { state } from '../state.js';
 import { elements } from '../ui/elements.js';
 import { invoke } from '../tauri-bridge.js';
-import { showNotification } from '../utils.js';
+import { initRatingSelectOptions, showNotification } from '../utils.js';
 
 export function initModalListeners() {
+  initRatingSelectOptions();
   const btnAnalyzeKeyBpm = document.getElementById('btn-analyze-key-bpm');
   if (btnAnalyzeKeyBpm) {
     btnAnalyzeKeyBpm.onclick = async () => {
@@ -73,9 +74,21 @@ export function initModalListeners() {
   if (btnSave) {
     btnSave.onclick = async () => {
       const idx = state.editingSongIndex;
-      if (idx === null) return;
-      
+      if (idx == null || idx < 0) {
+        showNotification("편집 중인 곡을 찾을 수 없습니다.", "error");
+        return;
+      }
+
       const song = state.songLibrary[idx];
+      if (!song?.path) {
+        showNotification("곡 경로가 없어 저장할 수 없습니다.", "error");
+        return;
+      }
+
+      btnSave.disabled = true;
+      const prevLabel = btnSave.textContent;
+      btnSave.textContent = "저장 중…";
+
       const volMin = Number.parseFloat(elements.editVolume?.min || "0");
       const volMax = Number.parseFloat(elements.editVolume?.max || "120");
       const inputVolume = Number.parseFloat(elements.editVolume?.value);
@@ -94,12 +107,19 @@ export function initModalListeners() {
         curationCategory: categoryText || null,
         tags: document.getElementById("edit-tags").value.split(",").map(t => t.trim()).filter(t => t),
         volume: safeVolume,
-        key: (document.getElementById("edit-key")?.value || "").trim(),
+        songKey: (document.getElementById("edit-key")?.value || "").trim(),
         bpm: (() => {
           const raw = Number.parseInt(document.getElementById("edit-bpm")?.value || "", 10);
           return Number.isFinite(raw) ? raw : null;
         })(),
-        // Keep "manual MR" and "AI-separated" states independent.
+        difficulty: (() => {
+          const raw = Number.parseInt(document.getElementById("edit-difficulty-select")?.value || "", 10);
+          return Number.isFinite(raw) && raw >= 1 && raw <= 5 ? raw : null;
+        })(),
+        proficiency: (() => {
+          const raw = Number.parseInt(document.getElementById("edit-proficiency-select")?.value || "", 10);
+          return Number.isFinite(raw) && raw >= 1 && raw <= 5 ? raw : null;
+        })(),
         isMr: isManualMr,
         is_mr: isManualMr,
         isSeparated: wasSeparated,
@@ -108,25 +128,28 @@ export function initModalListeners() {
 
       try {
         await invoke('update_song_metadata', { song: updated });
-        const { loadLibrary } = await import('../audio.js');
-        const freshLibrary = await loadLibrary();
-        state.songLibrary = freshLibrary || [];
-        const freshIdx = state.songLibrary.findIndex((s) => s.path === updated.path);
-        if (freshIdx >= 0) state.editingSongIndex = freshIdx;
-        const freshSong = freshIdx >= 0 ? state.songLibrary[freshIdx] : updated;
+        state.songLibrary[idx] = updated;
         if (state.currentTrack && state.currentTrack.path === updated.path) {
-          state.currentTrack = freshSong;
+          state.currentTrack = updated;
           await invoke('set_volume', { volume: safeVolume });
         }
-        const { renderLibrary } = await import('../ui/library.js');
-        const { refreshFilterDropdowns } = await import('../ui/core.js');
-        await refreshFilterDropdowns();
-        renderLibrary();
+
         const { closeEditModal } = await import('../ui/modals.js');
         closeEditModal();
+
+        const { renderLibrary } = await import('../ui/library.js');
+        renderLibrary();
         showNotification("정보가 수정되었습니다.", "success");
+
+        const { refreshFilterDropdowns } = await import('../ui/core.js');
+        refreshFilterDropdowns().catch((err) => {
+          console.warn("[Modal Save] Filter refresh failed:", err);
+        });
       } catch (err) {
         showNotification("수정 실패: " + err, "error");
+      } finally {
+        btnSave.disabled = false;
+        btnSave.textContent = prevLabel;
       }
     };
   }

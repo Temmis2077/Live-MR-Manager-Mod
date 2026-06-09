@@ -97,6 +97,7 @@ export const elements = {
   btnExportSpreadsheetTemplate: null,
   btnImportSpreadsheet: null,
   themeModeSelect: null,
+  mrCacheFormatSelect: null,
   searchSuggestions: null,
   lyricDrawer: null,
   lyricDrawerTrigger: null,
@@ -196,6 +197,7 @@ export function initDomReferences() {
   elements.btnExportSpreadsheetTemplate = document.getElementById("btn-export-spreadsheet-template");
   elements.btnImportSpreadsheet = document.getElementById("btn-import-spreadsheet");
   elements.themeModeSelect = document.getElementById("theme-mode-select");
+  elements.mrCacheFormatSelect = document.getElementById("mr-cache-format-select");
   elements.searchSuggestions = document.getElementById("search-suggestions");
   elements.lyricDrawer = document.getElementById("lyric-drawer");
   elements.lyricDrawerTrigger = document.getElementById("lyric-drawer-trigger");

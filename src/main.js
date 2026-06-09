@@ -13,7 +13,7 @@ import { loadLibrary, checkAiModelStatus, cancelSeparation } from './js/audio.js
 import { showNotification } from './js/utils.js';
 import { initUpdateChecker } from './js/update-check.js';
 
-import { invoke, appWindow } from './js/tauri-bridge.js';
+import { invoke, appWindow, toggleWindowMaximize } from './js/tauri-bridge.js';
 
 const THEME_STORAGE_KEY = 'themeMode';
 const THEME_OPTIONS = new Set(['dark', 'light', 'pink', 'sky']);
@@ -211,8 +211,23 @@ async function initApp() {
 }
 
 function setupTitlebar() {
-  // appWindow is imported from tauri-bridge.js
   console.log("[Titlebar] Setting up event listeners...");
+
+  document.querySelectorAll("[data-tauri-drag-region]").forEach((el) => {
+    el.addEventListener("mousedown", async (event) => {
+      if (event.button !== 0) return;
+      if (event.target.closest(".titlebar-button")) return;
+      try {
+        if (event.detail === 2) {
+          await toggleWindowMaximize();
+        } else {
+          await appWindow.startDragging();
+        }
+      } catch (error) {
+        console.error("[Titlebar] drag/maximize failed:", error);
+      }
+    });
+  });
 
   document.getElementById('titlebar-minimize')?.addEventListener('click', async () => {
     console.log("[Titlebar] Minimize clicked");
@@ -221,7 +236,7 @@ function setupTitlebar() {
 
   document.getElementById('titlebar-maximize')?.addEventListener('click', async () => {
     console.log("[Titlebar] Maximize/Restore clicked");
-    try { await appWindow.toggleMaximize(); } catch (e) { console.error(e); }
+    try { await toggleWindowMaximize(); } catch (e) { console.error(e); }
   });
 
   document.getElementById('titlebar-close')?.addEventListener('click', async () => {

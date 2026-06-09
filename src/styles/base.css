@@ -242,13 +242,36 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.titlebar-drag-region {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  cursor: default;
+  user-select: none;
+  -webkit-app-region: drag;
+}
+
+.titlebar-drag-fill {
+  flex: 1;
+  height: 100%;
+  cursor: default;
+  user-select: none;
+  -webkit-app-region: drag;
+}
+
+.titlebar-logo img {
   pointer-events: none;
+  -webkit-user-drag: none;
+  user-drag: none;
 }
 
 .titlebar-actions {
   display: flex;
   height: 100%;
   pointer-events: auto;
+  -webkit-app-region: no-drag;
 }
 
 .titlebar-button {
@@ -261,6 +284,7 @@ body {
   transition: all 0.2s;
   cursor: pointer;
   pointer-events: auto;
+  -webkit-app-region: no-drag;
 }
 
 .titlebar-button:hover {

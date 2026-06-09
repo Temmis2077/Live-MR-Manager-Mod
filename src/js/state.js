@@ -9,7 +9,7 @@ export const state = {
   isLoading: false,
   isAiModelReady: false,
   isSeparating: false,
-  editingSongIndex: -1,
+  editingSongIndex: null,
   selectedTrackIndex: -1, // Currently highlighted but not playing
   viewMode: localStorage.getItem("viewMode") || "grid",
   themeMode: localStorage.getItem("themeMode") || "dark",
@@ -37,6 +37,7 @@ export const state = {
   vocalEnabled: localStorage.getItem("vocalEnabled") === "true", // Default to false
   lyricsEnabled: localStorage.getItem("lyricsEnabled") === "true", // Default to false
   broadcastMode: localStorage.getItem("broadcastMode") === "true",
+  mrCacheFormat: localStorage.getItem("mrCacheFormat") || "mp3",
   lastColumns: 0,
   
   // Real-time Lyrics

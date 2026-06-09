@@ -148,8 +148,8 @@ pub async fn get_separated_audio_list(handle: AppHandle) -> Result<Vec<Separated
             let path = entry.path();
             if path.is_dir() {
                 let folder_name = entry.file_name().to_string_lossy().to_string();
-                let has_vocal = path.join("vocal.wav").exists();
-                let has_inst = path.join("inst.wav").exists();
+                let has_vocal = crate::mr_cache::resolve_vocal(&path).is_some();
+                let has_inst = crate::mr_cache::resolve_inst(&path).is_some();
 
                 let original_path = urlencoding::decode(&folder_name).map(|d| d.into_owned()).unwrap_or(folder_name.clone());
                 let display_name = Path::new(&original_path).file_name().map(|f| f.to_string_lossy().to_string()).unwrap_or_else(|| original_path.clone());
@@ -475,32 +475,34 @@ async fn resolve_audio_path(handle: &AppHandle, path: &str) -> Result<PathBuf, S
         || lower_input.contains("\\cache\\separated\\")
         || lower_input.ends_with("/vocal.wav")
         || lower_input.ends_with("\\vocal.wav")
+        || lower_input.ends_with("/vocal.mp3")
+        || lower_input.ends_with("\\vocal.mp3")
         || lower_input.ends_with("/inst.wav")
-        || lower_input.ends_with("\\inst.wav");
+        || lower_input.ends_with("\\inst.wav")
+        || lower_input.ends_with("/inst.mp3")
+        || lower_input.ends_with("\\inst.mp3");
     if is_explicit_separated {
         let p = PathBuf::from(path);
         if p.is_file() {
             if p.file_name()
                 .and_then(|n| n.to_str())
-                .map(|n| n.eq_ignore_ascii_case("inst.wav"))
+                .map(|n| crate::mr_cache::is_inst_stem_name(n))
                 .unwrap_or(false)
             {
                 if let Some(parent) = p.parent() {
-                    let vocal = parent.join("vocal.wav");
-                    if vocal.exists() {
+                    if let Some(vocal) = crate::mr_cache::resolve_vocal(parent) {
                         return Ok(vocal);
                     }
                 }
             }
             return Ok(p);
         }
-        let vocal = p.join("vocal.wav");
-        if vocal.exists() {
+        if let Some(vocal) = crate::mr_cache::resolve_vocal(&p) {
             return Ok(vocal);
         }
     }
 
-    // 2) For normal tracks, if separated outputs exist for the same source, use vocal.wav.
+    // 2) For normal tracks, if separated outputs exist for the same source, use vocal stem.
     let mut lookup_keys = if path.starts_with("http") {
         youtube_url_variants(path)
     } else {
@@ -515,8 +517,7 @@ async fn resolve_audio_path(handle: &AppHandle, path: &str) -> Result<PathBuf, S
     lookup_keys.dedup();
     for key in lookup_keys {
         let cache_dir = paths.separated.join(urlencoding::encode(&key).to_string());
-        let vocal = cache_dir.join("vocal.wav");
-        if vocal.exists() {
+        if let Some(vocal) = crate::mr_cache::resolve_vocal(&cache_dir) {
             return Ok(vocal);
         }
     }

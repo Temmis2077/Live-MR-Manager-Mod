@@ -107,30 +107,29 @@ pub async fn play_track_internal(window: WebviewWindow, path: String, duration_m
     // Determine the cache directory. 
     let (vocal_path, inst_path) = if path.contains("separated") {
         let p = std::path::PathBuf::from(&path);
-        if p.is_file() {
-            let parent = p.parent().unwrap_or(&p);
-            (parent.join("vocal.wav"), parent.join("inst.wav"))
+        let dir = if p.is_file() {
+            p.parent().unwrap_or(&p).to_path_buf()
         } else {
-            // It's a directory
-            (p.join("vocal.wav"), p.join("inst.wav"))
-        }
+            p
+        };
+        crate::mr_cache::resolve_mr_pair(&dir).unwrap_or_else(|| {
+            crate::mr_cache::mr_output_paths(&dir)
+        })
     } else {
         let mut selected = None;
         for key in cache_key_variants(&path) {
             let cache_dir = paths.separated.join(urlencoding::encode(&key).to_string());
-            let v = cache_dir.join("vocal.wav");
-            let i = cache_dir.join("inst.wav");
-            if v.exists() && i.exists() {
-                selected = Some((v, i));
+            if let Some(pair) = crate::mr_cache::resolve_mr_pair(&cache_dir) {
+                selected = Some(pair);
                 break;
             }
             if selected.is_none() {
-                selected = Some((v, i));
+                selected = Some(crate::mr_cache::mr_output_paths(&cache_dir));
             }
         }
         selected.unwrap_or_else(|| {
             let cache_dir = paths.separated.join(urlencoding::encode(&path).to_string());
-            (cache_dir.join("vocal.wav"), cache_dir.join("inst.wav"))
+            crate::mr_cache::mr_output_paths(&cache_dir)
         })
     };
     

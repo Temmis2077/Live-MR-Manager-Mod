@@ -6,22 +6,35 @@ use serde::Serialize;
 use std::collections::HashMap;
 use std::path::Path;
 
-use crate::library::{get_songs_internal, save_library_internal};
-use crate::state::AppPaths;
+use crate::library::{get_songs_internal, parse_id_list, save_library_internal};
+use crate::state::{AppPaths, DB};
 use crate::types::SongMetadata;
+use rusqlite::params;
 
+/// 보내기 헤더는 한글. 가져오기 시 normalize_header가 내부 키로 변환합니다.
 const EXPORT_HEADERS: &[&str] = &[
-    "path",
-    "title",
-    "artist",
-    "genre",
-    "category",
-    "tags",
-    "duration",
-    "pitch",
-    "tempo",
-    "volume",
-    "source",
+    "경로",
+    "제목",
+    "아티스트",
+    "원곡",
+    "키",
+    "BPM",
+    "난이도",
+    "숙련도",
+    "노래방",
+    "커버",
+    "가사링크",
+    "멜로밍곡ID",
+    "멜로밍아티스트ID",
+    "카테고리",
+    "카테고리ID",
+    "장르",
+    "태그",
+    "재생시간",
+    "피치",
+    "템포",
+    "볼륨",
+    "출처",
 ];
 
 #[derive(Debug, Clone, Serialize)]
@@ -41,12 +54,45 @@ fn normalize_header(h: &str) -> String {
         "아티스트" | "가수" => "artist".into(),
         "장르" => "genre".into(),
         "카테고리" | "categories" | "분류" => "category".into(),
+        "카테고리id" | "카테고리ids" | "categoryids" => "meloming_category_ids".into(),
         "태그" => "tags".into(),
         "재생시간" | "길이" | "시간" => "duration".into(),
         "피치" => "pitch".into(),
         "템포" | "속도" => "tempo".into(),
         "볼륨" | "음량" => "volume".into(),
         "출처" | "소스" => "source".into(),
+        "원곡" | "원곡url" | "원곡링크" | "originalurl" => "original_url".into(),
+        "키" | "key" => "song_key".into(),
+        "난이도" => "difficulty".into(),
+        "숙련도" => "proficiency".into(),
+        "노래방" | "노래방url" => "karaoke_url".into(),
+        "커버" | "커버url" => "cover_url".into(),
+        "가사링크" | "가사" => "lyrics_link".into(),
+        "멜로밍곡id" | "멜로밍id" => "meloming_song_id".into(),
+        "멜로밍아티스트id" => "meloming_artist_id".into(),
+        // 이전 영문 헤더 호환
+        "path" => "path".into(),
+        "title" => "title".into(),
+        "artist" => "artist".into(),
+        "original_url" => "original_url".into(),
+        "song_key" => "song_key".into(),
+        "bpm" => "bpm".into(),
+        "difficulty" => "difficulty".into(),
+        "proficiency" => "proficiency".into(),
+        "karaoke_url" => "karaoke_url".into(),
+        "cover_url" => "cover_url".into(),
+        "lyrics_link" => "lyrics_link".into(),
+        "meloming_song_id" => "meloming_song_id".into(),
+        "meloming_artist_id" => "meloming_artist_id".into(),
+        "category" => "category".into(),
+        "meloming_category_ids" | "category_ids" => "meloming_category_ids".into(),
+        "genre" => "genre".into(),
+        "tags" => "tags".into(),
+        "duration" => "duration".into(),
+        "pitch" => "pitch".into(),
+        "tempo" => "tempo".into(),
+        "volume" => "volume".into(),
+        "source" => "source".into(),
         other => other.to_string(),
     }
 }
@@ -132,7 +178,7 @@ fn parse_xlsx(path: &Path) -> Result<Vec<HashMap<String, String>>, String> {
     }
 
     let mut rows = Vec::new();
-    for (row_idx, row) in rows_iter.enumerate() {
+    for (_row_idx, row) in rows_iter.enumerate() {
         let mut map = HashMap::new();
         for (i, cell) in row.iter().enumerate() {
             if let Some(key) = headers.get(i) {
@@ -177,6 +223,32 @@ pub fn parse_spreadsheet_file(path: &Path) -> Result<Vec<HashMap<String, String>
     }
 }
 
+fn is_http_url(value: &str) -> bool {
+    let p = value.trim().to_lowercase();
+    p.starts_with("http://") || p.starts_with("https://")
+}
+
+/// 보내기: original_url 없으면 경로가 URL일 때 경로와 동일하게 채움
+fn export_original_url(song: &SongMetadata) -> String {
+    if let Some(url) = song.original_url.as_deref().filter(|s| !s.is_empty()) {
+        return url.to_string();
+    }
+    if is_http_url(&song.path) {
+        return song.path.trim().to_string();
+    }
+    String::new()
+}
+
+/// 가져오기: 원곡 열이 비어 있고 경로가 URL이면 원곡도 채움
+fn fill_original_url_from_path(song: &mut SongMetadata) {
+    if song.original_url.as_ref().is_some_and(|s| !s.is_empty()) {
+        return;
+    }
+    if is_http_url(&song.path) {
+        song.original_url = Some(song.path.trim().to_string());
+    }
+}
+
 fn infer_source(path: &str) -> String {
     let p = path.trim().to_lowercase();
     if p.starts_with("http://") || p.starts_with("https://") {
@@ -204,6 +276,81 @@ fn parse_f32(value: &str) -> Option<f32> {
         return None;
     }
     value.trim().parse().ok()
+}
+
+fn parse_i32(value: &str) -> Option<i32> {
+    if value.trim().is_empty() {
+        return None;
+    }
+    value.trim().parse().ok()
+}
+
+fn parse_i64(value: &str) -> Option<i64> {
+    if value.trim().is_empty() {
+        return None;
+    }
+    value.trim().parse().ok()
+}
+
+fn parse_u8_1_5(value: &str) -> Option<u8> {
+    parse_i32(value).and_then(|n| (1..=5).contains(&n).then_some(n as u8))
+}
+
+fn get_settings_meloming_channel_id() -> Option<i64> {
+    let db = DB.lock();
+    db.query_row(
+        "SELECT value FROM Settings WHERE key = 'meloming_channel_id'",
+        [],
+        |row| row.get::<_, String>(0),
+    )
+    .ok()
+    .and_then(|v| v.trim().parse().ok())
+}
+
+fn export_category_ids(song: &SongMetadata) -> String {
+    if let Some(ids) = &song.meloming_category_ids {
+        if !ids.is_empty() {
+            return ids
+                .iter()
+                .map(|id| id.to_string())
+                .collect::<Vec<_>>()
+                .join(",");
+        }
+    }
+
+    let channel_id = match song.meloming_channel_id.or_else(get_settings_meloming_channel_id) {
+        Some(id) => id,
+        None => return String::new(),
+    };
+    let names: Vec<String> = song
+        .categories
+        .as_ref()
+        .cloned()
+        .or_else(|| {
+            song.curation_category
+                .as_ref()
+                .map(|name| vec![name.clone()])
+        })
+        .unwrap_or_default();
+    if names.is_empty() {
+        return String::new();
+    }
+
+    let db = DB.lock();
+    let mut ids = Vec::new();
+    for name in names {
+        if let Ok(id) = db.query_row(
+            "SELECT meloming_category_id FROM Meloming_Category_Map WHERE channel_id = ? AND local_name = ?",
+            params![channel_id, name.trim()],
+            |row| row.get::<_, i64>(0),
+        ) {
+            ids.push(id);
+        }
+    }
+    ids.iter()
+        .map(|id| id.to_string())
+        .collect::<Vec<_>>()
+        .join(",")
 }
 
 fn apply_row_to_song(song: &mut SongMetadata, row: &HashMap<String, String>) {
@@ -239,6 +386,40 @@ fn apply_row_to_song(song: &mut SongMetadata, row: &HashMap<String, String>) {
     if let Some(v) = row.get("source").filter(|s| !s.is_empty()) {
         song.source = v.clone();
     }
+    if let Some(v) = row.get("original_url").filter(|s| !s.is_empty()) {
+        song.original_url = Some(v.clone());
+    }
+    if let Some(v) = row.get("song_key").filter(|s| !s.is_empty()) {
+        song.song_key = Some(v.clone());
+    }
+    if let Some(v) = parse_i32(row.get("bpm").map(|s| s.as_str()).unwrap_or("")) {
+        song.bpm = Some(v);
+    }
+    if let Some(v) = parse_u8_1_5(row.get("difficulty").map(|s| s.as_str()).unwrap_or("")) {
+        song.difficulty = Some(v);
+    }
+    if let Some(v) = parse_u8_1_5(row.get("proficiency").map(|s| s.as_str()).unwrap_or("")) {
+        song.proficiency = Some(v);
+    }
+    if let Some(v) = row.get("karaoke_url").filter(|s| !s.is_empty()) {
+        song.karaoke_url = Some(v.clone());
+    }
+    if let Some(v) = row.get("cover_url").filter(|s| !s.is_empty()) {
+        song.cover_url = Some(v.clone());
+    }
+    if let Some(v) = row.get("lyrics_link").filter(|s| !s.is_empty()) {
+        song.lyrics_link = Some(v.clone());
+    }
+    if let Some(v) = parse_i64(row.get("meloming_song_id").map(|s| s.as_str()).unwrap_or("")) {
+        song.meloming_song_id = Some(v);
+    }
+    if let Some(v) = parse_i64(row.get("meloming_artist_id").map(|s| s.as_str()).unwrap_or("")) {
+        song.meloming_artist_id = Some(v);
+    }
+    if let Some(v) = row.get("meloming_category_ids").filter(|s| !s.is_empty()) {
+        song.meloming_category_ids = parse_id_list(Some(v.clone()));
+    }
+    fill_original_url_from_path(song);
 }
 
 fn song_from_row(row: &HashMap<String, String>) -> Result<SongMetadata, String> {
@@ -285,6 +466,7 @@ fn song_from_row(row: &HashMap<String, String>) -> Result<SongMetadata, String> 
         original_title: None,
         translated_title: None,
         curation_category: None,
+        ..Default::default()
     };
 
     apply_row_to_song(&mut song, row);
@@ -303,8 +485,19 @@ fn songs_to_csv(songs: &[SongMetadata], include_example: bool) -> Result<Vec<u8>
             "https://youtu.be/VIDEO_ID",
             "곡 제목",
             "아티스트",
-            "발라드",
+            "https://youtu.be/VIDEO_ID",
+            "Am",
+            "120",
+            "3",
+            "4",
+            "",
+            "",
+            "",
+            "",
+            "",
             "애창곡",
+            "12",
+            "발라드",
             "태그1,태그2",
             "3:45",
             "0",
@@ -328,12 +521,36 @@ fn songs_to_csv(songs: &[SongMetadata], include_example: bool) -> Result<Vec<u8>
             .as_ref()
             .map(|t| t.join(","))
             .unwrap_or_default();
+        let original_url = export_original_url(song);
         wtr.write_record([
             &song.path,
             &song.title,
             song.artist.as_deref().unwrap_or(""),
-            song.genre.as_deref().unwrap_or(""),
+            &original_url,
+            song.song_key.as_deref().unwrap_or(""),
+            &song.bpm.map(|v| v.to_string()).unwrap_or_default(),
+            &song
+                .difficulty
+                .map(|v| v.to_string())
+                .unwrap_or_default(),
+            &song
+                .proficiency
+                .map(|v| v.to_string())
+                .unwrap_or_default(),
+            song.karaoke_url.as_deref().unwrap_or(""),
+            song.cover_url.as_deref().unwrap_or(""),
+            song.lyrics_link.as_deref().unwrap_or(""),
+            &song
+                .meloming_song_id
+                .map(|v| v.to_string())
+                .unwrap_or_default(),
+            &song
+                .meloming_artist_id
+                .map(|v| v.to_string())
+                .unwrap_or_default(),
             &category,
+            &export_category_ids(song),
+            song.genre.as_deref().unwrap_or(""),
             &tags,
             &song.duration,
             &song.pitch.map(|p| p.to_string()).unwrap_or_else(|| "0".into()),
@@ -409,9 +626,10 @@ mod tests {
 
     #[test]
     fn parses_korean_headers() {
-        let csv = "\u{feff}경로,제목,아티스트,장르,카테고리\nhttps://youtu.be/abc,테스트,가수,발라드,애창곡\n";
+        let csv = "\u{feff}경로,제목,아티스트,장르,카테고리,카테고리ID\nhttps://youtu.be/abc,테스트,가수,발라드,애창곡,12\n";
         let rows = parse_delimited_text(csv).unwrap();
         assert_eq!(rows[0].get("path").unwrap(), "https://youtu.be/abc");
         assert_eq!(rows[0].get("title").unwrap(), "테스트");
+        assert_eq!(rows[0].get("meloming_category_ids").unwrap(), "12");
     }
 }

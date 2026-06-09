@@ -26,11 +26,10 @@ fn resolve_analysis_path(path: &str) -> Result<PathBuf, String> {
     // normalize_cache_key, e.g. https://www.youtube.com/watch?v=ID, not always the library URL).
     if let Some(paths) = crate::state::APP_PATHS.lock().as_ref() {
         for key in crate::model_commands::cache_key_variants(path) {
-            let inst_path = paths
+            let cache_dir = paths
                 .separated
-                .join(urlencoding::encode(&key).to_string())
-                .join("inst.wav");
-            if inst_path.is_file() {
+                .join(urlencoding::encode(&key).to_string());
+            if let Some(inst_path) = crate::mr_cache::resolve_inst(&cache_dir) {
                 return Ok(inst_path);
             }
         }

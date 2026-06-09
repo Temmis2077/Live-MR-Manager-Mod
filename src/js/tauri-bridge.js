@@ -57,13 +57,35 @@ export async function listen(event, handler) {
 export const appWindow = isTauri ? window.__TAURI__.window.getCurrentWindow() : {
   minimize: async () => console.log("[Mock-Window] Minimize"),
   maximize: async () => console.log("[Mock-Window] Maximize"),
+  unmaximize: async () => console.log("[Mock-Window] Unmaximize"),
+  isMaximized: async () => false,
   toggleMaximize: async () => console.log("[Mock-Window] Toggle Maximize"),
   close: async () => console.log("[Mock-Window] Close"),
+  startDragging: async () => console.log("[Mock-Window] Start Dragging"),
   isVisible: async () => false,
   hide: async () => {},
   show: async () => {},
   setFocus: async () => {}
 };
+
+export async function toggleWindowMaximize() {
+  if (!isTauri) {
+    console.log("[Mock-Window] Toggle Maximize");
+    return;
+  }
+
+  try {
+    const maximized = await appWindow.isMaximized();
+    if (maximized) {
+      await appWindow.unmaximize();
+    } else {
+      await appWindow.maximize();
+    }
+  } catch (error) {
+    console.warn("[Window] maximize/unmaximize failed, falling back to toggleMaximize:", error);
+    await appWindow.toggleMaximize();
+  }
+}
 
 /**
  * Safe emit wrapper

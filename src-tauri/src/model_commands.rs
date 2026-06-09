@@ -51,7 +51,7 @@ pub(crate) fn cache_key_variants(path: &str) -> Vec<String> {
 pub(crate) fn mr_separated_files_exist(paths: &crate::state::AppPaths, path: &str) -> bool {
     cache_key_variants(path).iter().any(|key| {
         let cache = paths.separated.join(urlencoding::encode(key).to_string());
-        cache.join("vocal.wav").exists() && cache.join("inst.wav").exists()
+        crate::mr_cache::mr_pair_exists(&cache)
     })
 }
 
@@ -134,6 +134,21 @@ pub async fn delete_ai_model(window: WebviewWindow, model_id: String) -> Result<
         let mut engine = crate::separation::ROFORMER_ENGINE.lock();
         *engine = None;
     }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn get_mr_cache_format() -> String {
+    crate::mr_cache::current_format().as_str().to_string()
+}
+
+#[tauri::command]
+pub fn set_mr_cache_format(format: String) -> Result<(), String> {
+    crate::mr_cache::set_format(&format)?;
+    sys_log(&format!(
+        "MR cache format set to: {}",
+        crate::mr_cache::current_format().as_str()
+    ));
     Ok(())
 }
 
@@ -222,6 +237,7 @@ pub async fn youtube_metadata_fetcher(url: String) -> Result<SongMetadata, Strin
                 is_mr: Some(false), is_separated: Some(false),
                 has_lyrics: Some(false),
                 original_title: None, translated_title: None, curation_category: None,
+                ..Default::default()
             })
         },
         Err(e) => {
@@ -243,15 +259,7 @@ pub fn delete_mr(window: WebviewWindow, path: String) -> Result<(), String> {
     for key in cache_key_variants(&path) {
         let cache = separated_root.join(urlencoding::encode(&key).to_string());
         if cache.exists() {
-            let vocal = cache.join("vocal.wav");
-            let inst = cache.join("inst.wav");
-            // Keep lyric files (lyric.lrc / vocal.lrc) when deleting MR outputs.
-            if vocal.exists() {
-                std::fs::remove_file(&vocal).map_err(|e| e.to_string())?;
-            }
-            if inst.exists() {
-                std::fs::remove_file(&inst).map_err(|e| e.to_string())?;
-            }
+            crate::mr_cache::delete_mr_stems(&cache).map_err(|e| e.to_string())?;
         }
     }
     Ok(())
