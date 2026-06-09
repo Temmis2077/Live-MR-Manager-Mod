@@ -94,20 +94,26 @@ pub fn encode_wav_file_to_mp3(wav: &Path, mp3: &Path) -> Result<()> {
     let wav_s = wav.to_str().ok_or_else(|| anyhow!("invalid temp wav path"))?;
     let mp3_s = mp3.to_str().ok_or_else(|| anyhow!("invalid mp3 path"))?;
 
-    let output = Command::new("ffmpeg")
-        .args([
-            "-hide_banner",
-            "-loglevel",
-            "error",
-            "-y",
-            "-i",
-            wav_s,
-            "-codec:a",
-            "libmp3lame",
-            "-b:a",
-            "320k",
-            mp3_s,
-        ])
+    let mut cmd = Command::new("ffmpeg");
+    cmd.args([
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-y",
+        "-i",
+        wav_s,
+        "-codec:a",
+        "libmp3lame",
+        "-b:a",
+        "320k",
+        mp3_s,
+    ]);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    }
+    let output = cmd
         .output()
         .with_context(|| "failed to run ffmpeg (PATH에 ffmpeg가 있는지 확인하세요)")?;
 
