@@ -272,6 +272,22 @@ html[data-theme="sky"] .task-progress-container {
   margin-bottom: 20px;
 }
 
+.mr-cache-format-card .ai-actions-right {
+  width: 200px;
+}
+
+#mr-cache-format-dropdown .select-trigger,
+#mr-cache-format-dropdown .option-item {
+  white-space: nowrap;
+}
+
+#mr-cache-format-dropdown .select-trigger .selected-text {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .broadcast-mode-card-actions {
   align-items: flex-end;
   justify-content: center;
@@ -408,7 +424,8 @@ html[data-theme="sky"] .task-progress-container {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  min-width: 150px;
+  width: 150px;
+  flex-shrink: 0;
 }
 
 .btn-ai-action {
@@ -424,6 +441,8 @@ html[data-theme="sky"] .task-progress-container {
   justify-content: center;
   gap: 6px;
   border: none;
+  white-space: nowrap;
+  box-sizing: border-box;
 }
 
 .btn-ai-action:not(.secondary) {
@@ -491,10 +510,6 @@ html[data-theme="sky"] .task-progress-container {
 
 .settings-status-text.is-error {
   color: #ef4444;
-}
-
-.ai-actions-right.meloming-actions {
-  min-width: 168px;
 }
 
 /* --- Overlay Page Styles --- */
