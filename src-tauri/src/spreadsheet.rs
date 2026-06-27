@@ -43,6 +43,8 @@ pub struct SpreadsheetImportResult {
     pub added: usize,
     pub updated: usize,
     pub skipped: usize,
+    /// 유튜브 URL에서 썸네일·재생시간 등을 자동 보강한 행 수
+    pub enriched: usize,
     pub errors: Vec<String>,
 }
 
@@ -422,6 +424,54 @@ fn apply_row_to_song(song: &mut SongMetadata, row: &HashMap<String, String>) {
     fill_original_url_from_path(song);
 }
 
+fn row_has_value(row: &HashMap<String, String>, key: &str) -> bool {
+    row.get(key).is_some_and(|s| !s.trim().is_empty())
+}
+
+fn song_needs_youtube_enrich(song: &SongMetadata) -> bool {
+    song.thumbnail.trim().is_empty()
+        || song.duration.trim().is_empty()
+        || song.duration.trim() == "0:00"
+}
+
+/// CSV에 경로·제목·아티스트만 있어도, 유튜브 URL이면 UI 「정보 가져오기」와 같이 메타데이터를 보강합니다.
+/// CSV에 명시된 제목·아티스트·재생시간 등은 덮어쓰지 않습니다.
+async fn enrich_youtube_from_row(
+    song: &mut SongMetadata,
+    row: &HashMap<String, String>,
+) -> Result<bool, String> {
+    if !is_http_url(&song.path) {
+        return Ok(false);
+    }
+    if !song_needs_youtube_enrich(song) {
+        fill_original_url_from_path(song);
+        return Ok(false);
+    }
+
+    let path = song.path.trim().to_string();
+    let meta = crate::model_commands::youtube_metadata_fetcher(path).await?;
+
+    if !row_has_value(row, "title") && !meta.title.is_empty() {
+        song.title = meta.title;
+    }
+    if !row_has_value(row, "artist") {
+        song.artist = meta.artist;
+    }
+    if song.thumbnail.trim().is_empty() && !meta.thumbnail.trim().is_empty() {
+        song.thumbnail = meta.thumbnail;
+    }
+    if (song.duration.trim().is_empty() || song.duration.trim() == "0:00")
+        && !meta.duration.trim().is_empty()
+    {
+        song.duration = meta.duration;
+    }
+    if !row_has_value(row, "source") {
+        song.source = "youtube".into();
+    }
+    fill_original_url_from_path(song);
+    Ok(true)
+}
+
 fn song_from_row(row: &HashMap<String, String>) -> Result<SongMetadata, String> {
     let path = row
         .get("path")
@@ -577,6 +627,7 @@ pub async fn merge_rows_into_library(
         added: 0,
         updated: 0,
         skipped: 0,
+        enriched: 0,
         errors: Vec::new(),
     };
 
@@ -591,12 +642,28 @@ pub async fn merge_rows_into_library(
 
         if let Some(existing) = songs.iter_mut().find(|s| s.path == path_key) {
             apply_row_to_song(existing, &row);
+            match enrich_youtube_from_row(existing, &row).await {
+                Ok(true) => result.enriched += 1,
+                Ok(false) => {}
+                Err(e) => result.errors.push(format!(
+                    "{}행: 유튜브 정보를 가져오지 못했습니다 (기본 정보만 반영): {}",
+                    line, e
+                )),
+            }
             result.updated += 1;
             continue;
         }
 
         match song_from_row(&row) {
-            Ok(new_song) => {
+            Ok(mut new_song) => {
+                match enrich_youtube_from_row(&mut new_song, &row).await {
+                    Ok(true) => result.enriched += 1,
+                    Ok(false) => {}
+                    Err(e) => result.errors.push(format!(
+                        "{}행: 유튜브 정보를 가져오지 못했습니다 (기본 정보만 반영): {}",
+                        line, e
+                    )),
+                }
                 songs.push(new_song);
                 result.added += 1;
             }

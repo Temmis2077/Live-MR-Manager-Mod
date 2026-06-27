@@ -79,12 +79,83 @@ fn resolve_artist_id(song: &SongMetadata, channel_id: i64) -> Option<i64> {
             Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
         })
         .ok()?;
-    for row in rows.flatten() {
-        if normalize_artist_name(&row.1) == target {
-            return Some(row.0);
+    let mapped: Vec<(i64, String)> = rows.flatten().collect();
+    for (id, local) in &mapped {
+        if normalize_artist_name(local) == target {
+            return Some(*id);
+        }
+    }
+    // 느슨한 매칭: CSV 아티스트명이 멜로밍 등록명을 포함하거나 그 반대인 경우
+    for (id, local) in &mapped {
+        let norm = normalize_artist_name(local);
+        if norm.contains(&target) || target.contains(&norm) {
+            return Some(*id);
         }
     }
     None
+}
+
+fn patch_song_id_for_channel(song: &SongMetadata, channel_id: i64) -> Option<i64> {
+    let song_id = song.meloming_song_id?;
+    match song.meloming_channel_id {
+        Some(cid) if cid != channel_id => None,
+        _ => Some(song_id),
+    }
+}
+
+fn should_retry_as_create(err: &MelomingError) -> bool {
+    match err {
+        MelomingError::Http(status, body) => {
+            matches!(*status, 403 | 404)
+                || body.contains("PERMISSION_DENIED")
+                || body.contains("NOT_FOUND")
+        }
+        MelomingError::Message(msg) => {
+            msg.contains("403")
+                || msg.contains("404")
+                || msg.contains("PERMISSION_DENIED")
+                || msg.contains("NOT_FOUND")
+        }
+    }
+}
+
+async fn enrich_youtube_metadata(song: &mut SongMetadata) {
+    let path = song.path.trim();
+    if !path.starts_with("http") {
+        return;
+    }
+    let sparse = song.thumbnail.trim().is_empty()
+        || song.duration.trim().is_empty()
+        || song.duration.trim() == "0:00";
+    if !sparse {
+        return;
+    }
+    if let Ok(meta) = crate::model_commands::youtube_metadata_fetcher(path.to_string()).await {
+        if song.thumbnail.trim().is_empty() && !meta.thumbnail.trim().is_empty() {
+            song.thumbnail = meta.thumbnail;
+        }
+        if (song.duration.trim().is_empty() || song.duration.trim() == "0:00")
+            && !meta.duration.trim().is_empty()
+        {
+            song.duration = meta.duration;
+        }
+        if song
+            .artist
+            .as_ref()
+            .map(|a| a.trim().is_empty())
+            .unwrap_or(true)
+        {
+            song.artist = meta.artist;
+        }
+        if song
+            .original_url
+            .as_ref()
+            .map(|u| u.trim().is_empty())
+            .unwrap_or(true)
+        {
+            song.original_url = Some(path.to_string());
+        }
+    }
 }
 
 fn original_url_for_push(song: &SongMetadata) -> Option<String> {
@@ -162,10 +233,16 @@ pub async fn push_channel(paths: &AppPaths, channel_id: i64) -> Result<PushResul
         errors: Vec::new(),
     };
 
-    let mut changed = Vec::new();
+    let mut persist_library = false;
 
     for song in &mut songs {
-        let path_key = song.path.clone();
+        let thumb_before = song.thumbnail.clone();
+        let duration_before = song.duration.clone();
+        enrich_youtube_metadata(song).await;
+        if song.thumbnail != thumb_before || song.duration != duration_before {
+            persist_library = true;
+        }
+
         match push_one_song(channel_id, song, &token).await {
             Ok(action) => {
                 result.pushed += 1;
@@ -173,7 +250,7 @@ pub async fn push_channel(paths: &AppPaths, channel_id: i64) -> Result<PushResul
                     PushAction::Created => result.created += 1,
                     PushAction::Updated => result.updated += 1,
                 }
-                changed.push(path_key);
+                persist_library = true;
             }
             Err(e) => {
                 result.skipped += 1;
@@ -182,7 +259,7 @@ pub async fn push_channel(paths: &AppPaths, channel_id: i64) -> Result<PushResul
         }
     }
 
-    if !changed.is_empty() {
+    if persist_library {
         save_library_internal(songs)
             .await
             .map_err(MelomingError::Message)?;
@@ -205,13 +282,19 @@ async fn push_one_song(
         return Err("제목이 비어 있습니다.".into());
     }
 
-    if let Some(song_id) = song.meloming_song_id {
+    if let Some(song_id) = patch_song_id_for_channel(song, channel_id) {
         let body = song_to_body(song, channel_id, false)?;
-        let resp = MelomingClient::patch_song(channel_id, song_id, &body, token)
-            .await
-            .map_err(|e| e.to_string())?;
-        apply_push_response(song, channel_id, &resp);
-        return Ok(PushAction::Updated);
+        match MelomingClient::patch_song(channel_id, song_id, &body, token).await {
+            Ok(resp) => {
+                apply_push_response(song, channel_id, &resp);
+                return Ok(PushAction::Updated);
+            }
+            Err(e) if should_retry_as_create(&e) => {
+                song.meloming_song_id = None;
+                song.meloming_channel_id = None;
+            }
+            Err(e) => return Err(e.to_string()),
+        }
     }
 
     let body = song_to_body(song, channel_id, true)?;
@@ -220,4 +303,20 @@ async fn push_one_song(
         .map_err(|e| e.to_string())?;
     apply_push_response(song, channel_id, &resp);
     Ok(PushAction::Created)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn patch_id_ignored_for_other_channel() {
+        let song = SongMetadata {
+            meloming_song_id: Some(99),
+            meloming_channel_id: Some(1),
+            ..Default::default()
+        };
+        assert_eq!(patch_song_id_for_channel(&song, 2), None);
+        assert_eq!(patch_song_id_for_channel(&song, 1), Some(99));
+    }
 }

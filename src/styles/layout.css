@@ -170,7 +170,9 @@
   justify-content: space-between;
   padding: 20px var(--library-safe-area, 30px) !important;
   background: linear-gradient(to bottom, var(--bg-color), transparent);
-  z-index: 1100;
+  position: relative;
+  z-index: 1300;
+  overflow: visible;
   flex-wrap: wrap;
   gap: 20px;
   width: 100% !important;
@@ -282,7 +284,7 @@ h1 {
   background: var(--menu-bg);
   backdrop-filter: blur(20px);
   box-shadow: 0 12px 32px var(--shadow-strong);
-  z-index: 1200;
+  z-index: 1400;
 }
 
 .meloming-account-menu-item {

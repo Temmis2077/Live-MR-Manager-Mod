@@ -120,16 +120,33 @@
 - **스프레드시트 가져오기/보내기**: 설정에서 라이브러리를 CSV/XLSX로 보내고 병합 가져오기(한글 헤더 지원).
 - **GitHub 업데이트 알림**: 최신 릴리즈를 주기적으로 확인해 앱 내에서 새 버전을 안내합니다.
 
+### 🆕 v0.4.14 업데이트 (2026-06-27)
+
+- **유튜브 메타데이터 자동 보강**: CSV/XLSX 가져오기 시 URL만 있어도 썸네일·재생 시간·아티스트를 「정보 가져오기」와 같이 채웁니다. CSV에 명시한 제목·아티스트·재생 시간은 덮어쓰지 않으며, 완료 토스트에 보강 곡 수를 표시합니다.
+- **재생 시 메타 보강**: 스프레드시트 등으로 최소 정보만 등록된 유튜브 곡을 재생하면 백그라운드에서 썸네일·길이·아티스트를 보강하고 도크·라이브러리 UI를 즉시 갱신합니다.
+- **설정 법적 고지**: 설정 화면에 **개인정보 처리방침**·**이용약관** 버튼을 추가해 Companion([lmrm.vercel.app](https://lmrm.vercel.app)) 문서를 앱에서 바로 열 수 있습니다.
+- **멜로밍 Push 안정화**: Push 전 유튜브 메타 보강, 아티스트명 느슨 매칭(포함 관계), 다른 채널 `meloming_song_id` 무시, PATCH 403/404 시 CREATE 재시도.
+- **멜로밍 계정 메뉴 UI**: 헤더와 계정 드롭다운 z-index를 조정해 메뉴가 가려지지 않도록 수정했습니다.
+- **버전 메타데이터 통일**: `package.json`, `Cargo.toml`, `tauri.conf.json`, 앱 타이틀·사용자 매뉴얼을 `0.4.14`로 맞춤.
+
 ### 🆕 v0.4.13 업데이트 (2026-06-27)
 
 - **Companion 개인정보 처리방침**: [lmrm.vercel.app/privacy](https://lmrm.vercel.app/privacy) — 멜로밍 OAuth 4 scope, 음원 로컬 전용, Last.fm·쿠키·제3자 연동 안내. 푸터·FAQ에서 링크.
 - **Companion 이용약관**: [lmrm.vercel.app/terms](https://lmrm.vercel.app/terms) — 베타 면책, 멜로밍·저작권·이용자 의무. 푸터 링크.
+- **멜로밍 로그인·보내기 재개**: `MELOMING_COMING_SOON` 잠금을 해제해 우측 상단 **「멜로밍 로그인」**·설정 **「멜로밍에 보내기」**를 다시 사용할 수 있습니다. (멜로밍 서버 500 등 오류 시 재시도 안내)
+- **멜로밍 Push 개선**: 보내기 전 아티스트 Map 갱신, 건너뜀·오류 요약을 토스트에 표시.
 - **버전 메타데이터 통일**: `package.json`, `Cargo.toml`, `tauri.conf.json`, 앱 타이틀·사용자 매뉴얼을 `0.4.13`으로 맞춤.
+
+### 🆕 v0.4.12 업데이트 (2026-06-10)
+
+- **설정 버튼 레이아웃**: 멜로밍·백업 등 설정 카드 액션 버튼 너비를 150px로 통일했습니다.
+- **MR 저장 형식 UI**: 드롭다운 열 250px, 긴 옵션 텍스트 줄바꿈 방지.
+- **MP3 MR 저장 안정성**: ffmpeg 실행 시 `CREATE_NO_WINDOW` 적용 — 변환 중 CMD 창이 뜨지 않습니다.
 
 ### 🆕 v0.4.11 업데이트 (개발 빌드 · 2026-06-09)
 
 - **멜로밍 노래책 — 다중 플랫폼 채널 주소**: 설정 「방송 채널 주소」에 **치지직 · SOOP(숲) · 씨미(CIME)** URL·ID를 입력해 Pull·연결 테스트 가능. (`resolve.rs` → `GET /v1/channels/platforms/{CHZZK|SOOP|CIME}/…`)
-- **멜로밍 OAuth (코드 구현·실연동 보류)**: PKCE·deep-link·companion 토큰 프록시까지 구현했으나, 멜로밍 `POST /oauth/token`에서 **500 INTERNAL_ERROR**·**401 Invalid redirect_uri**가 지속. 우측 상단 **「멜로밍 로그인」**·설정 **「멜로밍에 보내기」**는 **「개발 중입니다.」** 안내만 표시 (`MELOMING_COMING_SOON`). **가져오기·연결 테스트·채널 저장**은 OAuth 없이 사용 가능.
+- **멜로밍 OAuth·Push (v0.4.13 재개)**: PKCE·deep-link·companion 토큰 프록시·**로그인·보내기** UI 활성화. 멜로밍 `POST /oauth/token` **500** 등 서버 오류 시 재시도 안내. **가져오기·연결 테스트·채널 저장**은 OAuth 없이 사용 가능.
 - **곡 정보 저장 안정화**: 메타데이터 저장 시 DB 락 데드락 수정, 저장 후 전체 `loadLibrary()` 대신 로컬 state 갱신·모달 즉시 닫기.
 - **타이틀바 창 이동**: 커스텀 타이틀바 드래그 영역·`startDragging` 폴백, Tauri capability(`core:window:allow-start-dragging`) 반영.
 - **Vercel companion 확장** ([lmrm.vercel.app](https://lmrm.vercel.app)): `/login`, `/account`, 웹 OAuth 테스트 API, `/api/oauth/exchange`(앱용). OAuth 콜백은 웹 PKCE 세션이 있으면 웹 로그인, 없으면 앱 딥링크(`live-mr-manager://`)로 분기.
@@ -179,7 +196,7 @@
 - **(테스트) 웹 로그인** — `/login`, `/account` (OAuth API 검증용, 추후 정리 예정)
 - **changelog·업데이트 API** — GitHub Releases(설치 파일) + companion(릴리즈 노트·manifest) (Phase 4)
 
-**현재 상태 (2026-06)**: Pull·채널 조회(치지직/SOOP/씨미)는 동작. OAuth 토큰 교환은 멜로밍 서버 이슈로 **로그인·보내기 UI 잠금** 중.
+**현재 상태 (2026-06)**: Pull·채널 조회(치지직/SOOP/씨미) 동작. **로그인·보내기(v0.4.13)** 재개 — Push 전 유튜브 메타 보강·아티스트 매칭·PATCH 실패 시 CREATE 재시도(v0.4.14). OAuth 토큰 교환 **500/401**은 멜로밍 서버 이슈 시 간헐적 발생.
 
 작업 체크리스트: [ToDo.md §7](ToDo.md). 상세 기획: [docs/MELOMING_SONGBOOK_INTEGRATION.md](docs/MELOMING_SONGBOOK_INTEGRATION.md).
 

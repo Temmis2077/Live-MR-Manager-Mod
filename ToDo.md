@@ -81,15 +81,21 @@
 - [X] **메타데이터 KEY/BPM 분석 버튼 (v0.4.8)**: 편집 모달에서 키/템포 자동 분석 후 필드 즉시 반영 기능 완료
 - [X] **MR 캐시 키 헬퍼 통합 (v0.4.10)**: `mr_separated_files_exist` / `cache_key_variants`로 재생·배지·KEY/BPM·삭제 경로 일원화
 - [X] **스프레드시트 가져오기/보내기 (v0.4.10)**: CSV(UTF-8 BOM)·XLSX 병합 가져오기 및 CSV보내기·양식 다운로드
+- [X] **스프레드시트 유튜브 메타 보강 (v0.4.14)**: 가져오기 시 URL만 있어도 썸네일·재생시간·아티스트 자동 채움, `enriched` 건수 토스트 표시
+- [X] **재생 시 유튜브 메타 보강 (v0.4.14)**: 최소 정보만 등록된 유튜브 곡 재생 시 도크·라이브러리 UI 즉시 갱신
+- [X] **설정 법적 고지 링크 (v0.4.14)**: 개인정보 처리방침·이용약관 버튼 → Companion `/privacy`, `/terms`
 - [X] **곡 정보 편집 저장 안정화 (v0.4.11)**: DB 데드락 수정, 저장 후 모달 즉시 닫기
 - [X] **타이틀바 창 드래그 (v0.4.11)**: 커스텀 타이틀바 이동·capability
+- [X] **GitHub 업데이트 확인 (v0.4.10)**: 설정에서 수동 확인·백그라운드 주기 검사 (`updater.rs`)
 - [ ] **에러 핸들링 강화**: 오디오 디코딩 및 AI 추론 시 발생할 수 있는 예외 상황에 대한 상세 리포팅 시스템
-- [ ] **자동 업데이트**: 앱 및 AI 모델의 최신 버전 자동 체크 및 업데이트 기능 (GitHub Releases + §7 Phase 4 Vercel companion manifest 연동 예정)
+- [ ] **자동 업데이트**: 앱 자동 다운로드·설치 (현재: GitHub Releases 수동 확인만. §7 Phase 4 companion manifest 연동 예정)
 
 ## 🛠️ 6. 개발 환경 및 문서 (DevEx)
 
 - [X] **README 개발 환경 가이드 보강 (v0.4.10)**: LLVM(libclang), `cargo fetch`, Windows PowerShell/`npm.cmd` 안내 반영
-- [X] **앱 버전 v0.4.13 메타데이터 정합성**: `package.json`, `Cargo.toml`, `tauri.conf.json` 버전 번호 일괄 갱신
+- [X] **앱 버전 v0.4.14 메타데이터 정합성**: `package.json`, `Cargo.toml`, `tauri.conf.json` 버전 번호 일괄 갱신
+- [X] **설정 UI 정리 (v0.4.12)**: 설정 카드 버튼 너비 150px, MR 저장 형식 드롭다운 250px
+- [X] **MP3 MR 저장 콘솔 숨김 (v0.4.12)**: ffmpeg `CREATE_NO_WINDOW`
 - [X] **멜로밍 연동 기획 문서**: [`docs/MELOMING_SONGBOOK_INTEGRATION.md`](docs/MELOMING_SONGBOOK_INTEGRATION.md) (API·OAuth·필드 매핑·Vercel companion·동기화·업데이트 알림)
 
 ## 🎵 7. 멜로밍 노래책 연동 (Meloming OpenAPI)
@@ -133,8 +139,10 @@
 
 - [X] **Tauri OAuth PKCE**: Authorization Code + refresh, 토큰 Settings 저장, deep-link + companion `/api/oauth/exchange`
 - [X] **Push 코드**: `POST`/`PATCH` 노래책 API (일괄 보내기)
-- [ ] **OAuth 실연동 (블로킹)**: 멜로밍 `POST /oauth/token` 500 INTERNAL_ERROR·401 Invalid redirect_uri — **멜로밍 지원 문의 중**
-- [X] **UI 잠금 (임시)**: `MELOMING_COMING_SOON` — 「멜로밍 로그인」·「멜로밍에 보내기」→ 「개발 중입니다.」
+- [X] **Push 안정화 (v0.4.13·v0.4.14)**: 보내기 전 아티스트 Map 갱신, 유튜브 메타 보강, 아티스트 느슨 매칭, 채널별 `meloming_song_id`, PATCH 403/404 → CREATE 재시도
+- [ ] **OAuth 실연동 (간헐적 이슈)**: 멜로밍 `POST /oauth/token` 500 INTERNAL_ERROR·401 Invalid redirect_uri — **v0.4.13 UI 재개**, 서버 오류 시 재시도 안내
+- [X] **UI 잠금 해제 (v0.4.13)**: `MELOMING_COMING_SOON` 제거 — 「멜로밍 로그인」·「멜로밍에 보내기」 활성화
+- [X] **멜로밍 계정 메뉴 z-index (v0.4.14)**: 헤더·드롭다운 겹침 수정
 - [ ] **DELETE** 노래 삭제 Push
 - [ ] **YouTube `path` → `originalUrl`** 자동 매핑
 - [ ] **2A 미완 시**: 읽기만·`pending_push` 큐 또는 웹 수동 안내
@@ -161,4 +169,4 @@
 
 ---
 
-💡 **참고**: 이 목록은 우선순위에 따라 유동적으로 조정될 수 있습니다. v0.4.10은 2026-06-02 릴리즈, v0.4.11은 2026-06-09 기준 개발 빌드(멜로밍 OAuth 보류), **v0.4.13**은 2026-06-27(Companion 개인정보 처리방침·버전 통일)입니다. 멜로밍 연동 상세는 [`docs/MELOMING_SONGBOOK_INTEGRATION.md`](docs/MELOMING_SONGBOOK_INTEGRATION.md) 및 [README](README.md) 로드맵을 참고하세요.
+💡 **참고**: 이 목록은 우선순위에 따라 유동적으로 조정될 수 있습니다. v0.4.10은 2026-06-02 릴리즈, v0.4.11·v0.4.12는 2026-06 패치 빌드, **v0.4.13**은 2026-06-27(Companion 법적 문서·멜로밍 로그인/보내기 재개), **v0.4.14**는 2026-06-27(유튜브 메타 보강·Push 안정화·설정 법적 고지)입니다. 멜로밍 연동 상세는 [`docs/MELOMING_SONGBOOK_INTEGRATION.md`](docs/MELOMING_SONGBOOK_INTEGRATION.md) 및 [README](README.md) 로드맵을 참고하세요.

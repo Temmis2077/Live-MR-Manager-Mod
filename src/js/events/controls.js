@@ -672,8 +672,10 @@ export function initControlListeners() {
     const added = Number(result?.added || 0);
     const updated = Number(result?.updated || 0);
     const skipped = Number(result?.skipped || 0);
-    const errCount = Array.isArray(result?.errors) ? result.errors.length : 0;
+    let enriched = Number(result?.enriched || 0);
+    let errCount = Array.isArray(result?.errors) ? result.errors.length : 0;
     let msg = `가져오기 완료: 추가 ${added}곡, 갱신 ${updated}곡`;
+    if (enriched > 0) msg += `, 유튜브 정보 ${enriched}곡`;
     if (skipped > 0) msg += `, 건너뜀 ${skipped}행`;
     if (errCount > 0) msg += `, 오류 ${errCount}건`;
     showNotification(msg, errCount > 0 ? "warning" : "success");
@@ -885,6 +887,28 @@ export function initControlListeners() {
 
   const btnCheckAppUpdate = document.getElementById("btn-check-app-update");
   const appVersionDesc = document.getElementById("app-version-desc");
+  const btnOpenPrivacyPolicy = document.getElementById("btn-open-privacy-policy");
+  const btnOpenTermsOfService = document.getElementById("btn-open-terms-of-service");
+
+  const openCompanionLegalPage = async (url) => {
+    const { showNotification } = await import('../utils.js');
+    try {
+      await invoke("open_app_update_page", { url });
+    } catch (err) {
+      console.error("[Legal] Failed to open page:", err);
+      showNotification("브라우저에서 페이지를 열지 못했습니다.", "error");
+    }
+  };
+
+  if (btnOpenPrivacyPolicy) {
+    btnOpenPrivacyPolicy.onclick = () =>
+      openCompanionLegalPage("https://lmrm.vercel.app/privacy");
+  }
+  if (btnOpenTermsOfService) {
+    btnOpenTermsOfService.onclick = () =>
+      openCompanionLegalPage("https://lmrm.vercel.app/terms");
+  }
+
   if (btnCheckAppUpdate) {
     btnCheckAppUpdate.onclick = async () => {
       const { showNotification, showUpdateAvailable } = await import('../utils.js');

@@ -359,11 +359,11 @@ sequenceDiagram
 
 ```json
 {
-  "version": "0.4.13",
+  "version": "0.4.14",
   "minSupportedVersion": "0.4.0",
-  "releaseUrl": "https://github.com/AutumnColor77/Live-MR-Manager/releases/tag/v0.4.13",
-  "changelogUrl": "https://lmrm.vercel.app/changelog#v0.4.13",
-  "notes": "Companion 개인정보 처리방침(/privacy), 버전 0.4.13 …",
+  "releaseUrl": "https://github.com/AutumnColor77/Live-MR-Manager/releases/tag/v0.4.14",
+  "changelogUrl": "https://lmrm.vercel.app/changelog#v0.4.14",
+  "notes": "유튜브 메타 자동 보강, 멜로밍 Push 안정화, 설정 법적 고지, 버전 0.4.14 …",
   "publishedAt": "2026-06-27T00:00:00Z",
   "critical": false
 }

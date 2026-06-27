@@ -12,6 +12,59 @@ import {
 import { loadLyricsForTrack } from './lyrics.js';
 import { emit, invoke, convertFileSrc as bridgeConvertFileSrc } from './tauri-bridge.js';
 
+function isYoutubePath(path) {
+  if (!path || typeof path !== "string") return false;
+  const p = path.trim().toLowerCase();
+  return p.startsWith("http") && (p.includes("youtube.com") || p.includes("youtu.be"));
+}
+
+function songNeedsMetadataEnrichment(song) {
+  if (!song) return false;
+  const duration = (song.duration || "").trim();
+  return !song.thumbnail?.trim() || !duration || duration === "0:00";
+}
+
+/** CSV 등 최소 정보만 있는 곡 — 재생 시 유튜브 메타데이터를 보강 (제목·아티스트는 유지) */
+async function enrichSongMetadataIfNeeded(song) {
+  if (!isYoutubePath(song?.path) || !songNeedsMetadataEnrichment(song)) return;
+
+  try {
+    const { getYoutubeMetadata, saveLibrary } = await import('./audio.js');
+    const meta = await getYoutubeMetadata(song.path);
+    if (!meta) return;
+
+    if (!song.thumbnail?.trim() && meta.thumbnail) song.thumbnail = meta.thumbnail;
+    const duration = (song.duration || "").trim();
+    if ((!duration || duration === "0:00") && meta.duration) song.duration = meta.duration;
+    if (!song.artist?.trim() && meta.artist) song.artist = meta.artist;
+    if (!song.originalUrl?.trim() && !song.original_url?.trim()) {
+      song.originalUrl = song.path;
+      song.original_url = song.path;
+    }
+
+    await saveLibrary(state.songLibrary);
+
+    if (state.currentTrack?.path !== song.path) return;
+
+    if (elements.dockThumbImg && song.thumbnail) {
+      elements.dockThumbImg.src = getThumbnailUrl(song.thumbnail, song);
+    }
+    const enrichedDurationMs = parseDurationToMs(song.duration);
+    if (enrichedDurationMs > 0) {
+      state.trackDurationMs = enrichedDurationMs;
+      if (elements.timeTotal) elements.timeTotal.textContent = song.duration;
+    }
+    if (elements.dockArtist && song.artist) {
+      elements.dockArtist.textContent = song.artist;
+    }
+    updateThumbnailOverlay();
+    const { renderLibrary } = await import('./ui/library.js');
+    renderLibrary();
+  } catch (err) {
+    console.warn("[Metadata] enrichment skipped:", err);
+  }
+}
+
 function parseDurationToMs(duration) {
   if (typeof duration === "number" && Number.isFinite(duration) && duration > 0) {
     return Math.floor(duration * 1000);
@@ -127,6 +180,9 @@ export async function selectTrack(index) {
   }
 
   console.log(`[UI] Selecting track: ${song.title}`);
+
+  // CSV 등으로 최소 정보만 등록된 곡 — 재생과 병렬로 메타데이터 보강
+  enrichSongMetadataIfNeeded(song);
 
   // Sync Selection Highlight immediately (Remove 2-step barrier)
   state.selectedTrackIndex = index;
