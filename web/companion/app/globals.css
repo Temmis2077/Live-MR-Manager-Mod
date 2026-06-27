@@ -347,3 +347,80 @@ main {
   color: var(--text-muted);
   font-size: 0.85rem;
 }
+
+.legal-doc {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.legal-section h2 {
+  margin: 0 0 0.75rem;
+  font-size: 1.05rem;
+}
+
+.legal-section p {
+  margin: 0 0 0.65rem;
+  color: var(--text-muted);
+  font-size: 0.92rem;
+}
+
+.legal-section p:last-child {
+  margin-bottom: 0;
+}
+
+.legal-section ul {
+  margin: 0 0 0.65rem;
+  padding-left: 1.25rem;
+  color: var(--text-muted);
+  font-size: 0.92rem;
+}
+
+.legal-section li + li {
+  margin-top: 0.35rem;
+}
+
+.legal-note {
+  margin-top: 0.75rem !important;
+  padding: 0.75rem 0.9rem;
+  border-left: 3px solid var(--accent);
+  background: var(--accent-soft);
+  color: var(--text) !important;
+  border-radius: 0 var(--radius) var(--radius) 0;
+  font-size: 0.88rem !important;
+}
+
+.legal-table-wrap {
+  overflow-x: auto;
+  margin: 0.5rem 0 0.65rem;
+}
+
+.legal-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.legal-table th,
+.legal-table td {
+  padding: 0.55rem 0.65rem;
+  border: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.legal-table th {
+  background: var(--surface-2);
+  color: var(--text);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.legal-table td {
+  color: var(--text-muted);
+}
+
+.legal-table td:first-child {
+  color: var(--text);
+  font-family: ui-monospace, "Cascadia Code", monospace;
+  font-size: 0.82rem;
+}

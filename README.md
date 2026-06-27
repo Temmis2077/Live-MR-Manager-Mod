@@ -120,6 +120,12 @@
 - **스프레드시트 가져오기/보내기**: 설정에서 라이브러리를 CSV/XLSX로 보내고 병합 가져오기(한글 헤더 지원).
 - **GitHub 업데이트 알림**: 최신 릴리즈를 주기적으로 확인해 앱 내에서 새 버전을 안내합니다.
 
+### 🆕 v0.4.13 업데이트 (2026-06-27)
+
+- **Companion 개인정보 처리방침**: [lmrm.vercel.app/privacy](https://lmrm.vercel.app/privacy) — 멜로밍 OAuth 4 scope, 음원 로컬 전용, Last.fm·쿠키·제3자 연동 안내. 푸터·FAQ에서 링크.
+- **Companion 이용약관**: [lmrm.vercel.app/terms](https://lmrm.vercel.app/terms) — 베타 면책, 멜로밍·저작권·이용자 의무. 푸터 링크.
+- **버전 메타데이터 통일**: `package.json`, `Cargo.toml`, `tauri.conf.json`, 앱 타이틀·사용자 매뉴얼을 `0.4.13`으로 맞춤.
+
 ### 🆕 v0.4.11 업데이트 (개발 빌드 · 2026-06-09)
 
 - **멜로밍 노래책 — 다중 플랫폼 채널 주소**: 설정 「방송 채널 주소」에 **치지직 · SOOP(숲) · 씨미(CIME)** URL·ID를 입력해 Pull·연결 테스트 가능. (`resolve.rs` → `GET /v1/channels/platforms/{CHZZK|SOOP|CIME}/…`)
@@ -168,6 +174,8 @@
 - **OAuth Redirect** — `https://lmrm.vercel.app/oauth/callback` (웹 PKCE 로그인 또는 앱 딥링크 브릿지)
 - **OAuth 토큰 프록시** — `POST /api/oauth/exchange` (선택, `MELOMING_USE_COMPANION_EXCHANGE`)
 - **FAQ / Q&A** — 동기화·숙련도/난이도 등
+- **`/privacy`** — 개인정보 처리방침 (앱·웹 통합)
+- **`/terms`** — 이용약관
 - **(테스트) 웹 로그인** — `/login`, `/account` (OAuth API 검증용, 추후 정리 예정)
 - **changelog·업데이트 API** — GitHub Releases(설치 파일) + companion(릴리즈 노트·manifest) (Phase 4)
 

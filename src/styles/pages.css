@@ -506,6 +506,7 @@ html[data-theme="sky"] .task-progress-container {
   line-height: 1.5;
   max-width: 540px;
   word-break: keep-all;
+  white-space: pre-line;
 }
 
 .settings-status-text.is-error {

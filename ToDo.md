@@ -89,7 +89,7 @@
 ## 🛠️ 6. 개발 환경 및 문서 (DevEx)
 
 - [X] **README 개발 환경 가이드 보강 (v0.4.10)**: LLVM(libclang), `cargo fetch`, Windows PowerShell/`npm.cmd` 안내 반영
-- [X] **앱 버전 v0.4.10 메타데이터 정합성**: `package.json`, `Cargo.toml`, `tauri.conf.json` 버전 번호 일괄 갱신
+- [X] **앱 버전 v0.4.13 메타데이터 정합성**: `package.json`, `Cargo.toml`, `tauri.conf.json` 버전 번호 일괄 갱신
 - [X] **멜로밍 연동 기획 문서**: [`docs/MELOMING_SONGBOOK_INTEGRATION.md`](docs/MELOMING_SONGBOOK_INTEGRATION.md) (API·OAuth·필드 매핑·Vercel companion·동기화·업데이트 알림)
 
 ## 🎵 7. 멜로밍 노래책 연동 (Meloming OpenAPI)
@@ -104,8 +104,10 @@
 
 ### Phase 2A — Vercel companion + 미니앱 등록·심사 (**1순위**)
 
-- [X] **Vercel companion 스캐폴딩**: [`web/companion`](web/companion) — `/`, `/oauth/callback`, `/faq`, `/qa`, `/download` (로컬 `npm run dev` / `npm run build` 확인)
+- [X] **Vercel companion 스캐폴딩**: [`web/companion`](web/companion) — `/`, `/oauth/callback`, `/faq`, `/qa`, `/download`, `/privacy` (로컬 `npm run dev` / `npm run build` 확인)
 - [X] **Vercel 프로덕션 배포**: https://lmrm.vercel.app (`web/companion`)
+- [X] **개인정보 처리방침 (v0.4.13)**: companion `/privacy`, 멜로밍 OAuth·쿠키·Last.fm 범위 명시, 푸터·FAQ 링크
+- [X] **이용약관 (v0.4.13)**: companion `/terms`, 베타·멜로밍·저작권·면책, 푸터 링크
 - [X] **미니앱(앱) 등록**: iframe `https://lmrm.vercel.app/`, Redirect `https://lmrm.vercel.app/oauth/callback`
 - [X] **심사 제출** (승인 대기)
 - [X] **OAuth 클라이언트 확보**: Client ID/Secret, API Key (미니앱 승인)
@@ -159,4 +161,4 @@
 
 ---
 
-💡 **참고**: 이 목록은 우선순위에 따라 유동적으로 조정될 수 있습니다. v0.4.10은 2026-06-02 릴리즈, v0.4.11은 2026-06-09 기준 개발 빌드(멜로밍 OAuth 보류)입니다. 멜로밍 연동 상세는 [`docs/MELOMING_SONGBOOK_INTEGRATION.md`](docs/MELOMING_SONGBOOK_INTEGRATION.md) 및 [README](README.md) 로드맵을 참고하세요.
+💡 **참고**: 이 목록은 우선순위에 따라 유동적으로 조정될 수 있습니다. v0.4.10은 2026-06-02 릴리즈, v0.4.11은 2026-06-09 기준 개발 빌드(멜로밍 OAuth 보류), **v0.4.13**은 2026-06-27(Companion 개인정보 처리방침·버전 통일)입니다. 멜로밍 연동 상세는 [`docs/MELOMING_SONGBOOK_INTEGRATION.md`](docs/MELOMING_SONGBOOK_INTEGRATION.md) 및 [README](README.md) 로드맵을 참고하세요.

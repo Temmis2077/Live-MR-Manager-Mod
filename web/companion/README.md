@@ -10,6 +10,8 @@
 |------|------|
 | `/` | 연동 안내, 미니앱 등록용 랜딩 |
 | `/faq`, `/qa` | FAQ·Q&A |
+| `/privacy` | 개인정보 처리방침 (앱·웹 통합) |
+| `/terms` | 이용약관 |
 | `/download` | GitHub Releases 링크 |
 | `/login` | (테스트) 웹 멜로밍 OAuth 시작 |
 | `/account` | (테스트) 웹 로그인 세션 확인 |

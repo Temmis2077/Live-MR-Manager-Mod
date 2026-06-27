@@ -13,6 +13,10 @@ export function SiteFooter() {
         {" · "}
         <Link href="/download">다운로드</Link>
         {" · "}
+        <Link href="/privacy">개인정보 처리방침</Link>
+        {" · "}
+        <Link href="/terms">이용약관</Link>
+        {" · "}
         <a href={MELOMING_URL} target="_blank" rel="noopener noreferrer">
           멜로밍
         </a>

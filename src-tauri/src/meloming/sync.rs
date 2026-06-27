@@ -197,7 +197,7 @@ fn find_existing_match<'a>(
     None
 }
 
-fn upsert_artist_maps(channel_id: i64, artists: &[ArtistResponse]) -> Result<usize, MelomingError> {
+pub(crate) fn upsert_artist_maps(channel_id: i64, artists: &[ArtistResponse]) -> Result<usize, MelomingError> {
     let db = DB.lock();
     let mut count = 0usize;
     for a in artists {

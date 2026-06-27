@@ -6,9 +6,6 @@ import { showNotification } from '../utils.js';
 import { switchTab } from './navigation.js';
 
 const PLACEHOLDER_AVATAR = './assets/images/app-icon.png';
-/** OAuth·보내기 API 안정화 전까지 UI 잠금 */
-const MELOMING_COMING_SOON = true;
-const COMING_SOON_MSG = '개발 중입니다.';
 
 let pendingOAuthState = null;
 let accountMenuOpen = false;
@@ -103,10 +100,6 @@ async function loadChannelId() {
 }
 
 async function startMelomingLogin(triggerBtn) {
-  if (MELOMING_COMING_SOON) {
-    showNotification(COMING_SOON_MSG, 'info');
-    return;
-  }
   if (triggerBtn) triggerBtn.disabled = true;
   try {
     const res = await invoke('meloming_oauth_start');
@@ -259,10 +252,6 @@ export async function initMelomingListeners() {
 
   if (btnPush) {
     btnPush.onclick = async () => {
-      if (MELOMING_COMING_SOON) {
-        showNotification(COMING_SOON_MSG, 'info');
-        return;
-      }
       const channelId = input?.value?.trim() || null;
       btnPush.disabled = true;
       setStatus('멜로밍에 보내는 중… (로그인 필요)');
@@ -270,6 +259,10 @@ export async function initMelomingListeners() {
         const res = await invoke('meloming_push_songs', { channelId });
         let msg = `보내기 완료 — ${res.pushed}곡 (신규 ${res.created}, 갱신 ${res.updated})`;
         if (res.skipped > 0) msg += `, 건너뜀 ${res.skipped}곡`;
+        if (res.errors?.length) {
+          const preview = res.errors.slice(0, 2).join('\n');
+          msg += res.skipped > 2 ? `\n${preview}\n…` : `\n${preview}`;
+        }
         setStatus(msg, res.errors?.length > 0);
         showNotification(msg, res.errors?.length > 0 ? 'warning' : 'success');
         if (res.errors?.length) {

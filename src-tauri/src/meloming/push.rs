@@ -9,7 +9,7 @@ use crate::types::SongMetadata;
 use rusqlite::params;
 
 use super::client::{MelomingClient, MelomingError, SongResponse};
-use super::sync::normalize_youtube_watch;
+use super::sync::{normalize_youtube_watch, upsert_artist_maps};
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -49,6 +49,10 @@ struct SongWriteBody {
     category_ids: Option<Vec<i64>>,
 }
 
+fn normalize_artist_name(name: &str) -> String {
+    name.trim().to_lowercase()
+}
+
 fn resolve_artist_id(song: &SongMetadata, channel_id: i64) -> Option<i64> {
     if let Some(id) = song.meloming_artist_id {
         return Some(id);
@@ -58,12 +62,29 @@ fn resolve_artist_id(song: &SongMetadata, channel_id: i64) -> Option<i64> {
         return None;
     }
     let db = DB.lock();
-    db.query_row(
+    if let Ok(id) = db.query_row(
         "SELECT meloming_artist_id FROM Meloming_Artist_Map WHERE channel_id = ? AND local_name = ?",
         params![channel_id, name],
         |row| row.get(0),
-    )
-    .ok()
+    ) {
+        return Some(id);
+    }
+
+    let target = normalize_artist_name(name);
+    let mut stmt = db
+        .prepare("SELECT meloming_artist_id, local_name FROM Meloming_Artist_Map WHERE channel_id = ?")
+        .ok()?;
+    let rows = stmt
+        .query_map(params![channel_id], |row| {
+            Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+        })
+        .ok()?;
+    for row in rows.flatten() {
+        if normalize_artist_name(&row.1) == target {
+            return Some(row.0);
+        }
+    }
+    None
 }
 
 fn original_url_for_push(song: &SongMetadata) -> Option<String> {
@@ -79,8 +100,14 @@ fn original_url_for_push(song: &SongMetadata) -> Option<String> {
 fn song_to_body(song: &SongMetadata, channel_id: i64, for_create: bool) -> Result<SongWriteBody, String> {
     let artist_id = resolve_artist_id(song, channel_id);
     if for_create && artist_id.is_none() {
+        let artist_hint = song
+            .artist
+            .as_deref()
+            .filter(|s| !s.trim().is_empty())
+            .map(|s| format!(" (아티스트: {s})"))
+            .unwrap_or_else(|| " (아티스트 미입력)".into());
         return Err(format!(
-            "「{}」: 멜로밍 아티스트 ID를 찾을 수 없습니다. Pull 후 아티스트 이름을 맞추거나 meloming_artist_id를 설정해 주세요.",
+            "「{}」{artist_hint}: 멜로밍 아티스트 ID를 찾을 수 없습니다. 멜로밍 웹에서 아티스트를 등록하거나, 「가져오기」로 매핑을 갱신한 뒤 아티스트 이름을 맞춰 주세요.",
             song.title
         ));
     }
@@ -122,6 +149,9 @@ fn apply_push_response(song: &mut SongMetadata, channel_id: i64, resp: &SongResp
 
 pub async fn push_channel(paths: &AppPaths, channel_id: i64) -> Result<PushResult, MelomingError> {
     let token = access_token().await?;
+    let artists = MelomingClient::list_artists(channel_id).await.unwrap_or_default();
+    upsert_artist_maps(channel_id, &artists)?;
+
     let mut songs = get_songs_internal(paths.clone()).await.map_err(MelomingError::Message)?;
 
     let mut result = PushResult {

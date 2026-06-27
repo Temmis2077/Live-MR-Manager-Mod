@@ -333,6 +333,8 @@ sequenceDiagram
 | `/login`, `/account` | 2A+ | 웹 OAuth 테스트 (추후 정리 예정) |
 | `/faq`, `/qa` | 2A | 동기화·숙련도/난이도 Q&A |
 | `/download` | 2A | GitHub Releases 링크 |
+| `/privacy` | 2A | 개인정보 처리방침 (앱·웹 통합) |
+| `/terms` | 2A | 이용약관 |
 | `/changelog` | 4 | 릴리즈 노트 |
 | `POST /api/oauth/exchange` | 2B | 앱 토큰 교환 프록시 |
 | `GET /api/oauth/login` | 2A+ | 웹 authorize 시작 |
@@ -357,12 +359,12 @@ sequenceDiagram
 
 ```json
 {
-  "version": "0.4.11",
+  "version": "0.4.13",
   "minSupportedVersion": "0.4.0",
-  "releaseUrl": "https://github.com/AutumnColor77/Live-MR-Manager/releases/tag/v0.4.11",
-  "changelogUrl": "https://lmrm.vercel.app/changelog#v0.4.11",
-  "notes": "멜로밍 Pull, KEY/BPM 영속화 …",
-  "publishedAt": "2026-06-02T00:00:00Z",
+  "releaseUrl": "https://github.com/AutumnColor77/Live-MR-Manager/releases/tag/v0.4.13",
+  "changelogUrl": "https://lmrm.vercel.app/changelog#v0.4.13",
+  "notes": "Companion 개인정보 처리방침(/privacy), 버전 0.4.13 …",
+  "publishedAt": "2026-06-27T00:00:00Z",
   "critical": false
 }
 ```
