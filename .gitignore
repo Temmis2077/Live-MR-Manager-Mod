@@ -30,6 +30,7 @@ logs
 !tauri.conf.json
 !package.json
 !package-lock.json
+!web/companion/tsconfig.json
 !src-tauri/src/seed_tags.json
 target_old/
 
@@ -54,3 +55,4 @@ src-tauri/LiveMR_*.csv
 src-tauri/LiveMR_*.json
 
 backup/
+.env*
