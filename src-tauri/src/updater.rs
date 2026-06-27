@@ -5,7 +5,8 @@ use std::time::Duration;
 const GITHUB_OWNER: &str = "AutumnColor77";
 const GITHUB_REPO: &str = "Live-MR-Manager";
 const USER_AGENT: &str = "Live-MR-Manager-UpdateChecker";
-const CHECK_INTERVAL: Duration = Duration::from_secs(6 * 60 * 60);
+/// 앱 최초 기동 후 한 번만 자동 확인 (이후는 설정의 「업데이트 확인」 버튼)
+const STARTUP_CHECK_DELAY: Duration = Duration::from_secs(8);
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -171,12 +172,7 @@ pub fn start_update_checker(app: AppHandle) {
     }
 
     tauri::async_runtime::spawn(async move {
-        tokio::time::sleep(Duration::from_secs(8)).await;
-        check_and_notify(app.clone()).await;
-
-        loop {
-            tokio::time::sleep(CHECK_INTERVAL).await;
-            check_and_notify(app.clone()).await;
-        }
+        tokio::time::sleep(STARTUP_CHECK_DELAY).await;
+        check_and_notify(app).await;
     });
 }

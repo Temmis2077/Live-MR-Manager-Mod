@@ -1,5 +1,21 @@
 # Release Notes
 
+## v0.4.15 (2026-06-27)
+
+멜로밍 노래책 동기화 UI 일시 중단 — OpenAPI 아티스트·카테고리 등록 API 대기.
+
+### 멜로밍 노래책
+
+- **「노래책 동기화」 업데이트 예정**: 설정 버튼 클릭 시 Push를 실행하지 않고 안내 메시지를 표시합니다. (`MELOMING_SYNC_COMING_SOON`)
+- **로그인은 유지**: 우측 상단 **「멜로밍 로그인」**·OAuth는 계속 사용할 수 있습니다.
+- **배경**: 멜로밍 [노래책 OpenAPI](https://developers.meloming.com/docs/openapi/reference/songbook)에 아티스트·카테고리 **생성 API가 없어** 로컬 라이브러리와 채널 노래책을 안정적으로 맞출 수 없습니다. Push 코드(v0.4.14)는 유지하며 API 지원 후 잠금 해제 예정.
+
+### 메타데이터
+
+- `package.json`, `Cargo.toml`, `tauri.conf.json`, UI 타이틀·매뉴얼·Companion FAQ를 **0.4.15**로 통일.
+
+---
+
 ## v0.4.14 (2026-06-27)
 
 유튜브 메타데이터 자동 보강, 멜로밍 Push 안정화, 설정 법적 고지.

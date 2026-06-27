@@ -1,5 +1,5 @@
 import type { LegalSection } from "@/lib/legal/privacy-policy";
-import { GITHUB_ISSUES_URL } from "@/lib/legal/privacy-policy";
+import { GITHUB_ISSUES_URL, QA_URL } from "@/lib/legal/privacy-policy";
 
 export const TERMS_EFFECTIVE_DATE = "2026년 6월 27일";
 
@@ -12,7 +12,8 @@ export const TERMS_SECTIONS: LegalSection[] = [
       "서비스는 현재 베타(Beta) 단계로 제공되며, 기능·UI·연동 범위가 예고 없이 변경될 수 있습니다.",
       "운영자: 개인 개발자 AutumnColor77",
       `시행일: ${TERMS_EFFECTIVE_DATE}`,
-      `문의: GitHub Issues (${GITHUB_ISSUES_URL})`,
+      `일반 문의·커뮤니티: 문의 허브(${QA_URL}) 및 Discord(해당 페이지 안내)`,
+      `버그·개인정보·공식 신고: GitHub Issues (${GITHUB_ISSUES_URL})`,
     ],
   },
   {

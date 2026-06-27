@@ -18,11 +18,38 @@ use tauri::{AppHandle, State};
 use super::settings::{KEY_CHANNEL_ID, KEY_CHANNEL_INPUT};
 
 async fn resolve_input(input: Option<String>) -> Result<(ResolvedChannel, String), String> {
-    let raw = input
+    if let Some(raw) = input.filter(|s| !s.trim().is_empty()) {
+        let resolved = MelomingClient::resolve_channel(&raw)
+            .await
+            .map_err(|e| e.to_string())?;
+        return Ok((resolved, raw));
+    }
+
+    if let Some(saved) = get_setting(KEY_CHANNEL_INPUT).or_else(|| get_setting(KEY_CHANNEL_ID)) {
+        let resolved = MelomingClient::resolve_channel(&saved)
+            .await
+            .map_err(|e| e.to_string())?;
+        return Ok((resolved, saved));
+    }
+
+    if !oauth_status().logged_in {
+        return Err(
+            "멜로밍 로그인이 필요합니다. 우측 상단에서 로그인한 뒤 「노래책 동기화」를 실행해 주세요."
+                .into(),
+        );
+    }
+
+    let token = oauth::access_token().await.map_err(|e| e.to_string())?;
+    let info = oauth::fetch_userinfo(&token)
+        .await
+        .map_err(|e| e.to_string())?;
+    let raw = info
+        .sub
         .filter(|s| !s.trim().is_empty())
-        .or_else(|| get_setting(KEY_CHANNEL_INPUT))
-        .or_else(|| get_setting(KEY_CHANNEL_ID))
-        .ok_or_else(|| "치지직·SOOP(숲)·씨미 주소 또는 채널 정보를 입력해 주세요.".to_string())?;
+        .ok_or_else(|| {
+            "로그인 계정에서 멜로밍 채널을 찾지 못했습니다. 멜로밍에 채널이 연결되어 있는지 확인해 주세요."
+                .to_string()
+        })?;
     let resolved = MelomingClient::resolve_channel(&raw)
         .await
         .map_err(|e| e.to_string())?;
@@ -92,31 +119,46 @@ pub async fn meloming_get_user_profile() -> Result<MelomingUserProfile, String> 
         });
     }
 
-    let Some(channel_id) = resolve_saved_channel_id().await else {
-        return Ok(MelomingUserProfile {
-            logged_in: true,
-            nickname: Some("멜로밍".into()),
-            profile_image_url: None,
-        });
+    let userinfo = match oauth::access_token().await {
+        Ok(token) => oauth::fetch_userinfo(&token).await.ok(),
+        Err(_) => None,
     };
 
-    let channel = MelomingClient::get_channel_info(channel_id)
-        .await
-        .map_err(|e| e.to_string())?;
-    let profile = MelomingClient::get_channel_profile(channel_id)
-        .await
-        .ok();
+    if let Some(channel_id) = resolve_saved_channel_id().await {
+        let channel = MelomingClient::get_channel_info(channel_id)
+            .await
+            .map_err(|e| e.to_string())?;
+        let profile = MelomingClient::get_channel_profile(channel_id)
+            .await
+            .ok();
 
-    let nickname = profile
+        let nickname = profile
+            .as_ref()
+            .and_then(|p| p.nickname.clone())
+            .filter(|s| !s.trim().is_empty())
+            .or_else(|| Some(channel.name.clone()));
+
+        return Ok(MelomingUserProfile {
+            logged_in: true,
+            nickname,
+            profile_image_url: channel.profile_image_url,
+        });
+    }
+
+    let nickname = userinfo
         .as_ref()
-        .and_then(|p| p.nickname.clone())
+        .and_then(|u| u.nickname.clone().or_else(|| u.name.clone()))
         .filter(|s| !s.trim().is_empty())
-        .or_else(|| Some(channel.name.clone()));
+        .or_else(|| Some("멜로밍".into()));
+    let profile_image_url = userinfo
+        .as_ref()
+        .and_then(|u| u.picture.clone())
+        .filter(|s| !s.trim().is_empty());
 
     Ok(MelomingUserProfile {
         logged_in: true,
         nickname,
-        profile_image_url: channel.profile_image_url,
+        profile_image_url,
     })
 }
 

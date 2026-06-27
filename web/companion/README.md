@@ -9,7 +9,7 @@
 | 경로 | 용도 |
 |------|------|
 | `/` | 연동 안내, 미니앱 등록용 랜딩 |
-| `/faq`, `/qa` | FAQ·Q&A |
+| `/faq`, `/qa` | FAQ·문의 허브 (Discord, GitHub Issues) |
 | `/privacy` | 개인정보 처리방침 (앱·웹 통합) |
 | `/terms` | 이용약관 |
 | `/download` | GitHub Releases 링크 |
@@ -48,7 +48,15 @@ MELOMING_CLIENT_SECRET=
 # 선택: Redirect URI 고정 (미설정 시 Origin + /oauth/callback)
 # NEXT_PUBLIC_OAUTH_REDIRECT_URI=https://lmrm.vercel.app/oauth/callback
 NEXT_PUBLIC_APP_SCHEME=live-mr-manager
+# Discord 영구 초대 (프로덕션 Vercel에도 설정)
+NEXT_PUBLIC_DISCORD_INVITE_URL=https://discord.gg/qfJnk3VJyf
 ```
+
+문의 채널·Discord 서버 설정: [`docs/DISCORD_SETUP.md`](../../docs/DISCORD_SETUP.md)
+
+## GitHub Issues
+
+버그·멜로밍 연동·기능 제안 템플릿: [`.github/ISSUE_TEMPLATE/`](../../.github/ISSUE_TEMPLATE/)
 
 ## Vercel 배포
 

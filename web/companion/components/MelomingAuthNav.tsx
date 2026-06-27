@@ -6,6 +6,13 @@ import { useCallback, useEffect, useState } from "react";
 type Session = {
   loggedIn: boolean;
   nickname: string | null;
+  profileImageUrl: string | null;
+};
+
+const EMPTY_SESSION: Session = {
+  loggedIn: false,
+  nickname: null,
+  profileImageUrl: null,
 };
 
 export function MelomingAuthNav() {
@@ -16,13 +23,13 @@ export function MelomingAuthNav() {
     try {
       const res = await fetch("/api/auth/session", { cache: "no-store" });
       if (!res.ok) {
-        setSession({ loggedIn: false, nickname: null });
+        setSession(EMPTY_SESSION);
         return;
       }
       const data = (await res.json()) as Session;
       setSession(data);
     } catch {
-      setSession({ loggedIn: false, nickname: null });
+      setSession(EMPTY_SESSION);
     }
   }, []);
 
@@ -52,10 +59,25 @@ export function MelomingAuthNav() {
     );
   }
 
+  const displayName = session.nickname || "멜로밍";
+
   return (
     <div className="auth-nav auth-nav-user">
-      <Link href="/account" className="auth-nav-name">
-        {session.nickname || "멜로밍"}
+      <Link href="/account" className="auth-nav-profile">
+        {session.profileImageUrl ? (
+          <img
+            src={session.profileImageUrl}
+            alt=""
+            className="auth-nav-avatar"
+            width={28}
+            height={28}
+          />
+        ) : (
+          <span className="auth-nav-avatar auth-nav-avatar-fallback" aria-hidden>
+            {displayName.charAt(0)}
+          </span>
+        )}
+        <span className="auth-nav-name">{displayName}</span>
       </Link>
       <button
         type="button"

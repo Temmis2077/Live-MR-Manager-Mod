@@ -8,7 +8,7 @@
   <link rel="stylesheet" href="styles/lyric-drawer.css" />
   <script src="js/libs/Sortable.min.js"></script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Live MR Manager(Beta) v0.4.14 | Performer Dash</title>
+  <title>Live MR Manager(Beta) v0.4.15 | Performer Dash</title>
   <style>
     /* --- Color Palette UI --- */
     .color-palette-wrapper { display: flex; flex-direction: column; }
@@ -76,7 +76,7 @@
     <div class="titlebar-drag-region" data-tauri-drag-region>
       <div class="titlebar-logo">
         <img src="./assets/images/app-icon.png" alt="Logo" style="width: 18px; height: 18px; object-fit: contain;"> Live
-        MR Manager(Beta) v0.4.14
+        MR Manager(Beta) v0.4.15
       </div>
     </div>
     <div data-tauri-drag-region class="titlebar-drag-fill"></div>
@@ -702,22 +702,15 @@
               </div>
               <div class="ai-model-card">
                 <div class="ai-info-left">
-                  <h2 class="ai-title-large">노래책 동기화</h2>
-                  <div class="ai-model-desc" id="meloming-settings-desc">
-                    멜로밍 노래책과 동기화합니다. 치지직·SOOP(숲)·씨미 채널 주소, 멜로밍 webPath, 숫자 채널 ID를 입력할 수 있습니다.
-                  </div>
-                  <div class="settings-field">
-                    <label for="meloming-channel-id" class="settings-field-label">방송 채널 주소</label>
-                    <input type="text" id="meloming-channel-id" class="settings-field-input"
-                      placeholder="chzzk.naver.com/… · sooplive.co.kr/station/… · ci.me/@…" autocomplete="off">
+                  <h2 class="ai-title-large">멜로밍 노래책 동기화</h2>
+                  <div class="ai-model-desc">
+                    우측 상단에서 멜로밍 로그인할 수 있습니다.
+                    「노래책 동기화」는 멜로밍 OpenAPI 아티스트·카테고리 등록 API 지원 후 제공 예정입니다.
                   </div>
                   <div id="meloming-status" class="settings-status-text"></div>
                 </div>
                 <div class="ai-actions-right">
-                  <button id="btn-meloming-save-channel" class="btn-ai-action secondary">채널 저장</button>
-                  <button id="btn-meloming-test" class="btn-ai-action secondary">연결 테스트</button>
-                  <button id="btn-meloming-pull" class="btn-ai-action secondary">가져오기</button>
-                  <button id="btn-meloming-push" class="btn-ai-action">멜로밍에 보내기</button>
+                  <button id="btn-meloming-sync" class="btn-ai-action">노래책 동기화</button>
                 </div>
               </div>
             </section>
@@ -823,6 +816,32 @@
                   <button id="btn-download-model" class="btn-ai-action">모델 다운로드</button>
                   <button id="btn-delete-model" class="btn-ai-action danger" style="display: none;">모델 삭제</button>
                   <button id="btn-open-cache" class="btn-ai-action secondary">MR 폴더 열기</button>
+                </div>
+              </div>
+            </section>
+
+            <section class="settings-group">
+              <div class="group-header">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+                  <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                </svg>
+                <h3>도움말 · 문의</h3>
+              </div>
+              <div class="ai-model-card">
+                <div class="ai-info-left">
+                  <h2 class="ai-title-large">FAQ · Discord · 버그 신고</h2>
+                  <div class="ai-model-desc">
+                    설치·멜로밍 연동·사용법은 FAQ와 Discord에서 안내합니다. 재현 가능한 버그는 GitHub Issues로 등록해 주세요.
+                  </div>
+                </div>
+                <div class="ai-actions-right support-actions-grid">
+                  <button id="btn-open-faq" class="btn-ai-action secondary" type="button">도움말 (FAQ)</button>
+                  <button id="btn-open-qa" class="btn-ai-action secondary" type="button">문의하기</button>
+                  <button id="btn-open-discord" class="btn-ai-action secondary" type="button">Discord</button>
+                  <button id="btn-open-bug-report" class="btn-ai-action" type="button">버그 신고</button>
                 </div>
               </div>
             </section>

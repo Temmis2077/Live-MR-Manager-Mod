@@ -295,14 +295,15 @@ sequenceDiagram
 - **토큰 교환**: Tauri에서 `MELOMING_USE_COMPANION_EXCHANGE=true` 시 `POST https://lmrm.vercel.app/api/oauth/exchange` (Client Secret은 Vercel env)
 - Redirect URI (등록·코드 공통): `https://lmrm.vercel.app/oauth/callback`
 
-### 6.7 OAuth 실연동 상태 (2026-06-09)
+### 6.7 OAuth·동기화 UI 상태 (2026-06-27, v0.4.15)
 
 | 단계 | 상태 |
 |------|------|
 | authorize · code · deep-link | ✅ 동작 |
-| `POST /oauth/token` | ❌ 500 INTERNAL_ERROR 또는 401 Invalid redirect_uri (멜로밍 측 확인 중) |
-| 앱 UI | 「멜로밍 로그인」「멜로밍에 보내기」→ **「개발 중입니다.」** (`MELOMING_COMING_SOON`) |
-| Pull · 연결 테스트 · 채널 저장 | ✅ OAuth 불필요, 사용 가능 |
+| `POST /oauth/token` | ⚠️ 간헐적 500 INTERNAL_ERROR 또는 401 Invalid redirect_uri (멜로밍 측) |
+| 앱 UI — 「멜로밍 로그인」 | ✅ 활성 (`MELOMING_COMING_SOON` 해제, v0.4.13) |
+| 앱 UI — 「노래책 동기화」(Push) | ⏸ **업데이트 예정** (`MELOMING_SYNC_COMING_SOON`, v0.4.15) — OpenAPI 아티스트·카테고리 **POST** 부재 |
+| Pull · 연결 테스트 · 채널 저장 (백엔드) | ✅ Rust 커맨드 존재; 설정 UI는 v0.4.15 기준 동기화 카드만 노출 |
 
 ### 6.8 플랫폼 채널 주소 (Pull용)
 
@@ -359,11 +360,11 @@ sequenceDiagram
 
 ```json
 {
-  "version": "0.4.14",
+  "version": "0.4.15",
   "minSupportedVersion": "0.4.0",
-  "releaseUrl": "https://github.com/AutumnColor77/Live-MR-Manager/releases/tag/v0.4.14",
-  "changelogUrl": "https://lmrm.vercel.app/changelog#v0.4.14",
-  "notes": "유튜브 메타 자동 보강, 멜로밍 Push 안정화, 설정 법적 고지, 버전 0.4.14 …",
+  "releaseUrl": "https://github.com/AutumnColor77/Live-MR-Manager/releases/tag/v0.4.15",
+  "changelogUrl": "https://lmrm.vercel.app/changelog#v0.4.15",
+  "notes": "노래책 동기화 업데이트 예정, 멜로밍 로그인 유지, 버전 0.4.15 …",
   "publishedAt": "2026-06-27T00:00:00Z",
   "critical": false
 }
@@ -435,7 +436,7 @@ flowchart TB
 
 | 위치 | 변경 |
 |------|------|
-| settings-page | 방송 채널 주소(치지직·SOOP·씨미), Pull, (로그인·보내기 — 개발 중) |
+| settings-page | 멜로밍 로그인(헤더), 「노래책 동기화」(업데이트 예정, v0.4.15) |
 | 메타데이터 모달 | 숙련도·난이도 1–5, URL 접이식 |
 | 라이브러리 / 관리자 | 동기화 상태 배지, 일괄 Pull/Push |
 | 컨텍스트 메뉴 | 「멜로밍에 업로드」「가져오기」 |
@@ -561,7 +562,7 @@ flowchart LR
 | 리스크 | 완화 |
 |--------|------|
 | 앱등록 링크 → 미니앱 페이지 | 2A 전제, 경로 B/C |
-| OAuth 심사·토큰 500/401 | 2A·멜로밍 지원, UI `MELOMING_COMING_SOON` 잠금 |
+| OAuth 심사·토큰 500/401 | 2A·멜로밍 지원; 동기화는 `MELOMING_SYNC_COMING_SOON` (v0.4.15) |
 | KEY/BPM 미저장 | Phase 0 필수 |
 | `artistId` 필수 | Map + 선택 UI |
 | 아티스트 생성 API 없음 | 멜로밍 웹 선등록 안내 |

@@ -1,4 +1,6 @@
+import Image from "next/image";
 import { SiteHeader } from "@/components/SiteHeader";
+import { SITE_ICON, SITE_NAME } from "@/lib/site";
 
 export const metadata = {
   title: "멜로밍 로그인",
@@ -10,6 +12,13 @@ export default function LoginPage() {
       <SiteHeader currentPath="/login" />
       <main>
         <section className="oauth-box" style={{ marginTop: "2rem" }}>
+          <Image
+            src={SITE_ICON}
+            alt={SITE_NAME}
+            width={64}
+            height={64}
+            className="oauth-icon"
+          />
           <span className="badge">웹 로그인</span>
           <h1>멜로밍 계정으로 로그인</h1>
           <p>

@@ -3,6 +3,8 @@ export const PRIVACY_EFFECTIVE_DATE = "2026년 6월 27일";
 export const GITHUB_ISSUES_URL =
   "https://github.com/AutumnColor77/Live-MR-Manager/issues";
 
+export const QA_URL = "https://lmrm.vercel.app/qa";
+
 export type LegalTable = {
   headers: string[];
   rows: string[][];
@@ -26,7 +28,8 @@ export const PRIVACY_SECTIONS: LegalSection[] = [
       "본 개인정보 처리방침은 서비스 이용 과정에서 처리되는 정보의 범위, 목적, 보유 기간 등을 설명합니다.",
       "개인정보 처리자: 개인 개발자 AutumnColor77",
       `시행일: ${PRIVACY_EFFECTIVE_DATE}`,
-      `개인정보 관련 문의: GitHub Issues (${GITHUB_ISSUES_URL})`,
+      `일반 문의·커뮤니티: 문의 허브(${QA_URL}) 및 Discord(해당 페이지 안내). Discord 대화는 운영 목적으로 확인될 수 있으니 토큰·비밀번호 등 민감 정보는 올리지 마세요.`,
+      `개인정보·공식 버그 신고: GitHub Issues (${GITHUB_ISSUES_URL})`,
     ],
   },
   {

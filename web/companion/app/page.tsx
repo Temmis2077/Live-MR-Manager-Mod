@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { SiteHeader } from "@/components/SiteHeader";
-import { GITHUB_RELEASES_URL } from "@/lib/site";
 
 export default function HomePage() {
   return (

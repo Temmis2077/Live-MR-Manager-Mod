@@ -4,6 +4,14 @@
 import { state } from '../state.js';
 import { elements } from '../ui/elements.js';
 import { invoke } from '../tauri-bridge.js';
+import {
+  FAQ_URL,
+  GITHUB_ISSUES_BUG_URL,
+  PRIVACY_URL,
+  QA_URL,
+  TERMS_URL,
+  resolveDiscordUrl,
+} from '../companion-links.js';
 
 let audioSettingsSaveTimer = null;
 
@@ -889,24 +897,38 @@ export function initControlListeners() {
   const appVersionDesc = document.getElementById("app-version-desc");
   const btnOpenPrivacyPolicy = document.getElementById("btn-open-privacy-policy");
   const btnOpenTermsOfService = document.getElementById("btn-open-terms-of-service");
+  const btnOpenFaq = document.getElementById("btn-open-faq");
+  const btnOpenQa = document.getElementById("btn-open-qa");
+  const btnOpenDiscord = document.getElementById("btn-open-discord");
+  const btnOpenBugReport = document.getElementById("btn-open-bug-report");
 
-  const openCompanionLegalPage = async (url) => {
+  const openCompanionPage = async (url) => {
     const { showNotification } = await import('../utils.js');
     try {
       await invoke("open_app_update_page", { url });
     } catch (err) {
-      console.error("[Legal] Failed to open page:", err);
+      console.error("[Companion] Failed to open page:", err);
       showNotification("브라우저에서 페이지를 열지 못했습니다.", "error");
     }
   };
 
   if (btnOpenPrivacyPolicy) {
-    btnOpenPrivacyPolicy.onclick = () =>
-      openCompanionLegalPage("https://lmrm.vercel.app/privacy");
+    btnOpenPrivacyPolicy.onclick = () => openCompanionPage(PRIVACY_URL);
   }
   if (btnOpenTermsOfService) {
-    btnOpenTermsOfService.onclick = () =>
-      openCompanionLegalPage("https://lmrm.vercel.app/terms");
+    btnOpenTermsOfService.onclick = () => openCompanionPage(TERMS_URL);
+  }
+  if (btnOpenFaq) {
+    btnOpenFaq.onclick = () => openCompanionPage(FAQ_URL);
+  }
+  if (btnOpenQa) {
+    btnOpenQa.onclick = () => openCompanionPage(QA_URL);
+  }
+  if (btnOpenDiscord) {
+    btnOpenDiscord.onclick = () => openCompanionPage(resolveDiscordUrl());
+  }
+  if (btnOpenBugReport) {
+    btnOpenBugReport.onclick = () => openCompanionPage(GITHUB_ISSUES_BUG_URL);
   }
 
   if (btnCheckAppUpdate) {

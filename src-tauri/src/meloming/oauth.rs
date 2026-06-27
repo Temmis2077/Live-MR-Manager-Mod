@@ -11,10 +11,11 @@ use tauri_plugin_opener::OpenerExt;
 
 static OAUTH_CALLBACK_DEDUP: Lazy<Mutex<Option<String>>> = Lazy::new(|| Mutex::new(None));
 
-use super::client::{MelomingError, BASE_URL};
+use super::client::{MelomingClient, MelomingError, BASE_URL};
 use super::settings::{
-    clear_setting, get_setting, set_setting, KEY_ACCESS_TOKEN, KEY_API_KEY, KEY_CLIENT_ID,
-    KEY_CLIENT_SECRET, KEY_EXPIRES_AT, KEY_OAUTH_STATE, KEY_OAUTH_VERIFIER, KEY_REFRESH_TOKEN,
+    clear_setting, get_setting, set_setting, KEY_ACCESS_TOKEN, KEY_API_KEY, KEY_CHANNEL_ID,
+    KEY_CHANNEL_INPUT, KEY_CLIENT_ID, KEY_CLIENT_SECRET, KEY_EXPIRES_AT, KEY_OAUTH_STATE,
+    KEY_OAUTH_VERIFIER, KEY_REFRESH_TOKEN,
 };
 
 pub const REDIRECT_URI: &str = "https://lmrm.vercel.app/oauth/callback";
@@ -36,6 +37,32 @@ struct TokenResponse {
     #[serde(default)]
     refresh_token: Option<String>,
     expires_in: i64,
+    #[serde(default)]
+    scope: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct IntrospectResponse {
+    #[serde(default)]
+    active: Option<bool>,
+    #[serde(default)]
+    scope: Option<String>,
+    #[serde(default)]
+    sub: Option<String>,
+    #[serde(default)]
+    username: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct UserInfo {
+    #[serde(default)]
+    pub sub: Option<String>,
+    #[serde(default)]
+    pub nickname: Option<String>,
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub picture: Option<String>,
 }
 
 fn random_pkce_verifier() -> String {
@@ -152,6 +179,96 @@ async fn post_token_form(params: &[(&str, String)]) -> Result<TokenResponse, Mel
     parse_token_response(status, body, "form").await
 }
 
+async fn introspect_token(access_token: &str) -> Result<IntrospectResponse, MelomingError> {
+    let res = token_http_client()
+        .post(format!("{BASE_URL}/oauth/introspect"))
+        .header("Accept", "application/json")
+        .json(&serde_json::json!({
+            "token": access_token,
+            "token_type_hint": "access_token",
+        }))
+        .send()
+        .await
+        .map_err(|e| MelomingError::Message(e.to_string()))?;
+    let status = res.status();
+    let body = res
+        .text()
+        .await
+        .map_err(|e| MelomingError::Message(e.to_string()))?;
+    if !status.is_success() {
+        return Err(MelomingError::Http(status.as_u16(), body));
+    }
+    serde_json::from_str(&body)
+        .map_err(|e| MelomingError::Message(format!("introspect JSON: {e}; {body}")))
+}
+
+pub async fn fetch_userinfo(access_token: &str) -> Result<UserInfo, MelomingError> {
+    let res = token_http_client()
+        .get(format!("{BASE_URL}/oauth/userinfo"))
+        .header("Accept", "application/json")
+        .header("Authorization", format!("Bearer {access_token}"))
+        .send()
+        .await
+        .map_err(|e| MelomingError::Message(e.to_string()))?;
+    let status = res.status();
+    let body = res
+        .text()
+        .await
+        .map_err(|e| MelomingError::Message(e.to_string()))?;
+    if !status.is_success() {
+        return Err(MelomingError::Http(status.as_u16(), body));
+    }
+    serde_json::from_str(&body)
+        .map_err(|e| MelomingError::Message(format!("userinfo JSON: {e}; {body}")))
+}
+
+async fn try_persist_channel_from_userinfo(access_token: &str) {
+    if get_setting(KEY_CHANNEL_ID).is_some() {
+        return;
+    }
+    let Ok(info) = fetch_userinfo(access_token).await else {
+        return;
+    };
+    let Some(sub) = info.sub.filter(|s| !s.trim().is_empty()) else {
+        return;
+    };
+    if let Ok(resolved) = MelomingClient::resolve_channel(&sub).await {
+        let _ = set_setting(KEY_CHANNEL_INPUT, sub.trim());
+        let _ = set_setting(KEY_CHANNEL_ID, &resolved.id.to_string());
+    }
+}
+
+async fn log_token_scope(access_token: &str, token_scope: Option<&str>) {
+    if let Some(scope) = token_scope.filter(|s| !s.trim().is_empty()) {
+        let _ = crate::audio_player::sys_log(&format!(
+            "[Meloming OAuth] token scope (from /oauth/token): {scope}"
+        ));
+    }
+
+    match introspect_token(access_token).await {
+        Ok(info) => {
+            let active = info.active.unwrap_or(false);
+            let scope = info.scope.as_deref().unwrap_or("(none)");
+            let subject = info
+                .username
+                .as_deref()
+                .or(info.sub.as_deref())
+                .unwrap_or("—");
+            let _ = crate::audio_player::sys_log(&format!(
+                "[Meloming OAuth] introspect active={active} scope={scope} subject={subject}"
+            ));
+            if !scope.split_whitespace().any(|s| s == "songbook:write") {
+                let _ = crate::audio_player::sys_log(
+                    "[Meloming OAuth] warning: songbook:write scope missing — 보내기(Push)가 403으로 실패할 수 있습니다.",
+                );
+            }
+        }
+        Err(e) => {
+            let _ = crate::audio_player::sys_log(&format!("[Meloming OAuth] introspect failed: {e}"));
+        }
+    }
+}
+
 async fn post_token_via_companion(code: &str, verifier: &str) -> Result<TokenResponse, MelomingError> {
     let res = token_http_client()
         .post(COMPANION_EXCHANGE_URL)
@@ -257,6 +374,9 @@ pub async fn exchange_code(code: &str, state: &str) -> Result<(), MelomingError>
         token.expires_in,
     )
     .map_err(MelomingError::Message)?;
+
+    log_token_scope(&token.access_token, token.scope.as_deref()).await;
+    try_persist_channel_from_userinfo(&token.access_token).await;
 
     let _ = clear_setting(KEY_OAUTH_VERIFIER);
     let _ = clear_setting(KEY_OAUTH_STATE);

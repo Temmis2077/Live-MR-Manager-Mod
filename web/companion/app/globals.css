@@ -59,10 +59,17 @@ main {
 }
 
 .brand {
-  font-weight: 700;
-  font-size: 1.05rem;
-  color: var(--text);
+  display: inline-flex;
+  align-items: center;
   text-decoration: none;
+  flex-shrink: 0;
+}
+
+.brand-logo {
+  display: block;
+  width: auto;
+  height: 40px;
+  max-width: min(200px, 42vw);
 }
 
 .nav {
@@ -109,6 +116,37 @@ main {
   gap: 0.5rem;
 }
 
+.auth-nav-profile {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  text-decoration: none;
+  color: inherit;
+}
+
+.auth-nav-profile:hover .auth-nav-name {
+  color: var(--accent);
+}
+
+.auth-nav-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.auth-nav-avatar-fallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
 .auth-nav-name {
   color: var(--text);
   font-weight: 600;
@@ -138,6 +176,40 @@ main {
   margin: 1rem 0 1.25rem;
   display: grid;
   gap: 0.75rem;
+}
+
+.account-profile {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 0.25rem;
+}
+
+.account-profile h2 {
+  margin: 0 0 0.25rem;
+}
+
+.account-profile p {
+  margin: 0;
+}
+
+.account-avatar {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.account-avatar-fallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 1.5rem;
+  font-weight: 700;
 }
 
 .account-dl div {
@@ -194,6 +266,23 @@ main {
   margin: 0 0 1rem;
   color: var(--text-muted);
   font-size: 0.92rem;
+}
+
+.support-hub .support-card-primary {
+  border-color: rgba(201, 162, 39, 0.35);
+}
+
+.support-issue-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.support-note {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--text-muted);
 }
 
 .btn {
@@ -313,6 +402,15 @@ main {
   border-color: var(--accent);
   color: var(--accent);
   background: var(--accent-soft);
+}
+
+.oauth-icon {
+  display: block;
+  width: 64px;
+  height: 64px;
+  margin: 0 auto 1rem;
+  border-radius: 14px;
+  object-fit: contain;
 }
 
 .oauth-box {

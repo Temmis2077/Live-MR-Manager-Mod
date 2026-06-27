@@ -37,30 +37,58 @@ export const FAQ_ITEMS: FaqItem[] = [
   {
     id: "channel-id",
     category: "멜로밍 노래책",
-    question: "채널 주소는 어떻게 입력하나요?",
+    question: "채널 주소를 따로 입력해야 하나요?",
     answer:
-      "앱 설정의 「멜로밍 노래책」→「방송 채널 주소」에 치지직(chzzk.naver.com/…), SOOP(숲, sooplive.co.kr/station/…), 씨미(ci.me/@…), 멜로밍 webPath, 숫자 채널 ID를 넣을 수 있습니다. 「채널 저장」 후 「연결 테스트」·「가져오기」를 사용하세요. 입력값은 PC에만 저장됩니다.",
+      "아니요. 우측 상단 「멜로밍 로그인」만 하면 앱이 계정에 연결된 멜로밍 채널을 자동으로 찾습니다. 설정의 「노래책 동기화」는 멜로밍 OpenAPI 아티스트·카테고리 API 지원 후 제공 예정입니다.",
   },
   {
     id: "import-songs",
     category: "멜로밍 노래책",
     question: "멜로밍 노래책을 앱으로 가져오려면?",
     answer:
-      "앱 설정 → 「멜로밍 노래책」에서 방송 채널 주소를 입력·저장한 뒤 「가져오기」를 실행하세요. 로그인 없이 노래책 메타데이터를 Pull할 수 있습니다.",
+      "현재 앱 설정에서는 멜로밍 → 앱 방향 Pull UI가 없습니다. 멜로밍에서 앱으로 곡을 가져오려면 Discord 또는 GitHub Issues로 문의해 주세요.",
   },
   {
     id: "export-songs",
     category: "멜로밍 노래책",
     question: "앱에 있는 곡을 멜로밍 노래책에 올리려면?",
     answer:
-      "앱 설정의 「멜로밍에 보내기」 기능을 사용합니다. 현재 OAuth 토큰 교환 이슈로 앱에서 「개발 중입니다.」 안내가 표시되며, 정식 연동은 추후 업데이트 예정입니다.",
+      "우측 상단에서 멜로밍 로그인 후, 앱 설정 → 「멜로밍 노래책」→ 「노래책 동기화」를 사용할 예정입니다. v0.4.15부터는 멜로밍 OpenAPI 아티스트·카테고리 등록 API 대기 중으로 「업데이트 예정」 안내가 표시됩니다.",
+  },
+  {
+    id: "oauth-errors",
+    category: "멜로밍 노래책",
+    question: "멜로밍 로그인·보내기가 실패할 때",
+    answer:
+      "멜로밍 OAuth 서버에서 500 INTERNAL_ERROR 또는 401 Invalid redirect_uri가 간헐적으로 발생할 수 있습니다. 잠시 후 다시 로그인해 주세요. 지속되면 Discord 또는 GitHub Issues(멜로밍 연동 템플릿)로 문의해 주세요.",
+  },
+  {
+    id: "push-tips",
+    category: "멜로밍 노래책",
+    question: "보내기(Push)가 일부 곡만 실패할 때",
+    answer:
+      "아티스트 매칭 실패, 유튜브 메타 부족, 권한(403)·없는 곡(404) 등이 원인일 수 있습니다. 앱 알림에 표시된 건너뜀·오류 메시지를 확인하세요.",
   },
   {
     id: "login-flow",
     category: "멜로밍 노래책",
     question: "멜로밍 로그인 후 이 페이지가 뜨는 이유는?",
     answer:
-      "데스크톱 앱에서 「멜로밍 로그인」을 시작하면 브라우저가 이 페이지(/oauth/callback)를 거친 뒤 설치된 Live MR Manager 앱으로 돌아갑니다. 웹에서 /login으로 시작한 경우에는 웹 세션으로 처리됩니다. 앱 로그인 기능은 현재 OAuth 서버 이슈로 일시 중단 중입니다.",
+      "데스크톱 앱에서 「멜로밍 로그인」을 시작하면 브라우저가 이 페이지(/oauth/callback)를 거친 뒤 설치된 Live MR Manager 앱으로 돌아갑니다. 웹에서 /login으로 시작한 경우에는 웹 세션으로 처리됩니다.",
+  },
+  {
+    id: "contact",
+    category: "문의",
+    question: "문의는 어디로 하면 되나요?",
+    answer:
+      "설치·사용법·연동 질문은 Discord(https://discord.gg/qfJnk3VJyf) 또는 문의 허브(lmrm.vercel.app/qa)를 이용해 주세요. 재현 가능한 버그는 GitHub Issues 버그 신고 템플릿으로, 멜로밍 연동 문제는 멜로밍 연동 템플릿으로 등록해 주세요. 토큰·Client Secret·전체 로그는 올리지 마세요.",
+  },
+  {
+    id: "contact-privacy",
+    category: "문의",
+    question: "문의할 때 주의할 점은?",
+    answer:
+      "OAuth access·refresh token, Client Secret, API Key, 전체 채널 ID·로그 파일은 공개 채널이나 Issues에 올리지 마세요. 버그 신고 시 앱 버전·Windows 버전·재현 단계만 적어도 충분한 경우가 많습니다.",
   },
   {
     id: "proficiency",

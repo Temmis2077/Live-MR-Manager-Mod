@@ -194,9 +194,35 @@ html[data-theme="sky"] .task-progress-container {
 
 /* --- Settings Page Styles (Restored) --- */
 .settings-container {
+  --settings-actions-width: 200px;
   max-width: 900px;
   margin: 0 auto;
   padding: 0 0 20px 0;
+}
+
+.settings-container .ai-model-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--settings-actions-width);
+  align-items: center;
+}
+
+.settings-container .ai-model-card:has(.settings-field) {
+  align-items: start;
+}
+
+.settings-container .ai-info-left {
+  min-width: 0;
+}
+
+.settings-container .ai-actions-right {
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+  align-self: center;
+}
+
+.settings-container .ai-model-card:has(.settings-field) .ai-actions-right {
+  align-self: start;
 }
 
 .settings-header {
@@ -270,10 +296,6 @@ html[data-theme="sky"] .task-progress-container {
 
 .mr-cache-format-card {
   margin-bottom: 20px;
-}
-
-.mr-cache-format-card .ai-actions-right {
-  width: 200px;
 }
 
 #mr-cache-format-dropdown .select-trigger,
@@ -426,6 +448,20 @@ html[data-theme="sky"] .task-progress-container {
   gap: 8px;
   width: 150px;
   flex-shrink: 0;
+}
+
+.settings-container .ai-actions-right.support-actions-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  align-content: start;
+}
+
+.settings-container .support-actions-grid .btn-ai-action {
+  width: 100%;
+  min-width: 0;
+  padding: 0 8px;
+  font-size: 0.75rem;
 }
 
 .btn-ai-action {

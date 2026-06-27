@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 type SessionDetails = {
   loggedIn: boolean;
   nickname: string | null;
+  profileImageUrl: string | null;
   expiresAt: number | null;
   scope: string | null;
   subject: string | null;
@@ -27,6 +28,7 @@ export function AccountClient() {
       setSession({
         loggedIn: false,
         nickname: null,
+        profileImageUrl: null,
         expiresAt: null,
         scope: null,
         subject: null,
@@ -66,10 +68,29 @@ export function AccountClient() {
     );
   }
 
+  const displayName = session.nickname || "멜로밍";
+
   return (
     <section className="card">
-      <h2>{session.nickname || "멜로밍"}</h2>
-      <p>웹 로그인이 완료되었습니다.</p>
+      <div className="account-profile">
+        {session.profileImageUrl ? (
+          <img
+            src={session.profileImageUrl}
+            alt=""
+            className="account-avatar"
+            width={64}
+            height={64}
+          />
+        ) : (
+          <span className="account-avatar account-avatar-fallback" aria-hidden>
+            {displayName.charAt(0)}
+          </span>
+        )}
+        <div>
+          <h2>{displayName}</h2>
+          <p>웹 로그인이 완료되었습니다.</p>
+        </div>
+      </div>
       <dl className="account-dl">
         <div>
           <dt>사용자 ID</dt>

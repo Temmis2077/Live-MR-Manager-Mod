@@ -6,6 +6,10 @@ import { showNotification } from '../utils.js';
 import { switchTab } from './navigation.js';
 
 const PLACEHOLDER_AVATAR = './assets/images/app-icon.png';
+/** OpenAPI 아티스트·카테고리 생성 API 지원 전까지 동기화 UI 잠금 */
+const MELOMING_SYNC_COMING_SOON = true;
+const SYNC_COMING_SOON_MSG =
+  '노래책 동기화는 업데이트 예정입니다. (멜로밍 OpenAPI 아티스트·카테고리 등록 API 대기 중)';
 
 let pendingOAuthState = null;
 let accountMenuOpen = false;
@@ -13,8 +17,9 @@ let accountMenuOpen = false;
 function setStatus(text, isError = false) {
   const el = document.getElementById('meloming-status');
   if (!el) return;
-  el.textContent = text || '';
-  el.classList.toggle('is-error', !!isError && !!text);
+  const firstLine = (text || '').split('\n')[0].trim();
+  el.textContent = firstLine;
+  el.classList.toggle('is-error', !!isError && !!firstLine);
 }
 
 function getAccountElements() {
@@ -88,17 +93,6 @@ export async function refreshAccountWidget() {
   }
 }
 
-async function loadChannelId() {
-  const input = document.getElementById('meloming-channel-id');
-  if (!input) return;
-  try {
-    const id = await invoke('meloming_get_channel_id');
-    if (id) input.value = id;
-  } catch {
-    /* ignore */
-  }
-}
-
 async function startMelomingLogin(triggerBtn) {
   if (triggerBtn) triggerBtn.disabled = true;
   try {
@@ -162,7 +156,6 @@ function setupAccountWidget() {
 
 export async function initMelomingListeners() {
   setupAccountWidget();
-  await loadChannelId();
   await refreshAccountWidget();
 
   listen('meloming-oauth-complete', async (event) => {
@@ -181,60 +174,30 @@ export async function initMelomingListeners() {
     }
   }).catch(() => {});
 
-  const btnSave = document.getElementById('btn-meloming-save-channel');
-  const btnTest = document.getElementById('btn-meloming-test');
-  const btnPull = document.getElementById('btn-meloming-pull');
-  const btnPush = document.getElementById('btn-meloming-push');
-  const input = document.getElementById('meloming-channel-id');
+  const btnSync = document.getElementById('btn-meloming-sync');
 
-  if (btnSave) {
-    btnSave.onclick = async () => {
-      const channelId = input?.value?.trim() || '';
+  if (btnSync) {
+    btnSync.onclick = async () => {
+      if (MELOMING_SYNC_COMING_SOON) {
+        setStatus(SYNC_COMING_SOON_MSG);
+        showNotification(SYNC_COMING_SOON_MSG, 'info');
+        return;
+      }
+      btnSync.disabled = true;
+      setStatus('노래책 동기화 중…');
       try {
-        const resolved = await invoke('meloming_set_channel_id', { channelId });
-        const msg = `${resolved.name} (ID ${resolved.id})`;
-        showNotification(`채널을 저장했습니다 — ${msg}`, 'success');
-        setStatus('');
+        const res = await invoke('meloming_push_songs', { channelId: null });
+        let summary = `동기화 완료 — ${res.pushed}곡 (신규 ${res.created}, 갱신 ${res.updated})`;
+        if (res.skipped > 0) summary += `, 건너뜀 ${res.skipped}곡`;
+        setStatus(summary, res.errors?.length > 0);
+        showNotification(summary, res.errors?.length > 0 ? 'warning' : 'success');
+        if (res.errors?.length) {
+          console.warn(`[Meloming sync] 건너뜀 ${res.skipped}곡 — 사유:`);
+          for (const line of res.errors) {
+            console.warn(`  · ${line}`);
+          }
+        }
         await refreshAccountWidget();
-      } catch (err) {
-        showNotification(String(err), 'error');
-        setStatus(String(err), true);
-      }
-    };
-  }
-
-  if (btnTest) {
-    btnTest.onclick = async () => {
-      const channelId = input?.value?.trim() || null;
-      btnTest.disabled = true;
-      setStatus('연결 확인 중…');
-      try {
-        const res = await invoke('meloming_test_connection', { channelId });
-        setStatus(res.message, !res.ok);
-        showNotification(res.message, res.ok ? 'success' : 'error');
-        if (res.ok && channelId) {
-          await invoke('meloming_set_channel_id', { channelId });
-          await refreshAccountWidget();
-        }
-      } catch (err) {
-        setStatus(String(err), true);
-        showNotification(String(err), 'error');
-      } finally {
-        btnTest.disabled = false;
-      }
-    };
-  }
-
-  if (btnPull) {
-    btnPull.onclick = async () => {
-      const channelId = input?.value?.trim() || null;
-      btnPull.disabled = true;
-      setStatus('노래책을 가져오는 중…');
-      try {
-        const res = await invoke('meloming_pull_songs', { channelId });
-        const msg = `가져오기 완료 — ${res.fetched}곡 (신규 ${res.created}, 갱신 ${res.updated})`;
-        setStatus(msg);
-        showNotification(msg, 'success');
         const { loadLibrary } = await import('../audio.js');
         const { state } = await import('../state.js');
         const { renderLibrary } = await import('../ui/library.js');
@@ -245,40 +208,7 @@ export async function initMelomingListeners() {
         setStatus(String(err), true);
         showNotification(String(err), 'error');
       } finally {
-        btnPull.disabled = false;
-      }
-    };
-  }
-
-  if (btnPush) {
-    btnPush.onclick = async () => {
-      const channelId = input?.value?.trim() || null;
-      btnPush.disabled = true;
-      setStatus('멜로밍에 보내는 중… (로그인 필요)');
-      try {
-        const res = await invoke('meloming_push_songs', { channelId });
-        let msg = `보내기 완료 — ${res.pushed}곡 (신규 ${res.created}, 갱신 ${res.updated})`;
-        if (res.skipped > 0) msg += `, 건너뜀 ${res.skipped}곡`;
-        if (res.errors?.length) {
-          const preview = res.errors.slice(0, 2).join('\n');
-          msg += res.skipped > 2 ? `\n${preview}\n…` : `\n${preview}`;
-        }
-        setStatus(msg, res.errors?.length > 0);
-        showNotification(msg, res.errors?.length > 0 ? 'warning' : 'success');
-        if (res.errors?.length) {
-          console.warn('[meloming push]', res.errors.slice(0, 20));
-        }
-        const { loadLibrary } = await import('../audio.js');
-        const { state } = await import('../state.js');
-        const { renderLibrary } = await import('../ui/library.js');
-        state.songLibrary = (await loadLibrary()) || [];
-        renderLibrary();
-        switchTab('meloming');
-      } catch (err) {
-        setStatus(String(err), true);
-        showNotification(String(err), 'error');
-      } finally {
-        btnPush.disabled = false;
+        btnSync.disabled = false;
       }
     };
   }

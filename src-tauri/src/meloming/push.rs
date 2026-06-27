@@ -254,7 +254,9 @@ pub async fn push_channel(paths: &AppPaths, channel_id: i64) -> Result<PushResul
             }
             Err(e) => {
                 result.skipped += 1;
-                result.errors.push(format!("{}: {}", song.title, e));
+                let msg = format!("{}: {}", song.title, e);
+                let _ = crate::audio_player::sys_log(&format!("[Meloming Push] skip: {msg}"));
+                result.errors.push(msg);
             }
         }
     }
@@ -264,6 +266,11 @@ pub async fn push_channel(paths: &AppPaths, channel_id: i64) -> Result<PushResul
             .await
             .map_err(MelomingError::Message)?;
     }
+
+    let _ = crate::audio_player::sys_log(&format!(
+        "[Meloming Push] done — pushed={} created={} updated={} skipped={}",
+        result.pushed, result.created, result.updated, result.skipped
+    ));
 
     Ok(result)
 }

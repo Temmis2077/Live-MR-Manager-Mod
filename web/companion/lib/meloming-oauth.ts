@@ -3,6 +3,7 @@ import crypto from "crypto";
 export const MELOMING_BASE = "https://openapi.meloming.com";
 export const TOKEN_URL = `${MELOMING_BASE}/oauth/token`;
 export const INTROSPECT_URL = `${MELOMING_BASE}/oauth/introspect`;
+export const USERINFO_URL = `${MELOMING_BASE}/oauth/userinfo`;
 export const AUTHORIZE_URL = `${MELOMING_BASE}/oauth/authorize`;
 export const API_VERSION = "2026-01-11";
 
@@ -28,6 +29,17 @@ export type IntrospectResponse = {
   client_id?: string;
   username?: string;
   [key: string]: unknown;
+};
+
+export type UserInfoResponse = {
+  sub?: string;
+  email?: string;
+  name?: string;
+  nickname?: string;
+  picture?: string;
+  email_verified?: boolean;
+  is_pro_subscriber?: boolean;
+  is_ambassador?: boolean;
 };
 
 export function randomBase64Url(byteLength: number): string {
@@ -116,6 +128,25 @@ export async function exchangeAuthorizationCode(params: {
     return { ok: true, token };
   } catch {
     return { ok: false, status: 502, body: `JSON 파싱 실패: ${text}` };
+  }
+}
+
+export async function fetchUserInfo(
+  accessToken: string,
+): Promise<UserInfoResponse | null> {
+  const res = await fetch(USERINFO_URL, {
+    method: "GET",
+    headers: {
+      Accept: "application/json",
+      Authorization: `Bearer ${accessToken}`,
+    },
+    cache: "no-store",
+  });
+  if (!res.ok) return null;
+  try {
+    return (await res.json()) as UserInfoResponse;
+  } catch {
+    return null;
   }
 }
 

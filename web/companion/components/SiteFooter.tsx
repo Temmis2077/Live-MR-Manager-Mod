@@ -1,8 +1,11 @@
 import Link from "next/link";
+import { DISCORD_INVITE_URL, QA_URL } from "@/lib/site";
 
 const MELOMING_URL = "https://meloming.com";
 
 export function SiteFooter() {
+  const discordHref = DISCORD_INVITE_URL || QA_URL;
+
   return (
     <footer className="site-footer">
       <p>
@@ -10,6 +13,12 @@ export function SiteFooter() {
       </p>
       <p>
         <Link href="/faq">도움말</Link>
+        {" · "}
+        <Link href="/qa">문의</Link>
+        {" · "}
+        <a href={discordHref} target="_blank" rel="noopener noreferrer">
+          Discord
+        </a>
         {" · "}
         <Link href="/download">다운로드</Link>
         {" · "}

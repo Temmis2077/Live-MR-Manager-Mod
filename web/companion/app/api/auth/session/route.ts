@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { introspectToken } from "@/lib/meloming-oauth";
+import { fetchUserInfo, introspectToken } from "@/lib/meloming-oauth";
 import {
   getSessionCookies,
   isSessionValid,
@@ -32,15 +32,19 @@ export async function GET() {
     });
   }
 
+  const userinfo = await fetchUserInfo(session.accessToken);
   const nickname =
-    (typeof introspect?.username === "string" && introspect.username) ||
-    (typeof introspect?.sub === "string" && introspect.sub) ||
+    (typeof userinfo?.nickname === "string" && userinfo.nickname.trim()) ||
+    (typeof userinfo?.name === "string" && userinfo.name.trim()) ||
+    (typeof introspect?.username === "string" && introspect.username.trim()) ||
     "멜로밍";
+  const profileImageUrl =
+    (typeof userinfo?.picture === "string" && userinfo.picture.trim()) || null;
 
   return NextResponse.json({
     loggedIn: true,
     nickname,
-    profileImageUrl: null,
+    profileImageUrl,
     expiresAt: session.expiresAt ?? introspect?.exp ?? null,
     scope: introspect?.scope ?? null,
     subject: introspect?.sub ?? null,
