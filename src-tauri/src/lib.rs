@@ -3,6 +3,7 @@ pub use crate::types::{Status, PlaybackStatus, PlaybackProgress, AppState, SongM
 
 mod types;
 mod youtube;
+mod youtube_url;
 mod model_manager;
 pub mod vocal_remover;
 pub mod audio_player;

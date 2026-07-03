@@ -9,9 +9,10 @@ import {
   updateAiTogglesState, updateGpuStatus, setupGridResizeObserver, initSortable, elements
 } from './js/ui/index.js';
 import { initAllEvents, switchTab } from './js/events/index.js';
-import { loadLibrary, checkAiModelStatus, cancelSeparation } from './js/audio.js';
+import { loadLibrary, checkAiModelStatus, cancelSeparation, setMasterVolume } from './js/audio.js';
 import { showNotification } from './js/utils.js';
 import { initUpdateChecker } from './js/update-check.js';
+import { registerAppHandler } from './js/app-context.js';
 
 import { invoke, appWindow, toggleWindowMaximize } from './js/tauri-bridge.js';
 
@@ -62,9 +63,10 @@ function initTheme() {
   syncThemeDropdown(appliedTheme);
 }
 
-// Expose navigation to global for cross-module usage
-window.switchToTab = switchTab;
-window.applyAppTheme = applyTheme;
+// Register app handlers (replaces window.* globals for cross-module calls)
+registerAppHandler('switchToTab', switchTab);
+registerAppHandler('applyAppTheme', applyTheme);
+registerAppHandler('cancelTask', cancelSeparation);
 
 // Register permanent error listeners to bridge JS errors to terminal IMMEDIATELY
 window.addEventListener('error', (event) => {
@@ -86,41 +88,7 @@ async function initApp() {
   // 0. Setup custom titlebar immediately (Don't wait for backend)
   setupTitlebar();
 
-  // Expose task cancellation to global window for UI components
-  window.cancelTask = cancelSeparation;
-  
-  // Fix manual input font/layout shift (fallback for locked CSS)
-  const style = document.createElement('style');
-  style.textContent = `
-    .val-input {
-      font-family: 'SUITE', sans-serif !important;
-      font-size: 0.65rem !important;
-      font-weight: 800 !important;
-      width: 100% !important;
-      height: 100% !important;
-      text-align: center !important;
-      border: none !important;
-      background: transparent !important;
-      color: var(--text-main) !important;
-      outline: none !important;
-      margin: 0 !important;
-      padding: 0 !important;
-      -moz-appearance: textfield;
-      appearance: none;
-    }
-    
-    /* Chrome, Safari, Edge, Opera */
-    .val-input::-webkit-outer-spin-button,
-    .val-input::-webkit-inner-spin-button {
-      -webkit-appearance: none;
-      margin: 0;
-    }
-  `;
-  document.head.appendChild(style);
-
-  // (Removed hardcoded modalStyle injection to allow modals.css to take precedence)
-
-
+  // Fix manual input font/layout shift is handled in overlay-settings.css
   // 0. Initialize Metadata Context (Dictionary)
   try {
     await invoke('init_metadata_context');
@@ -186,7 +154,7 @@ async function initApp() {
       elements.volSlider.value = normalized;
       if (elements.volSliderVal) elements.volSliderVal.textContent = `${normalized}%`;
     }
-    await invoke("set_master_volume", { volume: state.masterVolume });
+    await setMasterVolume(state.masterVolume);
   } catch (err) {}
 
   // 8. Setup Smooth Grid Resize & DragDrop
@@ -260,5 +228,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   await initApp();
 });
 
-// Export for some legacy inline listeners if any (though we aim for zero)
-window.state = state;
+// state exposed only in browser mock mode for debugging
+if (!window.__TAURI__) {
+  window.state = state;
+}

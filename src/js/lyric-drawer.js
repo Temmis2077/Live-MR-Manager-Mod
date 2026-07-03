@@ -3,6 +3,7 @@
  */
 import { listen, invoke } from './tauri-bridge.js';
 import { state } from './state.js';
+import { registerAppHandler, callAppHandler } from './app-context.js';
 
 let lastOverlayCurrent = null;
 let lastOverlayNext = null;
@@ -137,27 +138,28 @@ export function initLyricDrawer() {
         closeBtn.onclick = closeDrawer;
     }
 
-    // Attach to window for external control if needed, or just export
-    window.openLyricDrawer = openDrawer;
-    window.closeLyricDrawer = closeDrawer;
-    window.goToLyricSyncForCurrentTrack = async () => {
+    registerAppHandler('openLyricDrawer', openDrawer);
+    registerAppHandler('closeLyricDrawer', closeDrawer);
+
+    const goToLyricSyncForCurrentTrack = async () => {
         const currentPath = state.currentTrack?.path;
         if (!currentPath) {
-            if (typeof window.switchToTab === 'function') window.switchToTab('alignment');
+            callAppHandler('switchToTab', 'alignment');
             return;
         }
         try {
             const nav = await import('./events/navigation.js');
             if (typeof nav.openAlignmentForTrack === 'function') {
                 await nav.openAlignmentForTrack(currentPath, { forceLoad: true });
-            } else if (typeof window.switchToTab === 'function') {
-                window.switchToTab('alignment');
+            } else {
+                callAppHandler('switchToTab', 'alignment');
             }
         } catch (err) {
             console.error('[LyricDrawer] Failed to open alignment for current track:', err);
-            if (typeof window.switchToTab === 'function') window.switchToTab('alignment');
+            callAppHandler('switchToTab', 'alignment');
         }
     };
+    registerAppHandler('goToLyricSyncForCurrentTrack', goToLyricSyncForCurrentTrack);
 
     // Optional: Close drawer on Escape key
     window.addEventListener('keydown', (e) => {
@@ -204,13 +206,17 @@ export function updateLyrics(segments) {
                 <p style="font-size: 0.85rem; opacity: 0.6; line-height: 1.6; margin-bottom: 24px;">
                     이 곡에 등록된 가사 싱크가 없습니다.<br>Lyric Sync 모드에서 가사를 정렬해 보세요.
                 </p>
-                <button class="primary-btn btn-md" style="width: 100%;" onclick="if(window.goToLyricSyncForCurrentTrack) window.goToLyricSyncForCurrentTrack()">
+                <button type="button" class="primary-btn btn-md lyric-sync-cta" style="width: 100%;">
                     가사 싱크 등록하러 가기
                 </button>
             </div>
         `;
         return;
     }
+
+    container.querySelector('.lyric-sync-cta')?.addEventListener('click', () => {
+        callAppHandler('goToLyricSyncForCurrentTrack');
+    });
 
     // Reset overlay payload cache when track lyrics are replaced.
     lastOverlayCurrent = null;

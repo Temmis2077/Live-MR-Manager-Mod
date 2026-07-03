@@ -5,6 +5,7 @@ import { state } from '../state.js';
 import { elements } from './elements.js';
 import { invoke } from '../tauri-bridge.js';
 import { getThumbnailUrl } from '../utils.js';
+import { filterSongLibrary, getSongCategoryFromMetadata, isMelomingLinkedSong } from '../library-filters.js';
 import { updateCardStatusBadge, updateThumbnailOverlay, showSongContextMenu } from './components.js';
 
 export function updateLibraryCount(count) {
@@ -14,76 +15,20 @@ export function updateLibraryCount(count) {
 
 /** User-edited categories take priority over auto curation metadata. */
 export function getSongCategory(song) {
-  if (!song) return "";
-  if (song.categories && song.categories.length > 0) {
-    const first = String(song.categories[0] || "").trim();
-    if (first) return first;
-  }
-  if (song.category && String(song.category).trim()) return String(song.category).trim();
-  if (song.curationCategory && String(song.curationCategory).trim()) {
-    return String(song.curationCategory).trim();
-  }
-  return "";
+  return getSongCategoryFromMetadata(song);
 }
 
 /** Meloming pull/push로 연동된 곡인지 판별 */
-export function isMelomingLinkedSong(song) {
-  if (!song) return false;
-  if (song.source === "meloming") return true;
-  const songId = song.melomingSongId ?? song.meloming_song_id;
-  return songId != null && songId !== "";
-}
+export { isMelomingLinkedSong };
 
 export function getFilteredSongs() {
-  const query = (elements.libSearchInput?.value || "").toLowerCase().trim();
-  const genreFilter = elements.libGenreFilter?.value || "all";
-  const categoryFilter = elements.libCategoryFilter?.value || "all";
-  const sortBy = elements.libSortSelect?.value || "dateNew";
-  const currentTab = state.activeView || "library";
-
-  let filtered = state.songLibrary.map((s, i) => ({ ...s, originalIndex: i }));
-
-  // Tab Filter
-  if (currentTab === "youtube") filtered = filtered.filter(s => s.source === "youtube");
-  else if (currentTab === "local") filtered = filtered.filter(s => s.source === "local");
-  else if (currentTab === "meloming") filtered = filtered.filter(isMelomingLinkedSong);
-
-  // Search Filter
-  if (query) {
-    filtered = filtered.filter(s =>
-      s.title.toLowerCase().includes(query) ||
-      (s.artist && s.artist.toLowerCase().includes(query)) ||
-      (s.genre && s.genre.toLowerCase().includes(query)) ||
-      getSongCategory(s).toLowerCase().includes(query) ||
-      (s.tags && s.tags.some(t => t.toLowerCase().includes(query)))
-    );
-  }
-
-  // Genre Filter
-  if (genreFilter !== "all" && genreFilter !== "") {
-    filtered = filtered.filter(s => s.genre === genreFilter);
-  }
-
-  // Category Filter
-  if (categoryFilter !== "all" && categoryFilter !== "") {
-    filtered = filtered.filter(
-      (s) =>
-        getSongCategory(s) === categoryFilter ||
-        (s.categories && s.categories.includes(categoryFilter))
-    );
-  }
-
-  // Sorting
-  filtered.sort((a, b) => {
-    switch (sortBy) {
-      case "title": return (a.title || "").localeCompare(b.title || "");
-      case "dateNew": return (b.dateAdded || 0) - (a.dateAdded || 0);
-      case "dateOld": return (a.dateAdded || 0) - (b.dateAdded || 0);
-      case "plays": return (b.playCount || 0) - (a.playCount || 0);
-      default: return 0;
-    }
+  const filtered = filterSongLibrary(state.songLibrary, {
+    query: elements.libSearchInput?.value || "",
+    genreFilter: elements.libGenreFilter?.value || "all",
+    categoryFilter: elements.libCategoryFilter?.value || "all",
+    sortBy: elements.libSortSelect?.value || "dateNew",
+    currentTab: state.activeView || "library",
   });
-
   state.filteredTracks = filtered;
   return filtered;
 }

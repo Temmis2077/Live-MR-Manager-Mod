@@ -197,20 +197,13 @@
     </div>
   </div>
 
+  <script src="js/overlay/shared.js"></script>
   <script>
     const urlParams = new URLSearchParams(window.location.search);
     const isPreview = urlParams.get('preview') === 'true';
     document.documentElement.setAttribute('data-theme', 'dark');
 
-    function hexToRgb(hex) {
-      if (!hex) return "0,0,0";
-      hex = hex.replace('#', '');
-      if (hex.length === 3) { hex = hex[0] + hex[0] + hex[1] + hex[1] + hex[2] + hex[2]; }
-      const r = parseInt(hex.substring(0, 2), 16) || 0;
-      const g = parseInt(hex.substring(2, 4), 16) || 0;
-      const b = parseInt(hex.substring(4, 6), 16) || 0;
-      return `${r},${g},${b}`;
-    }
+    const { hexToRgb, connectWS } = window.OverlayShared;
 
     const overlay = document.getElementById('overlay');
     const lyricsArea = document.getElementById('lyrics-area');
@@ -239,13 +232,6 @@
       setLineTexts(newCurrent, newNext);
     }
 
-    function connectWS() {
-      const host = window.location.hostname || 'localhost';
-      const socket = new WebSocket(`ws://${host}:14201`);
-      socket.onmessage = (event) => { try { const data = JSON.parse(event.data); updateOverlay(data); } catch (e) {} };
-      socket.onclose = () => { setTimeout(connectWS, 2000); };
-    }
-
     function updateOverlay(data) {
       if (!data) return;
 
@@ -262,7 +248,7 @@
       const bgColor = (style.bg_color || "0f0f14").replace('#', '');
       const bgOpacity = style.bg_opacity !== undefined ? style.bg_opacity : 0.6;
       const rounding = style.rounding !== undefined ? style.rounding : 20;
-      const direction = style.animation_direction || 'right'; // fallback
+      const direction = style.animation_direction || 'right';
 
       document.documentElement.style.setProperty('--overlay-scale', scale);
       document.documentElement.style.setProperty('--overlay-font', `"${font}", 'Noto Sans KR', sans-serif`);
@@ -334,8 +320,8 @@
 
     function showOverlay() { overlay.classList.add('visible'); }
     function hideOverlay() { overlay.classList.remove('visible'); }
-    
-    connectWS();
+
+    connectWS(updateOverlay);
   </script>
 </body>
 </html>

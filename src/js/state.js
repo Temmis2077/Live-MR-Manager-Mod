@@ -45,22 +45,6 @@ export const state = {
   currentLyricIndex: -1,
 };
 
-export const DEFAULT_CATEGORIES = [
-  { val: "pop", text: "POP" },
-  { val: "ballad", text: "발라드" },
-  { val: "dance", text: "댄스" },
-  { val: "rock", text: "락/메탈" },
-  { val: "jpop", text: "J-POP" },
-  { val: "kpop", text: "K-POP" }
-];
-
-export const SORT_OPTIONS = [
-  { val: "dateNew", text: "최근 추가순" },
-  { val: "dateOld", text: "오래된순" },
-  { val: "title", text: "제목순 (A-Z)" },
-  { val: "plays", text: "재생 횟수순" }
-];
-
 // --- Helper Functions for UI ---
 import { invoke } from './tauri-bridge.js';
 

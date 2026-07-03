@@ -25,7 +25,7 @@ fn resolve_analysis_path(path: &str) -> Result<PathBuf, String> {
     // Use the same cache-key variants as playback / check_mr_separated (MR is stored under
     // normalize_cache_key, e.g. https://www.youtube.com/watch?v=ID, not always the library URL).
     if let Some(paths) = crate::state::APP_PATHS.lock().as_ref() {
-        for key in crate::model_commands::cache_key_variants(path) {
+        for key in crate::youtube_url::cache_key_variants(path) {
             let cache_dir = paths
                 .separated
                 .join(urlencoding::encode(&key).to_string());

@@ -3,11 +3,13 @@
  */
 
 import { state } from './state.js';
-import { elements, updateThumbnailOverlay, updatePlayButton, updateAiTogglesState } from './ui/index.js';
+import { elements } from './ui/elements.js';
+import { updateThumbnailOverlay, updatePlayButton, updateAiTogglesState } from './ui/components.js';
 import { formatTime, showNotification, getThumbnailUrl } from './utils.js';
 import {
   togglePlayback as apiTogglePlayback, playTrack as apiPlayTrack,
-  setVolume, setPitch, setTempo, saveLibrary, seekTo, checkMrSeparated
+  setVolume, setPitch, setTempo, saveLibrary, seekTo, checkMrSeparated,
+  stopPlayback as apiStopPlayback
 } from './audio.js';
 import { loadLyricsForTrack } from './lyrics.js';
 import { emit, invoke, convertFileSrc as bridgeConvertFileSrc } from './tauri-bridge.js';
@@ -90,9 +92,9 @@ function parseDurationToMs(duration) {
 }
 
 /**
- * Highlights a track without playing it
+ * Highlights a track without playing it (internal use)
  */
-export function highlightTrack(index) {
+function highlightTrack(index) {
   if (index < 0 || index >= state.songLibrary.length) return;
 
   // Toggle Selection
@@ -107,6 +109,33 @@ export function highlightTrack(index) {
   // Update AI toggles state for highlight
   const song = state.selectedTrackIndex !== -1 ? state.songLibrary[state.selectedTrackIndex] : null;
   updateAiTogglesState(song);
+}
+
+export async function stopPlayback() {
+  try {
+    await apiStopPlayback();
+    state.isPlaying = false;
+    state.isLoading = false;
+    state.currentTrack = null;
+    state.currentProgressMs = 0;
+    state.targetProgressMs = 0;
+    if (state.rafId) {
+      cancelAnimationFrame(state.rafId);
+      state.rafId = null;
+    }
+    updateThumbnailOverlay();
+    updatePlayButton();
+    emit('playback-stop', {});
+    invoke('update_overlay_state', {
+      title: "",
+      artist: "",
+      thumbnail: "",
+      isPlaying: false
+    });
+  } catch (error) {
+    console.error("Stop playback failed:", error);
+    throw error;
+  }
 }
 
 export async function handlePlaybackToggle() {

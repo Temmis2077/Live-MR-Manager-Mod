@@ -40,6 +40,15 @@ export async function togglePlayback() {
   }
 }
 
+export async function stopPlayback() {
+  try {
+    await invoke("stop_playback");
+  } catch (err) {
+    console.error("Stop playback failed:", err);
+    throw err;
+  }
+}
+
 export async function seekTo(positionMs) {
   try {
     await invoke("seek_to", { positionMs: Math.floor(positionMs) });

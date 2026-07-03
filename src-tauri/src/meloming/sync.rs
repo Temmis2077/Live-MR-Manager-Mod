@@ -17,30 +17,7 @@ pub struct PullResult {
     pub artists_mapped: usize,
 }
 
-pub(crate) fn normalize_youtube_watch(url: &str) -> Option<String> {
-    let u = url.trim();
-    if u.is_empty() {
-        return None;
-    }
-    if let Some(idx) = u.find("youtu.be/") {
-        let tail = &u[idx + "youtu.be/".len()..];
-        let id: String = tail.chars().take_while(|c| *c != '?' && *c != '&' && *c != '/').collect();
-        if !id.is_empty() {
-            return Some(format!("https://www.youtube.com/watch?v={id}"));
-        }
-    }
-    if let Some(idx) = u.find("v=") {
-        let tail = &u[idx + 2..];
-        let id: String = tail.chars().take_while(|c| *c != '&').collect();
-        if !id.is_empty() {
-            return Some(format!("https://www.youtube.com/watch?v={id}"));
-        }
-    }
-    if u.contains("youtube.com") || u.contains("youtu.be") {
-        return Some(u.to_string());
-    }
-    None
-}
+pub(crate) use crate::youtube_url::normalize_youtube_watch;
 
 fn pull_path(song: &SongResponse) -> String {
     if let Some(url) = song.original_url.as_deref().and_then(normalize_youtube_watch) {

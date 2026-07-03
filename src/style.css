@@ -12,5 +12,5 @@
 @import "./styles/notifications.css?v=6.0";
 @import "./styles/pages.css?v=6.0";
 @import "./styles/alignment.css?v=6.0";
-
-/* Force Reload v6.0 (Global Modular Fix) */
+@import "./styles/lyric-drawer.css?v=6.0";
+@import "./styles/overlay-settings.css?v=6.0";

@@ -19,36 +19,7 @@ use urlencoding;
 // --- Global Statics ---
 pub static PLAYBACK_VERSION: AtomicU64 = AtomicU64::new(0);
 
-fn extract_youtube_video_id(url: &str) -> Option<String> {
-    let u = url.trim();
-    if let Some(idx) = u.find("youtu.be/") {
-        let tail = &u[idx + "youtu.be/".len()..];
-        let id = tail.split(&['?', '&', '/', '#'][..]).next().unwrap_or("").trim();
-        if !id.is_empty() {
-            return Some(id.to_string());
-        }
-    }
-    if let Some(idx) = u.find("watch?v=") {
-        let tail = &u[idx + "watch?v=".len()..];
-        let id = tail.split(&['&', '/', '#', '?'][..]).next().unwrap_or("").trim();
-        if !id.is_empty() {
-            return Some(id.to_string());
-        }
-    }
-    None
-}
-
-fn cache_key_variants(path: &str) -> Vec<String> {
-    let mut variants = vec![path.trim().replace("\\", "/")];
-    if let Some(id) = extract_youtube_video_id(path) {
-        variants.push(format!("https://youtu.be/{}", id));
-        variants.push(format!("https://www.youtube.com/watch?v={}", id));
-        variants.push(format!("https://youtube.com/watch?v={}", id));
-    }
-    variants.sort();
-    variants.dedup();
-    variants
-}
+use crate::youtube_url::cache_key_variants;
 
 #[tauri::command]
 pub async fn play_track(window: WebviewWindow, path: String, duration_ms: Option<u64>, play_now: Option<bool>) -> Result<u64, String> {

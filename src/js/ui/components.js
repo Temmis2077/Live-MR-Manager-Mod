@@ -4,8 +4,10 @@
  */
 import { state } from '../state.js';
 import { elements } from './elements.js';
+import { getAppHandler } from '../app-context.js';
 import { invoke } from '../tauri-bridge.js';
 import { getThumbnailUrl } from '../utils.js';
+import { extractYoutubeVideoId } from '../youtube-utils.js';
 
 export function updateBroadcastTasksControlVisibility() {
   if (!elements.broadcastTasksControl) return;
@@ -16,16 +18,6 @@ export function updateBroadcastTasksControlVisibility() {
     state.activeView === "tasks";
   const hasActiveTasks = Object.keys(state.activeTasks || {}).length > 0;
   elements.broadcastTasksControl.style.display = (isVisibleTab && hasActiveTasks) ? "block" : "none";
-}
-
-function youtubeVideoIdFromPath(path) {
-  const p = String(path || "").trim();
-  if (!p) return null;
-  const shortMatch = p.match(/youtu\.be\/([^?&#/]+)/i);
-  if (shortMatch?.[1]) return shortMatch[1];
-  const watchMatch = p.match(/[?&]v=([^&#/]+)/i);
-  if (watchMatch?.[1]) return watchMatch[1];
-  return null;
 }
 
 function isSeparatedSong(song) {
@@ -146,8 +138,9 @@ export function updateTaskUI() {
     const cancelBtn = card.querySelector('.btn-task-cancel');
     if (cancelBtn) {
       cancelBtn.addEventListener('click', () => {
-        if (typeof window.cancelTask === 'function') {
-          window.cancelTask(card.dataset.path);
+        const cancelTask = getAppHandler('cancelTask');
+        if (typeof cancelTask === 'function') {
+          cancelTask(card.dataset.path);
         }
       });
     }
@@ -228,11 +221,11 @@ export function updateAiTogglesState(song = null) {
   // Accept both camel/snake flags and URL variants (youtu.be / youtube.com).
   let hasSeparatedMr = isSeparatedSong(targetSong);
   if (!hasSeparatedMr && targetSong?.path) {
-    const targetId = youtubeVideoIdFromPath(targetSong.path);
+    const targetId = extractYoutubeVideoId(targetSong.path);
     if (targetId) {
       hasSeparatedMr = state.songLibrary.some((s) => {
         if (!isSeparatedSong(s)) return false;
-        return youtubeVideoIdFromPath(s.path) === targetId;
+        return extractYoutubeVideoId(s.path) === targetId;
       });
     }
   }
@@ -355,7 +348,7 @@ export function showSongContextMenu(e, song, originalIndex) {
           elements.contextMenu.style.display = 'none';
           try {
             const { stopPlayback } = await import('../player.js');
-            if (typeof stopPlayback === 'function') await stopPlayback();
+            await stopPlayback();
             await deleteMr(song.path);
             clearMrPresenceCache(song.path);
             invoke('remote_js_log', { msg: `[MR Delete] Successfully deleted MR` }).catch(() => {});
@@ -457,8 +450,9 @@ export function showSongContextMenu(e, song, originalIndex) {
       invoke('remote_js_log', { msg: `[Menu LyricsView] Clicked for index ${originalIndex}` }).catch(() => {});
       elements.contextMenu.classList.remove("active");
       elements.contextMenu.style.display = 'none';
-      if (typeof window.openLyricDrawer === "function") {
-        window.openLyricDrawer();
+      const openLyricDrawer = getAppHandler('openLyricDrawer');
+      if (typeof openLyricDrawer === "function") {
+        openLyricDrawer();
       } else {
         document.body.classList.add("drawer-open");
       }

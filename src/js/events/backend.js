@@ -8,8 +8,7 @@ import { updateTaskUI, updateAiModelStatus, updateCardStatusBadge, updateAiToggl
 import { renderLibrary } from '../ui/library.js';
 import { showNotification } from '../utils.js';
 import { invoke } from '../tauri-bridge.js';
-
-const ACTIVE_TASKS_SNAPSHOT_KEY = "activeTasksSnapshot";
+import { youtubePathsMatch } from '../youtube-utils.js';
 let backendListenersInitialized = false;
 let taskUiUpdateScheduled = false;
 
@@ -28,22 +27,8 @@ function formatSeparationFailure(statusText) {
   return `분리 실패: ${raw}`;
 }
 
-function youtubeVideoIdFromPath(path) {
-  const p = String(path || "").trim();
-  if (!p) return null;
-  const shortMatch = p.match(/youtu\.be\/([^?&#/]+)/i);
-  if (shortMatch?.[1]) return shortMatch[1];
-  const watchMatch = p.match(/[?&]v=([^&#/]+)/i);
-  if (watchMatch?.[1]) return watchMatch[1];
-  return null;
-}
-
 function pathMatches(a, b) {
-  if (!a || !b) return false;
-  if (a === b) return true;
-  const aId = youtubeVideoIdFromPath(a);
-  const bId = youtubeVideoIdFromPath(b);
-  return !!(aId && bId && aId === bId);
+  return youtubePathsMatch(a, b);
 }
 
 function scheduleTaskUiUpdate() {

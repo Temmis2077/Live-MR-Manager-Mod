@@ -40,24 +40,7 @@ fn normalize_path_key(path: &str) -> String {
     path.replace("\\", "/").to_lowercase()
 }
 
-fn extract_youtube_video_id(url: &str) -> Option<String> {
-    let u = url.trim();
-    if let Some(idx) = u.find("youtu.be/") {
-        let tail = &u[idx + "youtu.be/".len()..];
-        let id = tail.split(&['?', '&', '/', '#'][..]).next().unwrap_or("").trim();
-        if !id.is_empty() {
-            return Some(id.to_string());
-        }
-    }
-    if let Some(idx) = u.find("watch?v=") {
-        let tail = &u[idx + "watch?v=".len()..];
-        let id = tail.split(&['&', '/', '#', '?'][..]).next().unwrap_or("").trim();
-        if !id.is_empty() {
-            return Some(id.to_string());
-        }
-    }
-    None
-}
+use crate::youtube_url::extract_youtube_video_id;
 
 fn youtube_url_variants(url: &str) -> Vec<String> {
     let mut variants = Vec::new();

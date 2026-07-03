@@ -97,19 +97,6 @@ export async function emit(event, payload) {
   console.log(`[Mock-Emit] ${event}`, payload);
 }
 
-/**
- * Safe Window management
- */
-export function getCurrentWindow() {
-  if (isTauri) return window.__TAURI__.window.getCurrentWindow();
-  return appWindow;
-}
-
-export async function getAllWindows() {
-  if (isTauri) return await window.__TAURI__.window.getAllWindows();
-  return [appWindow];
-}
-
 export class WebviewWindow {
   constructor(label, options) {
     if (isTauri) {
@@ -119,16 +106,10 @@ export class WebviewWindow {
   }
 }
 
-/**
- * Export core for legacy access if needed, but discouraged
- */
-export const core = {
-  invoke: async (cmd, args) => invoke(cmd, args)
-};
-
-export const event = {
-  listen: async (evt, hnd) => listen(evt, hnd)
-};
+export async function getAllWindows() {
+  if (isTauri) return await window.__TAURI__.window.getAllWindows();
+  return [appWindow];
+}
 
 /**
  * Safe convertFileSrc wrapper
