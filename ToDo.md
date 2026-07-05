@@ -173,7 +173,7 @@
 - [ ] **Vercel `/changelog`**, `/qa` 본문, `GET /api/releases/latest`
 - [ ] **`updater.rs` 연동**: GitHub Releases 유지 + companion manifest/changelog URL 폴백
 - [ ] **`RELEASE_NOTES.md` ↔ changelog** 동기화 (CI 또는 릴리즈 스크립트)
-- [X] **Discord 릴리즈 공지 (v0.5.0+)**: `v*` 태그 push → `#공지` webhook (`DISCORD_WEBHOOK_URL`, [`discord-release.yml`](.github/workflows/discord-release.yml))
+- [X] **Discord 릴리즈 공지 (v0.5.0+)**: `v*` 태그 push → `#공지` webhook, 사용자용 [`DISCORD_ANNOUNCEMENTS.md`](DISCORD_ANNOUNCEMENTS.md)
 - [ ] **(선택) 오버레이 숙련도/난이도 표시**
 
 ### Phase 5 — 멜로밍 신청곡 관리 (Song Request)

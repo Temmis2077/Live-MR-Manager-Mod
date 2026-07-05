@@ -32,7 +32,12 @@ Vercel 프로덕션에도 `NEXT_PUBLIC_DISCORD_INVITE_URL=https://discord.gg/qfJ
 
 ## 릴리즈 자동 공지 (GitHub Actions)
 
-`v*` 태그가 push되면 [`discord-release.yml`](../.github/workflows/discord-release.yml)이 `RELEASE_NOTES.md`에서 해당 버전 섹션을 읽어 **Discord `#공지`** webhook으로 게시합니다.
+`v*` 태그가 push되면 [`discord-release.yml`](../.github/workflows/discord-release.yml)이 [`DISCORD_ANNOUNCEMENTS.md`](../DISCORD_ANNOUNCEMENTS.md)에서 **사용자용** 공지를 읽어 **Discord `#공지`** webhook으로 게시합니다. (개발자용 [`RELEASE_NOTES.md`](../RELEASE_NOTES.md)와 분리)
+
+### 릴리즈할 때
+
+1. `RELEASE_NOTES.md` — 변경 이력(개발·GitHub Release용)
+2. **`DISCORD_ANNOUNCEMENTS.md`** — `#공지`용 짧은 안내 (무엇이 바뀌었는지, 어디서 쓰는지)
 
 ### 1회 설정
 
@@ -50,7 +55,7 @@ Vercel 프로덕션에도 `NEXT_PUBLIC_DISCORD_INVITE_URL=https://discord.gg/qfJ
 | `git push origin v0.5.0` | 태그 push 시 자동 공지 |
 | Actions → **discord-release** → Run workflow | 과거 태그 수동 공지 (tag 입력) |
 
-- 본문: [`RELEASE_NOTES.md`](../RELEASE_NOTES.md)의 `## vX.Y.Z (...)` 블록
+- 본문: [`DISCORD_ANNOUNCEMENTS.md`](../DISCORD_ANNOUNCEMENTS.md)의 `## vX.Y.Z (...)` 블록 (없으면 짧은 기본 안내)
 - `DISCORD_WEBHOOK_URL`이 없으면 워크플로는 **건너뜀**(빌드 실패 없음)
 - NSIS 빌드 워크플로([`release.yml`](../.github/workflows/release.yml))와 **독립** 실행
 

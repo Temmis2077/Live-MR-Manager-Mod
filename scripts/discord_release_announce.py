@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Post a GitHub release summary to a Discord webhook (#공지)."""
+"""Post a user-facing release summary to a Discord webhook (#공지)."""
 
 from __future__ import annotations
 
@@ -13,33 +13,42 @@ from pathlib import Path
 
 DISCORD_DESC_LIMIT = 3800
 REPO = os.environ.get("GITHUB_REPOSITORY", "AutumnColor77/Live-MR-Manager")
+ANNOUNCE_PATH = Path("DISCORD_ANNOUNCEMENTS.md")
 
 
-def extract_release_notes(tag: str, notes_path: Path) -> str:
-    if not notes_path.is_file():
-        return f"{tag} 릴리즈가 GitHub에 게시되었습니다."
-
-    text = notes_path.read_text(encoding="utf-8")
+def extract_section(tag: str, text: str) -> str | None:
     pattern = rf"## {re.escape(tag)} \([^)]+\)\r?\n(.*?)(?=\r?\n---|\r?\n## v|\Z)"
     match = re.search(pattern, text, re.DOTALL)
     if not match:
-        return f"{tag} 릴리즈가 GitHub에 게시되었습니다.\n\n상세: RELEASE_NOTES.md"
+        return None
+    return match.group(1).strip()
 
-    body = match.group(1).strip()
-    if len(body) > DISCORD_DESC_LIMIT:
-        body = body[: DISCORD_DESC_LIMIT - 1].rstrip() + "\n\n…"
-    return body
+
+def extract_user_announcement(tag: str) -> str:
+    if ANNOUNCE_PATH.is_file():
+        body = extract_section(tag, ANNOUNCE_PATH.read_text(encoding="utf-8"))
+        if body:
+            return body
+
+    return (
+        f"**Live MR Manager {tag}** 업데이트가 나왔습니다.\n\n"
+        f"Windows 설치 파일은 GitHub Releases에서 받을 수 있습니다.\n"
+        f"자세한 변경 사항은 저장소의 RELEASE_NOTES.md를 참고해 주세요.\n\n"
+        f"궁금한 점은 **#질문-답변**에 남겨 주세요."
+    )
 
 
 def build_payload(tag: str, description: str) -> dict:
     release_url = f"https://github.com/{REPO}/releases/tag/{tag}"
-    download_url = f"{release_url}#:~:text=Assets"
+    if len(description) > DISCORD_DESC_LIMIT:
+        description = description[: DISCORD_DESC_LIMIT - 1].rstrip() + "\n\n…"
+
     return {
         "username": "Live MR Manager",
         "allowed_mentions": {"parse": []},
         "embeds": [
             {
-                "title": f"🎙️ Live MR Manager {tag} 릴리즈",
+                "title": f"업데이트 안내 · {tag}",
                 "url": release_url,
                 "description": description,
                 "color": 0xF59E0B,
@@ -50,12 +59,12 @@ def build_payload(tag: str, description: str) -> dict:
                         "inline": True,
                     },
                     {
-                        "name": "FAQ",
-                        "value": "[lmrm.vercel.app/faq](https://lmrm.vercel.app/faq)",
+                        "name": "도움말",
+                        "value": "[FAQ](https://lmrm.vercel.app/faq)",
                         "inline": True,
                     },
                 ],
-                "footer": {"text": "Windows NSIS 설치 파일 · 베타"},
+                "footer": {"text": "Windows · 베타"},
             }
         ],
     }
@@ -79,7 +88,7 @@ def post_webhook(url: str, payload: dict) -> None:
 
 def main() -> int:
     if len(sys.argv) < 2:
-        print("Usage: discord_release_announce.py <tag> [RELEASE_NOTES.md]", file=sys.stderr)
+        print("Usage: discord_release_announce.py <tag>", file=sys.stderr)
         return 2
 
     tag = sys.argv[1].strip()
@@ -91,8 +100,7 @@ def main() -> int:
         print("DISCORD_WEBHOOK_URL not set - skipping Discord announce.")
         return 0
 
-    notes_path = Path(sys.argv[2]) if len(sys.argv) > 2 else Path("RELEASE_NOTES.md")
-    description = extract_release_notes(tag, notes_path)
+    description = extract_user_announcement(tag)
     payload = build_payload(tag, description)
 
     try:
@@ -105,7 +113,7 @@ def main() -> int:
         print(f"Discord webhook failed: {err}", file=sys.stderr)
         return 1
 
-    print(f"Posted {tag} release announce to Discord.")
+    print(f"Posted {tag} user announce to Discord.")
     return 0
 
 
