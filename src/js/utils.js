@@ -125,16 +125,58 @@ export function ratingStarsHtml(count) {
   return `<span class="rating-stars" aria-label="${n}점"><span class="rating-stars-filled">${filled}</span><span class="rating-stars-empty">${empty}</span></span>`;
 }
 
-export function applyRatingSelectLabel(selectedTextEl, value) {
-  if (!selectedTextEl) return;
-  selectedTextEl.innerHTML = ratingStarsHtml(value);
+function updateMetaStarRatingUI(container, value) {
+  const n = Number.parseInt(value, 10);
+  const valid = Number.isFinite(n) && n >= 1 && n <= RATING_MAX;
+  container.querySelectorAll('.meta-star').forEach((btn) => {
+    const starN = Number.parseInt(btn.dataset.value, 10);
+    const on = valid && starN <= n;
+    btn.classList.toggle('is-on', on);
+    btn.textContent = on ? '★' : '☆';
+    btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+  });
 }
 
-/** 난이도/숙련도 드롭다운 옵션 라벨을 별 표시로 초기화 */
-export function initRatingSelectOptions(root = document) {
-  root.querySelectorAll('.meta-rating-select .option-item').forEach((opt) => {
-    const v = opt.dataset.value ?? '';
-    opt.innerHTML = v === '' ? '<span class="rating-stars rating-stars-unset">미설정</span>' : ratingStarsHtml(v);
+function bindMetaStarRating(container, hidden) {
+  if (container.dataset.bound === '1') return;
+  container.dataset.bound = '1';
+
+  const preview = (hoverValue) => updateMetaStarRatingUI(container, hoverValue);
+  const restore = () => updateMetaStarRatingUI(container, hidden.value);
+
+  container.querySelectorAll('.meta-star').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      hidden.value = btn.dataset.value ?? '';
+      restore();
+      hidden.dispatchEvent(new Event('input', { bubbles: true }));
+      hidden.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    btn.addEventListener('mouseenter', () => preview(btn.dataset.value ?? ''));
   });
+
+  container.addEventListener('mouseleave', restore);
+}
+
+/** 곡 편집 모달 — 난이도/숙련도 별 클릭 선택 초기화 */
+export function initMetaStarRatings(root = document) {
+  root.querySelectorAll('.meta-star-rating').forEach((container) => {
+    const hiddenId = container.dataset.input;
+    if (!hiddenId) return;
+    const hidden = document.getElementById(hiddenId);
+    if (!hidden) return;
+    bindMetaStarRating(container, hidden);
+    updateMetaStarRatingUI(container, hidden.value);
+  });
+}
+
+export function setMetaStarRating(containerId, hiddenId, value) {
+  const container = document.getElementById(containerId);
+  const hidden = document.getElementById(hiddenId);
+  if (!container || !hidden) return;
+
+  const val = value != null && value !== '' ? String(value) : '';
+  hidden.value = val;
+  bindMetaStarRating(container, hidden);
+  updateMetaStarRatingUI(container, val);
 }
 

@@ -64,12 +64,7 @@ export function initLibraryListeners(updateViewMode) {
         }
 
         if (selectedText) {
-          if (customSelect.classList.contains('meta-rating-select')) {
-            const starEl = optionItem.querySelector('.rating-stars');
-            selectedText.innerHTML = starEl ? starEl.outerHTML : optionItem.innerHTML;
-          } else {
-            selectedText.textContent = optionItem.textContent;
-          }
+          selectedText.textContent = optionItem.textContent;
         }
 
         customSelect.querySelectorAll(".option-item").forEach(opt => opt.classList.remove("selected"));

@@ -120,6 +120,14 @@
 - **스프레드시트 가져오기/보내기**: 설정에서 라이브러리를 CSV/XLSX로 보내고 병합 가져오기(한글 헤더 지원).
 - **GitHub 업데이트 알림**: 최신 릴리즈를 주기적으로 확인해 앱 내에서 새 버전을 안내합니다.
 
+### 🆕 v0.5.0 업데이트 (2026-07-05)
+
+- **멜로밍 노래책 동기화 재개**: 설정 **가져오기** / **보내기** 분리. Pull은 로그인 없이, Push는 **멜로밍 로그인** 후 사용.
+- **Push 고도화**: 채널 곡 목록 기반 매칭·PATCH, 아티스트·카테고리 자동 생성, KEY/BPM·숙련도·난이도·가사 전송, rate limit 재시도.
+- **곡 정보 편집**: 난이도·숙련도 **별 클릭** UI, KEY/BPM 행과 정렬·레이아웃 개선.
+- **Companion**: OAuth refresh API (`POST /api/oauth/refresh`).
+- **버전 메타데이터 통일**: `0.5.0`으로 일괄 갱신.
+
 ### 🆕 v0.4.16 핫픽스 (2026-07-05)
 
 - **MP3 MR 저장 ffmpeg 핫픽스**: MR MP3 저장이 유튜브와 같은 **관리형 ffmpeg** 탐색·자동 다운로드를 사용합니다. 설치 PC에 ffmpeg가 PATH에 없어도 `Vocal save failed: failed to run ffmpeg` 오류를 방지합니다.
@@ -208,7 +216,7 @@
 - **(테스트) 웹 로그인** — `/login`, `/account` (OAuth API 검증용, 추후 정리 예정)
 - **changelog·업데이트 API** — GitHub Releases(설치 파일) + companion(릴리즈 노트·manifest) (Phase 4)
 
-**현재 상태 (2026-07)**: **로그인(v0.4.13)** 유지. **노래책 동기화(v0.4.16)** 는 OpenAPI 아티스트·카테고리 API 부재로 **업데이트 예정**. **MP3 MR 저장(v0.4.16)** 은 관리형 ffmpeg로 PATH 없이도 동작. OAuth 토큰 교환 **500/401**은 멜로밍 서버 이슈 시 간헐적 발생.
+**현재 상태 (2026-07)**: **노래책 가져오기·보내기(v0.5.0)** 활성. **멜로밍 로그인** 후 보내기, 없는 아티스트·카테고리는 Push 시 자동 등록. **MP3 MR 저장(v0.4.16)** 은 관리형 ffmpeg로 PATH 없이도 동작. OAuth 토큰 교환 **500/401**은 멜로밍 서버 이슈 시 간헐적 발생.
 
 작업 체크리스트: [ToDo.md §7](ToDo.md). 상세 기획: [docs/MELOMING_SONGBOOK_INTEGRATION.md](docs/MELOMING_SONGBOOK_INTEGRATION.md).
 

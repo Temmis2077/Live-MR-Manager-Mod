@@ -17,9 +17,6 @@ use tauri::{AppHandle, State};
 
 use super::settings::{KEY_CHANNEL_ID, KEY_CHANNEL_INPUT};
 
-const SONG_SYNC_UNAVAILABLE: &str = "노래책 가져오기·보내기는 아직 사용할 수 없습니다. 멜로밍 OpenAPI 아티스트·카테고리 등록 API 지원 후 앱 업데이트로 제공할 예정입니다.";
-const MELOMING_SONG_SYNC_ENABLED: bool = false;
-
 async fn resolve_input(input: Option<String>) -> Result<(ResolvedChannel, String), String> {
     if let Some(raw) = input.filter(|s| !s.trim().is_empty()) {
         let resolved = MelomingClient::resolve_channel(&raw)
@@ -37,7 +34,7 @@ async fn resolve_input(input: Option<String>) -> Result<(ResolvedChannel, String
 
     if !oauth_status().logged_in {
         return Err(
-            "멜로밍 로그인이 필요합니다. 우측 상단에서 로그인한 뒤 「노래책 동기화」를 실행해 주세요."
+            "멜로밍 채널을 찾을 수 없습니다. 우측 상단에서 로그인한 뒤 다시 시도해 주세요."
                 .into(),
         );
     }
@@ -218,9 +215,6 @@ pub async fn meloming_test_connection(channel_id: Option<String>) -> Result<Melo
 
 #[tauri::command]
 pub async fn meloming_pull_songs(channel_id: Option<String>) -> Result<PullResult, String> {
-    if !MELOMING_SONG_SYNC_ENABLED {
-        return Err(SONG_SYNC_UNAVAILABLE.into());
-    }
     let (resolved, raw) = resolve_input(channel_id).await?;
     persist_resolved(&resolved, &raw)?;
     pull_channel(resolved.id).await.map_err(|e| e.to_string())
@@ -308,8 +302,8 @@ pub async fn meloming_push_songs(
     paths: State<'_, AppPaths>,
     channel_id: Option<String>,
 ) -> Result<PushResult, String> {
-    if !MELOMING_SONG_SYNC_ENABLED {
-        return Err(SONG_SYNC_UNAVAILABLE.into());
+    if !oauth_status().logged_in {
+        return Err("보내기는 멜로밍 로그인이 필요합니다. 우측 상단에서 로그인해 주세요.".into());
     }
     let (resolved, raw) = resolve_input(channel_id).await?;
     persist_resolved(&resolved, &raw)?;

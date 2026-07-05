@@ -4,10 +4,10 @@
 import { state } from '../state.js';
 import { elements } from '../ui/elements.js';
 import { invoke } from '../tauri-bridge.js';
-import { initRatingSelectOptions, showNotification } from '../utils.js';
+import { initMetaStarRatings, showNotification } from '../utils.js';
 
 export function initModalListeners() {
-  initRatingSelectOptions();
+  initMetaStarRatings();
   const btnAnalyzeKeyBpm = document.getElementById('btn-analyze-key-bpm');
   if (btnAnalyzeKeyBpm) {
     btnAnalyzeKeyBpm.onclick = async () => {

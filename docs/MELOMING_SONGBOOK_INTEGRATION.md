@@ -295,15 +295,18 @@ sequenceDiagram
 - **토큰 교환**: Tauri에서 `MELOMING_USE_COMPANION_EXCHANGE=true` 시 `POST https://lmrm.vercel.app/api/oauth/exchange` (Client Secret은 Vercel env)
 - Redirect URI (등록·코드 공통): `https://lmrm.vercel.app/oauth/callback`
 
-### 6.7 OAuth·동기화 UI 상태 (2026-07-05, v0.4.16)
+### 6.7 OAuth·동기화 UI 상태 (2026-07-05, v0.5.0)
 
 | 단계 | 상태 |
 |------|------|
 | authorize · code · deep-link | ✅ 동작 |
 | `POST /oauth/token` | ⚠️ 간헐적 500 INTERNAL_ERROR 또는 401 Invalid redirect_uri (멜로밍 측) |
-| 앱 UI — 「멜로밍 로그인」 | ✅ 활성 (`MELOMING_COMING_SOON` 해제, v0.4.13) |
-| 앱 UI — 「노래책 동기화」(Push/Pull) | ⏸ **업데이트 예정** (v0.4.16) — OpenAPI 아티스트·카테고리 **POST** 부재, UI·백엔드 가드 |
-| Pull · 연결 테스트 · 채널 저장 (백엔드) | ✅ Rust 커맨드 존재; v0.4.16 기준 `pull`/`push`는 `MELOMING_SONG_SYNC_ENABLED=false`로 차단 |
+| `POST /api/oauth/refresh` (Companion) | ✅ v0.5.0 |
+| 앱 UI — 「멜로밍 로그인」 | ✅ 활성 |
+| 앱 UI — 「가져오기」/「보내기」 | ✅ **v0.5.0 재개** — Pull(무로그인 가능), Push(로그인 필수) |
+| Pull · 연결 테스트 · 채널 저장 (백엔드) | ✅ `meloming_pull_songs` / `meloming_push_songs` 활성 |
+| Push — 아티스트·카테고리 자동 생성 | ✅ v0.5.0 (`create_artist` / `create_category`) |
+| Push — Diff PATCH · 가사·KEY/BPM·숙련도/난이도 | ✅ v0.5.0 |
 
 ### 6.8 플랫폼 채널 주소 (Pull용)
 
@@ -338,6 +341,7 @@ sequenceDiagram
 | `/terms` | 2A | 이용약관 |
 | `/changelog` | 4 | 릴리즈 노트 |
 | `POST /api/oauth/exchange` | 2B | 앱 토큰 교환 프록시 |
+| `POST /api/oauth/refresh` | 2B | refresh token → access token (v0.5.0) |
 | `GET /api/oauth/login` | 2A+ | 웹 authorize 시작 |
 | `POST /api/oauth/complete` | 2A+ | 웹 토큰 교환·세션 |
 | `GET /api/auth/session` | 2A+ | 웹 로그인 상태 |
@@ -360,11 +364,11 @@ sequenceDiagram
 
 ```json
 {
-  "version": "0.4.15",
+  "version": "0.5.0",
   "minSupportedVersion": "0.4.0",
-  "releaseUrl": "https://github.com/AutumnColor77/Live-MR-Manager/releases/tag/v0.4.15",
-  "changelogUrl": "https://lmrm.vercel.app/changelog#v0.4.15",
-  "notes": "노래책 동기화 업데이트 예정, 멜로밍 로그인 유지, 버전 0.4.15 …",
+  "releaseUrl": "https://github.com/AutumnColor77/Live-MR-Manager/releases/tag/v0.5.0",
+  "changelogUrl": "https://lmrm.vercel.app/changelog#v0.5.0",
+  "notes": "멜로밍 노래책 가져오기·보내기 재개, Push Diff·메타 동기화, 별점 UI …",
   "publishedAt": "2026-06-27T00:00:00Z",
   "critical": false
 }
@@ -436,7 +440,7 @@ flowchart TB
 
 | 위치 | 변경 |
 |------|------|
-| settings-page | 멜로밍 로그인(헤더), 「노래책 동기화」(업데이트 예정, v0.4.15) |
+| settings-page | 멜로밍 로그인(헤더), 「가져오기」/「보내기」(v0.5.0) |
 | 메타데이터 모달 | 숙련도·난이도 1–5, URL 접이식 |
 | 라이브러리 / 관리자 | 동기화 상태 배지, 일괄 Pull/Push |
 | 컨텍스트 메뉴 | 「멜로밍에 업로드」「가져오기」 |

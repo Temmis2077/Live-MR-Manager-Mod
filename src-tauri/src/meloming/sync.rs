@@ -54,7 +54,7 @@ fn song_to_metadata(song: &SongResponse, channel_id: i64, artist_name: Option<St
     }
 }
 
-fn upsert_category_maps(channel_id: i64, categories: &[CategoryResponse]) -> Result<usize, MelomingError> {
+pub(crate) fn upsert_category_maps(channel_id: i64, categories: &[CategoryResponse]) -> Result<usize, MelomingError> {
     let db = DB.lock();
     let mut count = 0usize;
     for c in categories {
@@ -172,6 +172,34 @@ fn find_existing_match<'a>(
         }
     }
     None
+}
+
+pub(crate) fn upsert_artist_map_entry(
+    channel_id: i64,
+    local_name: &str,
+    meloming_artist_id: i64,
+) -> Result<(), MelomingError> {
+    let db = DB.lock();
+    db.execute(
+        "INSERT OR REPLACE INTO Meloming_Artist_Map (local_name, meloming_artist_id, channel_id) VALUES (?, ?, ?)",
+        params![local_name.trim(), meloming_artist_id, channel_id],
+    )
+    .map_err(|e| MelomingError::Message(e.to_string()))?;
+    Ok(())
+}
+
+pub(crate) fn upsert_category_map_entry(
+    channel_id: i64,
+    local_name: &str,
+    meloming_category_id: i64,
+) -> Result<(), MelomingError> {
+    let db = DB.lock();
+    db.execute(
+        "INSERT OR REPLACE INTO Meloming_Category_Map (local_name, meloming_category_id, channel_id) VALUES (?, ?, ?)",
+        params![local_name.trim(), meloming_category_id, channel_id],
+    )
+    .map_err(|e| MelomingError::Message(e.to_string()))?;
+    Ok(())
 }
 
 pub(crate) fn upsert_artist_maps(channel_id: i64, artists: &[ArtistResponse]) -> Result<usize, MelomingError> {

@@ -93,6 +93,7 @@
 ## 🛠️ 6. 개발 환경 및 문서 (DevEx)
 
 - [X] **README 개발 환경 가이드 보강 (v0.4.10)**: LLVM(libclang), `cargo fetch`, Windows PowerShell/`npm.cmd` 안내 반영
+- [X] **앱 버전 v0.5.0**: 멜로밍 노래책 가져오기·보내기 재개, Push Diff·메타·별점 UI, Companion OAuth refresh
 - [X] **앱 버전 v0.4.16 핫픽스**: MP3 MR ffmpeg PATH(`ffmpeg_tools`), 멜로밍 동기화 UI·백엔드 잠금 문구 정리
 - [X] **앱 버전 v0.4.15 메타데이터 정합성**: `package.json`, `Cargo.toml`, `tauri.conf.json` 버전 번호 일괄 갱신
 - [X] **설정 UI 정리 (v0.4.12)**: 설정 카드 버튼 너비 150px, MR 저장 형식 드롭다운 250px
@@ -145,7 +146,10 @@
 - [X] **UI 잠금 해제 (v0.4.13)**: `MELOMING_COMING_SOON` 제거 — 「멜로밍 로그인」·「멜로밍에 보내기」 활성화
 - [X] **MP3 MR ffmpeg PATH 핫픽스 (v0.4.16)**: `ffmpeg_tools` — MR 저장·유튜브 공통 탐색, 관리형 캐시·자동 다운로드
 - [X] **노래책 동기화 UI 잠금 (v0.4.15–v0.4.16)**: OpenAPI 아티스트·카테고리 CRUD 대기, 설정 카드·백엔드 가드
-- [ ] **멜로밍 OpenAPI**: 아티스트·카테고리 **POST** API 추가 요청·대기 (현재 GET만, 생성 시 405)
+- [X] **노래책 동기화 재개 (v0.5.0)**: 「가져오기」/「보내기」 UI 분리, Pull/Push 활성, 로그인 시 채널 자동 해석
+- [X] **Push Diff·메타 고도화 (v0.5.0)**: RemoteSongIndex, PATCH diff, 가사·KEY/BPM·숙련도/난이도, rate limit, 아티스트·카테고리 자동 생성
+- [X] **곡 정보 편집 별점 UI (v0.5.0)**: 난이도/숙련도 클릭 선택, KEY/BPM 그리드 정렬
+- [X] **멜로밍 아티스트·카테고리 POST (v0.5.0)**: Push 시 `create_artist`/`create_category` 자동 등록 (OpenAPI 동작 확인)
 - [X] **멜로밍 계정 메뉴 z-index (v0.4.14)**: 헤더·드롭다운 겹침 수정
 - [ ] **DELETE** 노래 삭제 Push
 - [ ] **YouTube `path` → `originalUrl`** 자동 매핑
@@ -171,6 +175,17 @@
 - [ ] **`RELEASE_NOTES.md` ↔ changelog** 동기화 (CI 또는 릴리즈 스크립트)
 - [ ] **(선택) 오버레이 숙련도/난이도 표시**
 
+### Phase 5 — 멜로밍 신청곡 관리 (Song Request)
+
+멜로밍 채널로 **들어온 신청곡**을 앱에서 조회·정리·처리하는 기능. 노래책(Pull/Push)과 별도 — **신청 큐·상태·라이브러리 연동** 중심. (P1: 음원은 로컬만, 멜로밍에는 메타·상태만)
+
+- [ ] **멜로밍 OpenAPI 조사**: 신청곡 목록·상태·승인/거절·완료(처리됨) 등 제공 API·OAuth scope 확인
+- [ ] **Rust `meloming` 신청곡 모듈**: 목록 Pull, 상태 변경(PATCH 등), 채널·기간 필터
+- [ ] **신청곡 UI**: 대기/처리중/완료 탭 또는 필터, 신청자·곡명·URL·신청 시각 표시
+- [ ] **로컬 라이브러리 연동**: 신청 URL/제목으로 기존 곡 매칭, 없으면 「라이브러리에 추가」·「노래책에 보내기」 단축 동작
+- [ ] **방송 워크플로우**: 신청곡 → 재생 큐 또는 「다음 곡」 후보, 처리 완료 시 멜로밍 상태 반영
+- [ ] **(선택) OBS·토스트 알림**: 새 신청 수신 시 앱 내 알림 또는 오버레이 표시
+
 ---
 
-💡 **참고**: 이 목록은 우선순위에 따라 유동적으로 조정될 수 있습니다. v0.4.10은 2026-06-02 릴리즈, v0.4.11·v0.4.12는 2026-06 패치 빌드, **v0.4.13**은 2026-06-27(Companion 법적 문서·멜로밍 로그인/보내기 재개), **v0.4.14**는 2026-06-27(유튜브 메타 보강·Push 안정화·설정 법적 고지), **v0.4.15**는 2026-06-27(노래책 동기화 UI 업데이트 예정·OpenAPI 대기), **v0.4.16**은 2026-07-05(MP3 MR ffmpeg PATH 핫픽스·멜로밍 동기화 안내)입니다. 멜로밍 연동 상세는 [`docs/MELOMING_SONGBOOK_INTEGRATION.md`](docs/MELOMING_SONGBOOK_INTEGRATION.md) 및 [README](README.md) 로드맵을 참고하세요.
+💡 **참고**: 이 목록은 우선순위에 따라 유동적으로 조정될 수 있습니다. v0.4.10은 2026-06-02 릴리즈, v0.4.11·v0.4.12는 2026-06 패치 빌드, **v0.4.13**은 2026-06-27(Companion 법적 문서·멜로밍 로그인/보내기 재개), **v0.4.14**는 2026-06-27(유튜브 메타 보강·Push 안정화·설정 법적 고지), **v0.4.15**는 2026-06-27(노래책 동기화 UI 업데이트 예정·OpenAPI 대기), **v0.4.16**은 2026-07-05(MP3 MR ffmpeg PATH 핫픽스·멜로밍 동기화 안내), **v0.5.0**은 2026-07-05(노래책 가져오기·보내기 재개·Push Diff·별점 UI)입니다. 멜로밍 연동 상세는 [`docs/MELOMING_SONGBOOK_INTEGRATION.md`](docs/MELOMING_SONGBOOK_INTEGRATION.md) 및 [README](README.md) 로드맵을 참고하세요.

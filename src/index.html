@@ -6,7 +6,7 @@
   <link rel="stylesheet" href="style.css?v=6.0" />
   <script src="js/libs/Sortable.min.js"></script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Live MR Manager(Beta) v0.4.16 | Performer Dash</title>
+  <title>Live MR Manager(Beta) v0.5.0 | Performer Dash</title>
 </head>
 
 <body>
@@ -15,7 +15,7 @@
     <div class="titlebar-drag-region" data-tauri-drag-region>
       <div class="titlebar-logo">
         <img src="./assets/images/app-icon.png" alt="Logo" style="width: 18px; height: 18px; object-fit: contain;"> Live
-        MR Manager(Beta) v0.4.16
+        MR Manager(Beta) v0.5.0
       </div>
     </div>
     <div data-tauri-drag-region class="titlebar-drag-fill"></div>
@@ -641,17 +641,18 @@
               </div>
               <div class="ai-model-card">
                 <div class="ai-info-left">
-                  <h2 class="ai-title-large">멜로밍 노래책 동기화</h2>
+                  <h2 class="ai-title-large">멜로밍 노래책</h2>
                   <div class="ai-model-desc">
-                    앱 라이브러리와 멜로밍 노래책을 맞추는 <strong>가져오기·보내기</strong> 기능입니다.
-                    현재는 멜로밍 OpenAPI에 아티스트·카테고리 등록 API가 없어 <strong>다음 업데이트까지 제공하지 않습니다.</strong>
-                    우측 상단 <strong>「멜로밍 로그인」</strong>은 이용할 수 있습니다.
+                    <strong>가져오기</strong>는 멜로밍 노래책 → 앱(병합·갱신),
+                    <strong>보내기</strong>는 앱 → 멜로밍 노래책입니다.
+                    보내기는 우측 상단 <strong>「멜로밍 로그인」</strong>이 필요합니다.
+                    없는 아티스트·카테고리는 보내기 시 자동으로 등록합니다.
                   </div>
                   <div id="meloming-status" class="settings-status-text"></div>
                 </div>
                 <div class="ai-actions-right">
-                  <button id="btn-meloming-sync" class="btn-ai-action is-coming-soon" type="button"
-                    title="멜로밍 OpenAPI 아티스트·카테고리 API 지원 후 제공 예정">노래책 동기화</button>
+                  <button id="btn-meloming-pull" class="btn-ai-action secondary" type="button">가져오기</button>
+                  <button id="btn-meloming-push" class="btn-ai-action" type="button">보내기</button>
                 </div>
               </div>
             </section>
@@ -1065,7 +1066,7 @@
         </div>
 
         <!-- 우측 컬럼 -->
-        <div class="modal-col">
+        <div class="modal-col modal-col-right">
           <div class="input-group">
             <label>태그 (쉼표로 구분)</label>
             <input type="text" id="edit-tags" placeholder="예: 신나는, 고음, 라이브" autocomplete="off">
@@ -1096,8 +1097,8 @@
               <input type="range" min="0" max="120" value="100" class="range-slider volume-slider" id="edit-volume">
             </div>
           </div>
-          <div class="input-group">
-            <div class="meta-inline-row">
+          <div class="input-group meta-paired-group">
+            <div class="meta-paired-grid">
               <div class="meta-field">
                 <label for="edit-key">KEY</label>
                 <input type="text" id="edit-key" placeholder="예: C#m" autocomplete="off">
@@ -1106,43 +1107,31 @@
                 <label for="edit-bpm">BPM</label>
                 <input type="number" id="edit-bpm" placeholder="예: 128" min="1" max="400" step="1">
               </div>
-            </div>
-            <div class="meta-inline-row">
-              <div class="meta-field">
-                <label for="edit-difficulty-select">난이도</label>
-                <div class="custom-select meta-rating-select" id="edit-difficulty-dropdown">
-                  <div class="select-trigger">
-                    <span class="selected-text">미설정</span>
-                    <span class="select-arrow"></span>
+              <div class="meta-rating-inline">
+                <label>난이도</label>
+                <div class="meta-star-rating" id="edit-difficulty-stars" data-input="edit-difficulty-select" role="group" aria-label="난이도">
+                  <div class="meta-star-row" id="edit-difficulty-stars-row" role="radiogroup" aria-label="난이도 점수">
+                    <button type="button" class="meta-star" data-value="1" aria-label="1점">☆</button>
+                    <button type="button" class="meta-star" data-value="2" aria-label="2점">☆</button>
+                    <button type="button" class="meta-star" data-value="3" aria-label="3점">☆</button>
+                    <button type="button" class="meta-star" data-value="4" aria-label="4점">☆</button>
+                    <button type="button" class="meta-star" data-value="5" aria-label="5점">☆</button>
                   </div>
-                  <div class="select-options">
-                    <div class="option-item selected" data-value=""></div>
-                    <div class="option-item" data-value="1"></div>
-                    <div class="option-item" data-value="2"></div>
-                    <div class="option-item" data-value="3"></div>
-                    <div class="option-item" data-value="4"></div>
-                    <div class="option-item" data-value="5"></div>
-                  </div>
-                  <input type="hidden" id="edit-difficulty-select" value="">
                 </div>
+                <input type="hidden" id="edit-difficulty-select" value="">
               </div>
-              <div class="meta-field">
-                <label for="edit-proficiency-select">숙련도</label>
-                <div class="custom-select meta-rating-select" id="edit-proficiency-dropdown">
-                  <div class="select-trigger">
-                    <span class="selected-text">미설정</span>
-                    <span class="select-arrow"></span>
+              <div class="meta-rating-inline">
+                <label>숙련도</label>
+                <div class="meta-star-rating" id="edit-proficiency-stars" data-input="edit-proficiency-select" role="group" aria-label="숙련도">
+                  <div class="meta-star-row" id="edit-proficiency-stars-row" role="radiogroup" aria-label="숙련도 점수">
+                    <button type="button" class="meta-star" data-value="1" aria-label="1점">☆</button>
+                    <button type="button" class="meta-star" data-value="2" aria-label="2점">☆</button>
+                    <button type="button" class="meta-star" data-value="3" aria-label="3점">☆</button>
+                    <button type="button" class="meta-star" data-value="4" aria-label="4점">☆</button>
+                    <button type="button" class="meta-star" data-value="5" aria-label="5점">☆</button>
                   </div>
-                  <div class="select-options">
-                    <div class="option-item selected" data-value=""></div>
-                    <div class="option-item" data-value="1"></div>
-                    <div class="option-item" data-value="2"></div>
-                    <div class="option-item" data-value="3"></div>
-                    <div class="option-item" data-value="4"></div>
-                    <div class="option-item" data-value="5"></div>
-                  </div>
-                  <input type="hidden" id="edit-proficiency-select" value="">
                 </div>
+                <input type="hidden" id="edit-proficiency-select" value="">
               </div>
             </div>
           </div>

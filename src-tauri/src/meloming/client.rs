@@ -87,6 +87,17 @@ pub struct ChannelProfile {
     pub nickname: Option<String>,
 }
 
+#[derive(Debug, Serialize)]
+struct CreateArtistBody {
+    name: String,
+}
+
+#[derive(Debug, Serialize)]
+struct CreateCategoryBody {
+    name: String,
+    color: String,
+}
+
 pub struct MelomingClient;
 
 impl MelomingClient {
@@ -165,6 +176,34 @@ impl MelomingClient {
     pub async fn list_categories(channel_id: i64) -> Result<Vec<CategoryResponse>, MelomingError> {
         let url = format!("{BASE_URL}/v1/channels/{channel_id}/categories");
         Self::get_json(&url).await
+    }
+
+    pub async fn create_artist(
+        channel_id: i64,
+        name: &str,
+        token: &str,
+    ) -> Result<ArtistResponse, MelomingError> {
+        let url = format!("{BASE_URL}/v1/channels/{channel_id}/artists");
+        let body = CreateArtistBody {
+            name: name.trim().to_string(),
+        };
+        let req = Self::authed_request(reqwest::Method::POST, &url, token, Some(&body));
+        Self::send_json(req).await
+    }
+
+    pub async fn create_category(
+        channel_id: i64,
+        name: &str,
+        color: &str,
+        token: &str,
+    ) -> Result<CategoryResponse, MelomingError> {
+        let url = format!("{BASE_URL}/v1/channels/{channel_id}/categories");
+        let body = CreateCategoryBody {
+            name: name.trim().to_string(),
+            color: color.to_string(),
+        };
+        let req = Self::authed_request(reqwest::Method::POST, &url, token, Some(&body));
+        Self::send_json(req).await
     }
 
     fn authed_request(
