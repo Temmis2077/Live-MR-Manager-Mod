@@ -29,3 +29,31 @@ Vercel 프로덕션에도 `NEXT_PUBLIC_DISCORD_INVITE_URL=https://discord.gg/qfJ
 - 앱에서: 설정 → 도움말 · 문의
 
 **주의:** OAuth token·Client Secret·전체 로그는 올리지 마세요.
+
+## 릴리즈 자동 공지 (GitHub Actions)
+
+`v*` 태그가 push되면 [`discord-release.yml`](../.github/workflows/discord-release.yml)이 `RELEASE_NOTES.md`에서 해당 버전 섹션을 읽어 **Discord `#공지`** webhook으로 게시합니다.
+
+### 1회 설정
+
+1. Discord **서버 설정 → 연동 → Webhooks → 새 Webhook**
+2. 채널: `#공지` (또는 릴리즈 전용 채널)
+3. Webhook URL 복사
+4. GitHub 저장소 → **Settings → Secrets and variables → Actions → New repository secret**
+   - Name: `DISCORD_WEBHOOK_URL`
+   - Value: webhook URL (`https://discord.com/api/webhooks/...`)
+
+### 동작
+
+| 트리거 | 설명 |
+|--------|------|
+| `git push origin v0.5.0` | 태그 push 시 자동 공지 |
+| Actions → **discord-release** → Run workflow | 과거 태그 수동 공지 (tag 입력) |
+
+- 본문: [`RELEASE_NOTES.md`](../RELEASE_NOTES.md)의 `## vX.Y.Z (...)` 블록
+- `DISCORD_WEBHOOK_URL`이 없으면 워크플로는 **건너뜀**(빌드 실패 없음)
+- NSIS 빌드 워크플로([`release.yml`](../.github/workflows/release.yml))와 **독립** 실행
+
+### v0.5.0 등 이미 릴리즈한 버전
+
+Webhook 설정 후 Actions에서 **discord-release** → **Run workflow** → tag에 `v0.5.0` 입력.
