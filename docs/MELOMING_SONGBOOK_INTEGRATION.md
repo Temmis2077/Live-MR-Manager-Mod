@@ -295,15 +295,15 @@ sequenceDiagram
 - **토큰 교환**: Tauri에서 `MELOMING_USE_COMPANION_EXCHANGE=true` 시 `POST https://lmrm.vercel.app/api/oauth/exchange` (Client Secret은 Vercel env)
 - Redirect URI (등록·코드 공통): `https://lmrm.vercel.app/oauth/callback`
 
-### 6.7 OAuth·동기화 UI 상태 (2026-06-27, v0.4.15)
+### 6.7 OAuth·동기화 UI 상태 (2026-07-05, v0.4.16)
 
 | 단계 | 상태 |
 |------|------|
 | authorize · code · deep-link | ✅ 동작 |
 | `POST /oauth/token` | ⚠️ 간헐적 500 INTERNAL_ERROR 또는 401 Invalid redirect_uri (멜로밍 측) |
 | 앱 UI — 「멜로밍 로그인」 | ✅ 활성 (`MELOMING_COMING_SOON` 해제, v0.4.13) |
-| 앱 UI — 「노래책 동기화」(Push) | ⏸ **업데이트 예정** (`MELOMING_SYNC_COMING_SOON`, v0.4.15) — OpenAPI 아티스트·카테고리 **POST** 부재 |
-| Pull · 연결 테스트 · 채널 저장 (백엔드) | ✅ Rust 커맨드 존재; 설정 UI는 v0.4.15 기준 동기화 카드만 노출 |
+| 앱 UI — 「노래책 동기화」(Push/Pull) | ⏸ **업데이트 예정** (v0.4.16) — OpenAPI 아티스트·카테고리 **POST** 부재, UI·백엔드 가드 |
+| Pull · 연결 테스트 · 채널 저장 (백엔드) | ✅ Rust 커맨드 존재; v0.4.16 기준 `pull`/`push`는 `MELOMING_SONG_SYNC_ENABLED=false`로 차단 |
 
 ### 6.8 플랫폼 채널 주소 (Pull용)
 

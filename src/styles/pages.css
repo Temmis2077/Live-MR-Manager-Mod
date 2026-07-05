@@ -549,6 +549,21 @@ html[data-theme="sky"] .task-progress-container {
   color: #ef4444;
 }
 
+.settings-status-text.is-notice {
+  color: #fbbf24;
+}
+
+.btn-ai-action.is-coming-soon {
+  opacity: 0.72;
+  cursor: help;
+  filter: saturate(0.85);
+}
+
+.btn-ai-action.is-coming-soon:hover {
+  transform: none;
+  filter: saturate(0.85) brightness(1.05);
+}
+
 /* --- Overlay Page Styles --- */
 .overlay-tab-container {
   padding: 0 30px 30px 30px !important;

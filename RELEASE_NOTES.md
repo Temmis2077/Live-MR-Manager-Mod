@@ -1,5 +1,25 @@
 # Release Notes
 
+## v0.4.16 (2026-07-05)
+
+MP3 MR 저장 ffmpeg 탐색 핫픽스 및 멜로밍 노래책 동기화 안내 정리.
+
+### MR · MP3 저장
+
+- **ffmpeg PATH 핫픽스**: MR MP3 저장(`mr_encode`)이 유튜브와 동일한 **관리형 ffmpeg** 경로·자동 다운로드·`where.exe` 탐색을 사용합니다. GUI 앱에서 PATH에 ffmpeg가 없어도 분리 저장이 실패하지 않습니다.
+- **앱 시작 시 ffmpeg 준비**: 백그라운드에서 `%LOCALAPPDATA%\LiveMRManager\tools\ffmpeg.exe`를 미리 확보합니다.
+
+### 멜로밍 노래책
+
+- **동기화 UI·백엔드 잠금 유지**: OpenAPI 아티스트·카테고리 등록 API 대기 중 — 설정 카드 설명 정리, 클릭 시 안내 토스트, `pull`/`push` 커맨드 차단.
+- **멜로밍 로그인 유지**: 우측 상단 OAuth 로그인은 계속 사용할 수 있습니다.
+
+### 메타데이터
+
+- `package.json`, `Cargo.toml`, `tauri.conf.json`, UI 타이틀·매뉴얼·README·ToDo를 **0.4.16**으로 통일.
+
+---
+
 ## v0.4.15 (2026-06-27)
 
 멜로밍 노래책 동기화 UI 일시 중단 — OpenAPI 아티스트·카테고리 등록 API 대기.

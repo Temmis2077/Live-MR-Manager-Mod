@@ -94,7 +94,13 @@ pub fn encode_wav_file_to_mp3(wav: &Path, mp3: &Path) -> Result<()> {
     let wav_s = wav.to_str().ok_or_else(|| anyhow!("invalid temp wav path"))?;
     let mp3_s = mp3.to_str().ok_or_else(|| anyhow!("invalid mp3 path"))?;
 
-    let mut cmd = Command::new("ffmpeg");
+    let ffmpeg = crate::ffmpeg_tools::find_ffmpeg_executable_or_download().ok_or_else(|| {
+        anyhow!(
+            "ffmpeg를 찾을 수 없습니다.\n\n설정에서「WAV」로 바꾸거나, 앱을 재시작한 뒤 다시 시도하세요. (자동 다운로드 실패 시 ffmpeg를 PATH에 설치해 주세요.)"
+        )
+    })?;
+
+    let mut cmd = Command::new(&ffmpeg);
     cmd.args([
         "-hide_banner",
         "-loglevel",

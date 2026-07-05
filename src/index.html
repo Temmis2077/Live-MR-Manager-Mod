@@ -6,7 +6,7 @@
   <link rel="stylesheet" href="style.css?v=6.0" />
   <script src="js/libs/Sortable.min.js"></script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Live MR Manager(Beta) v0.4.15 | Performer Dash</title>
+  <title>Live MR Manager(Beta) v0.4.16 | Performer Dash</title>
 </head>
 
 <body>
@@ -15,7 +15,7 @@
     <div class="titlebar-drag-region" data-tauri-drag-region>
       <div class="titlebar-logo">
         <img src="./assets/images/app-icon.png" alt="Logo" style="width: 18px; height: 18px; object-fit: contain;"> Live
-        MR Manager(Beta) v0.4.15
+        MR Manager(Beta) v0.4.16
       </div>
     </div>
     <div data-tauri-drag-region class="titlebar-drag-fill"></div>
@@ -643,13 +643,15 @@
                 <div class="ai-info-left">
                   <h2 class="ai-title-large">멜로밍 노래책 동기화</h2>
                   <div class="ai-model-desc">
-                    우측 상단에서 멜로밍 로그인할 수 있습니다.
-                    「노래책 동기화」는 멜로밍 OpenAPI 아티스트·카테고리 등록 API 지원 후 제공 예정입니다.
+                    앱 라이브러리와 멜로밍 노래책을 맞추는 <strong>가져오기·보내기</strong> 기능입니다.
+                    현재는 멜로밍 OpenAPI에 아티스트·카테고리 등록 API가 없어 <strong>다음 업데이트까지 제공하지 않습니다.</strong>
+                    우측 상단 <strong>「멜로밍 로그인」</strong>은 이용할 수 있습니다.
                   </div>
                   <div id="meloming-status" class="settings-status-text"></div>
                 </div>
                 <div class="ai-actions-right">
-                  <button id="btn-meloming-sync" class="btn-ai-action">노래책 동기화</button>
+                  <button id="btn-meloming-sync" class="btn-ai-action is-coming-soon" type="button"
+                    title="멜로밍 OpenAPI 아티스트·카테고리 API 지원 후 제공 예정">노래책 동기화</button>
                 </div>
               </div>
             </section>

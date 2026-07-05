@@ -19,6 +19,7 @@ mod key_bpm;
 mod audio_commands;
 mod mr_cache;
 mod mr_encode;
+mod ffmpeg_tools;
 mod model_commands;
 mod system;
 mod spreadsheet;
@@ -106,6 +107,15 @@ pub fn run() {
             tauri::async_runtime::spawn(crate::overlay_server::start_overlay_server());
 
             crate::updater::start_update_checker(app.handle().clone());
+
+            tauri::async_runtime::spawn(async {
+                if let Some(path) = crate::ffmpeg_tools::ensure_managed_ffmpeg().await {
+                    crate::audio_player::sys_log(&format!(
+                        "[Tools] ffmpeg ready at {}",
+                        path.to_string_lossy()
+                    ));
+                }
+            });
 
             Ok(())
         })

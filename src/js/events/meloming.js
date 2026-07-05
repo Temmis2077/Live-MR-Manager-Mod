@@ -6,20 +6,27 @@ import { showNotification } from '../utils.js';
 import { switchTab } from './navigation.js';
 
 const PLACEHOLDER_AVATAR = './assets/images/app-icon.png';
-/** OpenAPI 아티스트·카테고리 생성 API 지원 전까지 동기화 UI 잠금 */
+
+/** Meloming OpenAPI 아티스트·카테고리 등록 API 지원 전까지 동기화 UI 잠금 */
 const MELOMING_SYNC_COMING_SOON = true;
-const SYNC_COMING_SOON_MSG =
-  '노래책 동기화는 업데이트 예정입니다. (멜로밍 OpenAPI 아티스트·카테고리 등록 API 대기 중)';
+const SYNC_STATUS_MSG =
+  '다음 업데이트 예정 — 멜로밍 OpenAPI에 아티스트·카테고리 등록 API가 아직 없어 가져오기·보내기를 제공하지 않습니다.';
+const SYNC_TOAST_MSG =
+  '노래책 가져오기·보내기는 아직 사용할 수 없습니다.\n\n' +
+  '멜로밍 OpenAPI에 아티스트·카테고리를 등록하는 API가 없어, 앱과 노래책을 안정적으로 맞출 수 없습니다. ' +
+  'API가 지원되면 앱 업데이트로 다시 제공할 예정입니다.\n\n' +
+  '우측 상단 「멜로밍 로그인」은 계속 이용할 수 있습니다.';
 
 let pendingOAuthState = null;
 let accountMenuOpen = false;
 
-function setStatus(text, isError = false) {
+function setStatus(text, isError = false, { notice = false } = {}) {
   const el = document.getElementById('meloming-status');
   if (!el) return;
   const firstLine = (text || '').split('\n')[0].trim();
   el.textContent = firstLine;
   el.classList.toggle('is-error', !!isError && !!firstLine);
+  el.classList.toggle('is-notice', !!notice && !!firstLine && !isError);
 }
 
 function getAccountElements() {
@@ -177,10 +184,15 @@ export async function initMelomingListeners() {
   const btnSync = document.getElementById('btn-meloming-sync');
 
   if (btnSync) {
+    if (MELOMING_SYNC_COMING_SOON) {
+      btnSync.classList.add('is-coming-soon');
+      btnSync.setAttribute('aria-disabled', 'true');
+      btnSync.title = SYNC_STATUS_MSG;
+    }
+
     btnSync.onclick = async () => {
       if (MELOMING_SYNC_COMING_SOON) {
-        setStatus(SYNC_COMING_SOON_MSG);
-        showNotification(SYNC_COMING_SOON_MSG, 'info');
+        showNotification(SYNC_TOAST_MSG, 'info');
         return;
       }
       btnSync.disabled = true;

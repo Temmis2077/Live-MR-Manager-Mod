@@ -5,7 +5,6 @@ use tauri::{Emitter, WebviewWindow};
 use std::path::{PathBuf, Path};
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
-use std::io::Cursor;
 use tokio::process::Command;
 use tokio::io::AsyncWriteExt;
 use tokio_util::codec::{FramedRead, LinesCodec};
@@ -133,10 +132,7 @@ impl YoutubeManager {
     }
 
     fn managed_cache_dir() -> PathBuf {
-        if let Ok(base) = std::env::var("LOCALAPPDATA").or_else(|_| std::env::var("APPDATA")) {
-            return Path::new(&base).join("LiveMRManager").join("tools");
-        }
-        std::env::temp_dir().join("live-mr-manager-tools")
+        crate::ffmpeg_tools::tools_cache_dir()
     }
 
     fn managed_candidates() -> Vec<PathBuf> {
@@ -152,99 +148,8 @@ impl YoutubeManager {
         candidates
     }
 
-    fn ffmpeg_candidate_names() -> &'static [&'static str] {
-        &["ffmpeg.exe"]
-    }
-
-    fn managed_ffmpeg_path() -> PathBuf {
-        Self::managed_cache_dir().join("ffmpeg.exe")
-    }
-
-    async fn ensure_managed_ffmpeg() -> Option<PathBuf> {
-        let target = Self::managed_ffmpeg_path();
-        if target.exists() {
-            return Some(target);
-        }
-        if let Some(parent) = target.parent() {
-            let _ = std::fs::create_dir_all(parent);
-        }
-
-        let zip_url = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip";
-        let response = reqwest::get(zip_url).await.ok()?;
-        if !response.status().is_success() {
-            return None;
-        }
-        let bytes = response.bytes().await.ok()?;
-        let cursor = Cursor::new(bytes);
-        let mut archive = zip::ZipArchive::new(cursor).ok()?;
-
-        for i in 0..archive.len() {
-            let mut entry = match archive.by_index(i) {
-                Ok(v) => v,
-                Err(_) => continue,
-            };
-            if !entry.is_file() {
-                continue;
-            }
-            let name = entry.name().replace('\\', "/").to_lowercase();
-            if name.ends_with("/ffmpeg.exe") {
-                let mut content = Vec::new();
-                if std::io::Read::read_to_end(&mut entry, &mut content).is_err() {
-                    continue;
-                }
-                if std::fs::write(&target, &content).is_err() {
-                    continue;
-                }
-                if target.exists() {
-                    return Some(target);
-                }
-            }
-        }
-        None
-    }
-
-    fn find_managed_ffmpeg_dir() -> Option<PathBuf> {
-        let mut dirs = vec![Self::managed_cache_dir()];
-        if let Ok(exe) = std::env::current_exe() {
-            if let Some(exe_dir) = exe.parent() {
-                dirs.push(exe_dir.join("resources").join("tools"));
-            }
-        }
-        for dir in dirs {
-            for name in Self::ffmpeg_candidate_names() {
-                let p = dir.join(name);
-                if p.exists() {
-                    return Some(dir);
-                }
-            }
-        }
-        None
-    }
-
-    fn find_system_ffmpeg() -> Option<PathBuf> {
-        use std::os::windows::process::CommandExt;
-        let output = std::process::Command::new("where.exe")
-            .arg("ffmpeg")
-            .creation_flags(0x08000000)
-            .output()
-            .ok()?;
-        if output.status.success() {
-            let p = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            if !p.is_empty() {
-                return Some(PathBuf::from(p.lines().next().unwrap_or(&p)));
-            }
-        }
-        None
-    }
-
     async fn resolve_ffmpeg_location() -> Option<PathBuf> {
-        if let Some(p) = Self::ensure_managed_ffmpeg().await {
-            return p.parent().map(|d| d.to_path_buf());
-        }
-        if let Some(dir) = Self::find_managed_ffmpeg_dir() {
-            return Some(dir);
-        }
-        Self::find_system_ffmpeg().and_then(|p| p.parent().map(|d| d.to_path_buf()))
+        crate::ffmpeg_tools::resolve_ffmpeg_dir().await
     }
 
     async fn ensure_managed_yt_dlp() -> Option<PathBuf> {
