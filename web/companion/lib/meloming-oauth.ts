@@ -106,6 +106,27 @@ export async function exchangeAuthorizationCode(params: {
     code_verifier: params.codeVerifier.trim(),
   });
 
+  return postTokenRequest(body);
+}
+
+export async function refreshAccessToken(params: {
+  refreshToken: string;
+  clientId: string;
+  clientSecret: string;
+}): Promise<{ ok: true; token: TokenResponse } | { ok: false; status: number; body: string }> {
+  const body = new URLSearchParams({
+    grant_type: "refresh_token",
+    refresh_token: params.refreshToken.trim(),
+    client_id: params.clientId,
+    client_secret: params.clientSecret,
+  });
+
+  return postTokenRequest(body);
+}
+
+async function postTokenRequest(
+  body: URLSearchParams,
+): Promise<{ ok: true; token: TokenResponse } | { ok: false; status: number; body: string }> {
   const res = await fetch(TOKEN_URL, {
     method: "POST",
     headers: {
