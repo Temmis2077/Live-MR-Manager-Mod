@@ -89,6 +89,7 @@ pub fn init(handle: tauri::AppHandle) {
 
 static OVERLAY_INFO_HTML: &str = include_str!("../../src/overlay-info.html");
 static OVERLAY_LYRICS_HTML: &str = include_str!("../../src/overlay-lyrics.html");
+static OVERLAY_SHARED_JS: &str = include_str!("../../src/js/overlay/shared.js");
 static APP_ICON: &[u8] = include_bytes!("../../src/assets/images/app-icon.png");
 
 fn resolve_overlay_info_html() -> String {
@@ -113,6 +114,18 @@ fn resolve_overlay_lyrics_html() -> String {
         }
     }
     OVERLAY_LYRICS_HTML.to_string()
+}
+
+fn resolve_overlay_shared_js() -> String {
+    #[cfg(debug_assertions)]
+    {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../src/js/overlay/shared.js");
+        if let Ok(content) = std::fs::read_to_string(&path) {
+            return content;
+        }
+    }
+    OVERLAY_SHARED_JS.to_string()
 }
 
 pub async fn start_overlay_server() {
@@ -173,6 +186,28 @@ pub async fn start_overlay_server() {
                         let _ = stream.write_all(APP_ICON).await;
                         let _ = stream.flush().await;
                         println!("[Overlay] Served app-icon.png to {}", addr);
+                    } else if request.starts_with("GET /js/overlay/shared.js") {
+                        // The overlay HTML pages reference this shared script.
+                        // Without this route it 404s over the network (OBS / LAN),
+                        // leaving `window.OverlayShared` undefined so the overlay
+                        // never connects. (The in-app preview loads it from the
+                        // Tauri bundle, which is why this only breaks externally.)
+                        let js = resolve_overlay_shared_js();
+                        use tokio::io::AsyncWriteExt;
+                        let response = format!(
+                            "HTTP/1.1 200 OK\r\n\
+                            Content-Type: application/javascript; charset=utf-8\r\n\
+                            Content-Length: {}\r\n\
+                            Access-Control-Allow-Origin: *\r\n\
+                            Cache-Control: no-cache, no-store, must-revalidate\r\n\
+                            Connection: close\r\n\r\n\
+                            {}",
+                            js.len(),
+                            js
+                        );
+                        let _ = stream.write_all(response.as_bytes()).await;
+                        let _ = stream.flush().await;
+                        println!("[Overlay] Served shared.js to {}", addr);
                     } else if request.starts_with("GET /lyrics")
                         || request.starts_with("GET /overlay-lyrics")
                     {
@@ -385,4 +420,24 @@ pub async fn update_overlay_lyrics(current: String, next: String) {
 #[tauri::command]
 pub async fn get_overlay_state() -> OverlayState {
     CURRENT_STATE.lock().await.clone()
+}
+
+#[tauri::command]
+pub fn get_lan_addresses() -> Vec<String> {
+    use std::net::UdpSocket;
+
+    let mut addrs = Vec::new();
+
+    // Connecting a UDP socket doesn't send any packets; it just asks the OS
+    // to resolve which local interface/IP would be used to route to that
+    // target, which is a reliable way to find the LAN-facing address.
+    if let Ok(socket) = UdpSocket::bind("0.0.0.0:0") {
+        if socket.connect("8.8.8.8:80").is_ok() {
+            if let Ok(local_addr) = socket.local_addr() {
+                addrs.push(local_addr.ip().to_string());
+            }
+        }
+    }
+
+    addrs
 }

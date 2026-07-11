@@ -1,7 +1,10 @@
 /**
  * OBS overlay customization control listeners
  */
-import { updateOverlayLyrics, updateOverlayStyle } from '../../overlay-api.js';
+import { updateOverlayLyrics, updateOverlayStyle, getLanAddresses } from '../../overlay-api.js';
+
+const OVERLAY_LAN_PREF_KEY = 'overlay-use-lan-address';
+let cachedLanAddress = null;
 
 export function initOverlayListeners() {
   const overlayScale = document.getElementById('overlay-scale');
@@ -23,6 +26,8 @@ export function initOverlayListeners() {
   const overlayPreviewWrapper = document.querySelector('.overlay-preview-wrapper');
   const toggleOverlayForceVisible = document.getElementById('toggle-overlay-force-visible');
   const overlayAnimationDirection = document.getElementById('overlay-animation-direction');
+  const toggleOverlayLan = document.getElementById('toggle-overlay-lan');
+  const overlayLanStatus = document.getElementById('overlay-lan-status');
 
   const resizeOverlayPreview = () => {
     if (!overlayIframe || !overlayPreviewWrapper) return;
@@ -130,10 +135,21 @@ export function initOverlayListeners() {
       localStorage.setItem('overlay-settings', JSON.stringify(config));
     }
 
-    const infoUrl = 'http://localhost:14202/overlay-info';
-    const lyricsUrl = 'http://localhost:14202/overlay-lyrics';
+    const useLan = !!(toggleOverlayLan && toggleOverlayLan.checked);
+    const host = (useLan && cachedLanAddress) ? cachedLanAddress : 'localhost';
+    const infoUrl = `http://${host}:14202/overlay-info`;
+    const lyricsUrl = `http://${host}:14202/overlay-lyrics`;
     if (overlayUrlDisplay) overlayUrlDisplay.textContent = infoUrl;
     if (lyricsOverlayUrlDisplay) lyricsOverlayUrlDisplay.textContent = lyricsUrl;
+    if (overlayLanStatus) {
+      if (useLan && !cachedLanAddress) {
+        overlayLanStatus.textContent = '이 PC의 네트워크 주소를 찾을 수 없습니다. localhost 주소가 표시됩니다.';
+      } else if (useLan) {
+        overlayLanStatus.textContent = `같은 Wi-Fi/네트워크의 다른 PC에서 이 주소로 접속할 수 있습니다: ${cachedLanAddress}`;
+      } else {
+        overlayLanStatus.textContent = '끄면 이 PC(localhost) 주소만 표시됩니다.';
+      }
+    }
 
     const setupCopyBtn = (id, text) => {
       const btn = document.getElementById(id);
@@ -376,6 +392,21 @@ export function initOverlayListeners() {
   if (overlayBgColor) overlayBgColor.addEventListener('input', () => updateOverlaySettings());
   if (toggleOverlayForceVisible) toggleOverlayForceVisible.addEventListener('change', () => updateOverlaySettings());
   if (overlayAnimationDirection) overlayAnimationDirection.addEventListener('change', () => updateOverlaySettings());
+
+  if (toggleOverlayLan) {
+    toggleOverlayLan.checked = localStorage.getItem(OVERLAY_LAN_PREF_KEY) === 'true';
+    toggleOverlayLan.addEventListener('change', () => {
+      localStorage.setItem(OVERLAY_LAN_PREF_KEY, toggleOverlayLan.checked ? 'true' : 'false');
+      updateOverlaySettings(true);
+    });
+  }
+
+  getLanAddresses()
+    .then((addresses) => {
+      cachedLanAddress = (addresses && addresses[0]) || null;
+      updateOverlaySettings(true);
+    })
+    .catch((err) => console.error('Failed to get LAN address:', err));
 
   loadOverlaySettings();
   updateOverlaySettings(true);
