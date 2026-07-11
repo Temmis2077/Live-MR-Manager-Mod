@@ -239,7 +239,11 @@ export async function selectTrack(index) {
   }
 
   // Load Lyrics for the selected track
+  // Guarded by mySequence: if the user switches tracks again before this
+  // resolves, applying it here would overwrite the newer track's lyrics
+  // with the previous song's (a stale response arriving after a later one).
   loadLyricsForTrack(song.path, parseDurationToMs(song.duration) / 1000).then(lyrics => {
+    if (mySequence !== state.playbackSequence) return;
     state.currentLyrics = lyrics;
     state.currentLyricIndex = -1;
     // Trigger drawer update if it's initialized
@@ -272,7 +276,11 @@ export async function selectTrack(index) {
   updatePlayButton();
 
   // MR이 있는 경우 보컬 토글을 자동으로 꺼짐으로 설정 (요구사항)
-  if (await checkMrSeparated(song.path)) {
+  // Guarded: a slow checkMrSeparated() for a track the user has already
+  // navigated away from must not flip vocalEnabled for the now-current one.
+  const mrSeparated = await checkMrSeparated(song.path);
+  if (mySequence !== state.playbackSequence) return;
+  if (mrSeparated) {
     state.vocalEnabled = false;
   }
 

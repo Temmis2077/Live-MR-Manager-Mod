@@ -574,7 +574,17 @@ export class ForcedAlignmentViewer {
 
     async loadAudio(path) {
         if (!path) return;
+        // Guards against overlapping calls (e.g. the playback auto-follow hook
+        // firing again before a previous loadAudio() finished its awaits) —
+        // without this, a slower stale call can resolve after a newer one and
+        // clobber its segments/duration/waveform with the previous track's
+        // data, which looked like "lyrics stuck on the last song" / vocal
+        // toggle state randomly flipping.
+        const mySeq = (this.state.loadSeq = (this.state.loadSeq || 0) + 1);
+        const isStale = () => mySeq !== this.state.loadSeq;
+
         await this.flushAutoSaveIfNeeded();
+        if (isStale()) return;
         this.state.currentPath = path;
         this.state.isProcessing = true;
         this.state.currentTime = 0;
@@ -628,10 +638,12 @@ export class ForcedAlignmentViewer {
             } else {
                 this.updateLyricsLinkButton('');
             }
+            if (isStale()) return;
 
             console.log("[Alignment] Loading audio:", path);
             // Get duration immediately from backend
             const ms = await this.invoke('play_track', { path, durationMs: 0, playNow: false });
+            if (isStale()) return;
             console.log("[Alignment] play_track success, duration:", ms);
             this.state.duration = ms / 1000;
             this.updateTimeDisplay();
@@ -657,6 +669,7 @@ export class ForcedAlignmentViewer {
             // Try to load existing LRC file
             try {
                 const lrcContent = await this.invoke('load_lrc_file', { audioPath: path });
+                if (isStale()) return;
                 if (lrcContent && lrcContent.trim()) {
                     const parsedSegments = parseLrc(lrcContent, this.state.duration);
                     // Clean up imported lyrics: remove meaningless blank lines and trim noisy spacing.
@@ -718,6 +731,7 @@ export class ForcedAlignmentViewer {
 
             const waveformPath = path;
             this.invoke('get_waveform_summary', { audioPath: waveformPath }).then(summary => {
+                if (isStale()) return;
                 console.log("[Alignment] Waveform load success:", summary ? summary.points.length : 0);
                 if (summary) {
                     this.state.waveformPoints = summary.points;
@@ -729,10 +743,12 @@ export class ForcedAlignmentViewer {
                     this.drawWaveform();
                 }
             }).catch(e => {
+                if (isStale()) return;
                 console.error("[Alignment] Waveform load failed:", e);
                 showNotification('파형 로드 실패: ' + e, 'warning');
             })
                 .finally(() => {
+                    if (isStale()) return;
                     this.state.isProcessing = false;
                     state.isLoading = false;
                     import('./ui/components.js').then((ui) => {
@@ -743,6 +759,7 @@ export class ForcedAlignmentViewer {
                 });
 
         } catch (e) {
+            if (isStale()) return;
             console.error("[Alignment] loadAudio general failure:", e);
             this.state.isProcessing = false;
             state.isLoading = false;
