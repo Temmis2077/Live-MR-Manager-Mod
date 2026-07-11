@@ -2,7 +2,7 @@ import { showNotification, getThumbnailUrl } from './utils.js';
 import { invoke, listen } from './tauri-bridge.js';
 import { state } from './state.js';
 import { parseLrc } from './lyrics.js';
-import { parseMarkers, formatMarkerLine, isTriplet, getSyncText, getDisplayLines, getShowTranslation, setShowTranslation } from './lrc-parser.js';
+import { parseMarkers, formatMarkerLine, isTriplet, getSyncText, getDisplayLines, getShowTranslation, setShowTranslation, mergeAlignmentResult } from './lrc-parser.js';
 
 export class ForcedAlignmentViewer {
     constructor(containerId) {
@@ -1772,20 +1772,7 @@ export class ForcedAlignmentViewer {
                 return;
             }
 
-            const used = new Array(lines.length).fill(false);
-            let appliedCount = 0;
-            this.state.segments.forEach((seg) => {
-                if (!(seg.start === 0 && seg.end === 0)) return; // 이미 싱크된 줄은 보존
-                const text = getSyncText(seg).trim();
-                const idx = lines.findIndex((l, i) => !used[i] && (l.text || '').trim() === text);
-                if (idx === -1) return;
-                used[idx] = true;
-                const line = lines[idx];
-                seg.start = Math.max(0, line.start_ms / 1000);
-                seg.end = Math.max(seg.start + 0.05, line.end_ms / 1000);
-                seg.approx = true;
-                appliedCount++;
-            });
+            const appliedCount = mergeAlignmentResult(this.state.segments, lines);
 
             if (appliedCount === 0) {
                 showNotification('AI가 정렬한 줄과 일치하는 미싱크 가사를 찾지 못했습니다.', 'warning');

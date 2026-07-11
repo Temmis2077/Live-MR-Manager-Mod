@@ -63,9 +63,56 @@ export function updateAiModelStatus(statusInput) {
   }
 }
 
-export function updateTaskUI() {
-  if (!elements.taskBadge || !elements.activeTasksList) return;
-  
+/**
+ * Generic keyed upsert of `.task-card` elements into a list container —
+ * shared by the separation task list and the alignment queue list so both
+ * keep the same diff/reorder behavior (no full innerHTML rebuild per tick).
+ */
+function upsertTaskCards(container, items, emptyHtml, createCard, updateCard) {
+  if (!container) return;
+
+  if (items.length === 0) {
+    if (!container.querySelector('.no-tasks')) {
+      container.innerHTML = `<div class="no-tasks">${emptyHtml}</div>`;
+    }
+    // Clear any stale cards alongside the placeholder.
+    container.querySelectorAll('.task-card').forEach((c) => c.remove());
+    return;
+  }
+
+  const existingCards = new Map(
+    Array.from(container.querySelectorAll('.task-card')).map((card) => [card.dataset.path, card])
+  );
+  const nextPaths = new Set(items.map((t) => t.path));
+
+  const emptyState = container.querySelector('.no-tasks');
+  if (emptyState) emptyState.remove();
+
+  existingCards.forEach((card, path) => {
+    if (!nextPaths.has(path)) {
+      card.remove();
+      existingCards.delete(path);
+    }
+  });
+
+  items.forEach((item, index) => {
+    let card = existingCards.get(item.path);
+    if (!card) {
+      card = createCard(item);
+      existingCards.set(item.path, card);
+    }
+    updateCard(card, item);
+    const currentAtIndex = container.children[index];
+    if (currentAtIndex !== card) {
+      container.insertBefore(card, currentAtIndex || null);
+    }
+  });
+}
+
+function renderSeparationTasks() {
+  const container = elements.activeTasksList;
+  if (!container) return 0;
+
   const tasks = Object.entries(state.activeTasks).map(([path, data]) => {
     const song = state.songLibrary.find((s) => s.path === path);
     return {
@@ -76,17 +123,6 @@ export function updateTaskUI() {
       thumbnail: data.thumbnail || song?.thumbnail || "",
     };
   });
-  elements.taskBadge.textContent = tasks.length;
-  elements.taskBadge.style.display = tasks.length > 0 ? "flex" : "none";
-  
-  updateBroadcastTasksControlVisibility();
-  
-  if (tasks.length === 0) {
-    if (!elements.activeTasksList.querySelector('.no-tasks')) {
-      elements.activeTasksList.innerHTML = '<div class="no-tasks">현재 진행 중인 작업이 없습니다.</div>';
-    }
-    return;
-  }
 
   const statusMap = {
     "Queued": "대기 중",
@@ -179,34 +215,134 @@ export function updateTaskUI() {
     }
   };
 
-  const existingCards = new Map(
-    Array.from(elements.activeTasksList.querySelectorAll('.task-card')).map((card) => [card.dataset.path, card])
+  upsertTaskCards(container, tasks, '현재 진행 중인 분리 작업이 없습니다.', createTaskCard, updateTaskCard);
+  return tasks.length;
+}
+
+function renderAlignmentQueue() {
+  const container = elements.alignmentTasksList;
+  if (!container) return 0;
+
+  const items = state.alignmentQueue || [];
+
+  const statusMap = {
+    'queued': '대기 중',
+    'processing': '정렬 중',
+    'done': '완료',
+    'error': '오류',
+    'no-lyrics': '가사 없음',
+    'cancelled': '취소됨',
+  };
+
+  const createCard = (item) => {
+    const card = document.createElement('div');
+    card.className = 'task-card';
+    card.dataset.path = item.path;
+    const thumbUrl = item.thumbnail ? getThumbnailUrl(item.thumbnail, item) : '';
+    card.innerHTML = `
+      <div class="task-header-info">
+        <div class="task-icon">
+          ${thumbUrl ? `<img src="${thumbUrl}" class="task-thumb-img">` : '<i class="fas fa-align-left"></i>'}
+        </div>
+        <div class="task-main-details">
+          <div class="task-title"></div>
+          <div class="task-status-row">
+            <span class="task-status-text"></span>
+            <span class="task-percentage"></span>
+          </div>
+        </div>
+        <div class="task-actions">
+          <button class="btn-task-cancel">취소</button>
+        </div>
+      </div>
+      <div class="task-progress-container">
+        <div class="task-progress-bar"></div>
+      </div>
+    `;
+    const cancelBtn = card.querySelector('.btn-task-cancel');
+    if (cancelBtn) {
+      cancelBtn.addEventListener('click', () => {
+        import('../alignment-queue.js').then(({ cancelAlignmentQueueItem }) => {
+          cancelAlignmentQueueItem(card.dataset.path);
+        });
+      });
+    }
+    return card;
+  };
+
+  const updateCard = (card, item) => {
+    card.dataset.path = item.path;
+    const title = card.querySelector('.task-title');
+    if (title) title.textContent = item.title || item.path;
+
+    const status = card.querySelector('.task-status-text');
+    if (status) {
+      let text = statusMap[item.status] || item.status;
+      if (item.status === 'error' && item.error) text = `오류: ${item.error}`;
+      if (item.status === 'done' && item.note) text = `완료 (${item.note})`;
+      status.textContent = text;
+      status.classList.toggle('task-status-error', item.status === 'error');
+    }
+
+    const percentage = card.querySelector('.task-percentage');
+    if (percentage) {
+      percentage.textContent = item.status === 'processing' ? `${Math.floor(item.percentage || 0)}%` : '';
+    }
+
+    const progressBar = card.querySelector('.task-progress-bar');
+    if (progressBar) {
+      const pct = item.status === 'done' ? 100 : (item.status === 'processing' ? Math.floor(item.percentage || 0) : 0);
+      progressBar.style.width = `${pct}%`;
+    }
+
+    // 종결 상태(완료/오류/가사 없음/취소)에서는 "취소"가 아니라 목록 제거 액션.
+    const cancelBtn = card.querySelector('.btn-task-cancel');
+    if (cancelBtn) {
+      const finished = ['done', 'error', 'no-lyrics', 'cancelled'].includes(item.status);
+      cancelBtn.textContent = finished ? '지우기' : '취소';
+    }
+  };
+
+  upsertTaskCards(
+    container,
+    items,
+    '대기 중인 정렬 작업이 없습니다. 라이브러리에서 곡을 선택해 "AI 정렬 요청"을 눌러보세요.',
+    createCard,
+    updateCard
   );
-  const nextPaths = new Set(tasks.map((t) => t.path));
+  // 활성(대기/진행) 항목만 배지 카운트에 반영 — 완료·오류 잔여물로 배지가 계속 떠 있지 않게.
+  return items.filter((i) => i.status === 'queued' || i.status === 'processing').length;
+}
 
-  // Remove empty placeholder if present.
-  const emptyState = elements.activeTasksList.querySelector('.no-tasks');
-  if (emptyState) emptyState.remove();
+export function updateTaskUI() {
+  if (!elements.taskBadge) return;
 
-  // Remove cards for tasks that no longer exist.
-  existingCards.forEach((card, path) => {
-    if (!nextPaths.has(path)) {
-      card.remove();
-      existingCards.delete(path);
-    }
-  });
+  const separationCount = renderSeparationTasks();
+  const alignmentActiveCount = renderAlignmentQueue();
 
-  // Upsert cards while preserving order from current task list.
-  tasks.forEach((task, index) => {
-    let card = existingCards.get(task.path);
-    if (!card) {
-      card = createTaskCard(task);
-      existingCards.set(task.path, card);
-    }
-    updateTaskCard(card, task);
-    const currentAtIndex = elements.activeTasksList.children[index];
-    if (currentAtIndex !== card) {
-      elements.activeTasksList.insertBefore(card, currentAtIndex || null);
+  const sepBadge = document.getElementById('separation-section-count');
+  if (sepBadge) sepBadge.textContent = separationCount;
+  const alignBadge = document.getElementById('alignment-section-count');
+  if (alignBadge) alignBadge.textContent = (state.alignmentQueue || []).length;
+
+  const total = separationCount + alignmentActiveCount;
+  elements.taskBadge.textContent = total;
+  elements.taskBadge.style.display = total > 0 ? "flex" : "none";
+
+  updateBroadcastTasksControlVisibility();
+}
+
+/** AI 프로세싱 탭의 카테고리 섹션 접기/펴기 — localStorage에 섹션별로 저장. */
+export function initTaskSectionToggles() {
+  document.querySelectorAll('#tasks-page .task-section').forEach((section) => {
+    const key = `taskSectionCollapsed:${section.dataset.section}`;
+    if (localStorage.getItem(key) === 'true') section.classList.add('collapsed');
+    const toggle = section.querySelector('.section-toggle');
+    if (toggle) {
+      toggle.addEventListener('click', () => {
+        const collapsed = section.classList.toggle('collapsed');
+        localStorage.setItem(key, String(collapsed));
+      });
     }
   });
 }
@@ -405,12 +541,13 @@ export function showSongContextMenu(e, song, originalIndex) {
           } else {
             menuSeparate.classList.remove("disabled");
             menuSeparate.onclick = async () => {
-              invoke('remote_js_log', { msg: `[MR Separate Start] Starting MR separation` }).catch(() => {});
+              invoke('remote_js_log', { msg: `[MR Separate] Opening mode picker` }).catch(() => {});
               elements.contextMenu.classList.remove("active");
               elements.contextMenu.style.display = 'none';
               try {
-                const { startMrSeparation } = await import('../audio.js');
-                await startMrSeparation(song.path);
+                // 바로 분리하지 않고 속도/품질(모델) 선택 모달을 먼저 띄운다.
+                const { openSeparationModeModal } = await import('../separation-mode-modal.js');
+                openSeparationModeModal(song);
               } catch (err) {
                 invoke('remote_js_log', { msg: `[MR Separate Error] ${err.message}` }).catch(() => {});
                 console.error("Separation trigger failed:", err);

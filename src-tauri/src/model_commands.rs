@@ -93,6 +93,7 @@ pub async fn delete_ai_model(window: WebviewWindow, model_id: String) -> Result<
         std::fs::remove_file(path).ok();
         let mut engine = crate::separation::ROFORMER_ENGINE.lock();
         *engine = None;
+        *crate::separation::ENGINE_MODEL_ID.lock() = None;
     }
     Ok(())
 }
@@ -283,6 +284,7 @@ pub async fn remove_custom_model(window: WebviewWindow, model_id: String) -> Res
             db.execute("INSERT OR REPLACE INTO Settings (key, value) VALUES ('active_model_id', 'kim')", []).ok();
             let mut engine = crate::separation::ROFORMER_ENGINE.lock();
             *engine = None;
+            *crate::separation::ENGINE_MODEL_ID.lock() = None;
         }
     }
     Ok(())
@@ -319,15 +321,21 @@ pub fn get_active_separations() -> Vec<String> {
 }
 
 #[tauri::command]
-pub async fn start_mr_separation(window: WebviewWindow, path: String) -> Result<(), String> {
+pub async fn start_mr_separation(window: WebviewWindow, path: String, model_id: Option<String>) -> Result<(), String> {
     let norm = normalize_cache_key(&path);
     if crate::separation::ACTIVE_SEPARATIONS.lock().contains_key(&norm) {
         let _ = sys_log(&format!("[Command] [Error] start_mr_separation failed: ALREADY_PROCESSING for {}", path));
-        return Err("ALREADY_PROCESSING".into()); 
+        return Err("ALREADY_PROCESSING".into());
     }
-    
+
+    // Per-request model choice (속도/품질 선택 모달). Validate up front so a
+    // bad id fails the request instead of surfacing mid-queue as a task error.
+    if let Some(ref id) = model_id {
+        ModelManager::spec_from_id(id).map_err(|_| format!("알 수 없는 분리 모델: {}", id))?;
+    }
+
     let cache = window.state::<crate::state::AppPaths>().separated.join(urlencoding::encode(&norm).to_string());
-    let task = crate::separation::task::SeparationTask::new(window, path, cache);
+    let task = crate::separation::task::SeparationTask::new(window, path, cache, model_id);
     tauri::async_runtime::spawn(async move { task.run().await; });
     Ok(())
 }

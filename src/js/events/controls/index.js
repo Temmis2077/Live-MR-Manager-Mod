@@ -9,6 +9,7 @@ import { initCustomModelListeners } from './custom-models.js';
 import { createViewModeUpdater, initLibraryListeners } from './library.js';
 import { initSettingsListeners } from './settings.js';
 import { initOverlayListeners } from './overlay.js';
+import { initTaskSectionToggles } from '../../ui/components.js';
 
 export function initControlListeners() {
   initContextMenuListener();
@@ -18,6 +19,7 @@ export function initControlListeners() {
   initYoutubeListeners();
   initAiListeners();
   initCustomModelListeners();
+  initTaskSectionToggles();
 
   const overlayApi = initOverlayListeners();
   initSettingsListeners({

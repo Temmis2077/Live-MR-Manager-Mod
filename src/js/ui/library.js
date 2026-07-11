@@ -174,8 +174,35 @@ export function addSongCard(song, index) {
   // Unified Status Badge (MR / 분리중 / 대기중)
   updateCardStatusBadge(song.path, card);
 
+  // 선택 모드 체크박스 (3개 뷰 모드 공통 — CSS가 [data-selection-mode]로 게이팅).
+  // 실제 <input> 대신 표시 전용 마커를 쓰고 클릭은 카드 전체가 받는다.
+  const selectMarker = document.createElement('div');
+  selectMarker.className = 'song-select-marker';
+  if (state.selectedSongPaths && state.selectedSongPaths.has(song.path)) {
+    card.classList.add('selected-for-batch');
+  }
+  card.prepend(selectMarker);
+
   // Integrated click handler: Play immediately on card or thumbnail click
   const handlePlayClick = async (e) => {
+    // 0. 선택 모드에서는 재생 대신 선택 토글
+    if (state.librarySelectionMode) {
+      e.preventDefault();
+      e.stopPropagation();
+      const selected = state.selectedSongPaths;
+      if (selected.has(song.path)) {
+        selected.delete(song.path);
+        card.classList.remove('selected-for-batch');
+      } else {
+        selected.add(song.path);
+        card.classList.add('selected-for-batch');
+      }
+      import('../events/controls/library.js').then((m) => {
+        if (m.updateSelectionBar) m.updateSelectionBar();
+      });
+      return;
+    }
+
     // 1. If any modal is active, block playback from library cards
     const activeModal = document.querySelector(".modal-overlay.active");
     if (activeModal) {

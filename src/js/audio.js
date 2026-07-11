@@ -127,15 +127,16 @@ export async function setVocalBalance(balance) {
     console.error("Failed to set balance:", err);
   }
 }
-export async function startMrSeparation(path) {
+export async function startMrSeparation(path, modelId = null) {
   // 1. 즉시 준비 상태 등록 (백엔드 이벤트 도달 전)
   const { state } = await import('./state.js');
   const { renderLibrary } = await import('./ui/library.js');
   state.activeTasks[path] = { percentage: 0, status: "Preparing", provider: "local" };
   renderLibrary(); // 배지 즉시 반영
-  
+
   try {
-    return await invoke("start_mr_separation", { path });
+    // modelId: 분리 방식 선택 모달에서 고른 곡별 모델 (null이면 전역 기본값)
+    return await invoke("start_mr_separation", { path, modelId });
   } catch (err) {
     // 실패 시 activeTasks 정리
     delete state.activeTasks[path];

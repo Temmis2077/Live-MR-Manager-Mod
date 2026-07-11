@@ -6,6 +6,65 @@
   width: 100%;
 }
 
+/* 카테고리별 접이식 섹션 (AI 보컬 분리 / AI 가사 정렬) */
+.task-section {
+  margin-bottom: 16px;
+}
+
+.section-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 12px 16px;
+  background: var(--surface-1);
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  color: var(--text-main);
+  font-size: 0.9rem;
+  font-weight: 700;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.2s ease;
+}
+
+.section-toggle:hover {
+  background: var(--surface-2);
+}
+
+.section-count-badge {
+  margin-left: auto;
+  min-width: 22px;
+  padding: 2px 8px;
+  border-radius: 11px;
+  background: rgb(var(--accent-rgb) / 0.15);
+  color: var(--accent-primary);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+.section-chevron {
+  flex-shrink: 0;
+  transition: transform 0.15s ease;
+}
+
+.task-section.collapsed .section-chevron {
+  transform: rotate(-90deg);
+}
+
+.task-section .section-body {
+  padding-top: 12px;
+}
+
+.task-section.collapsed .section-body {
+  display: none;
+}
+
+.task-status-text.task-status-error {
+  color: #ef4444;
+}
+
 .tasks-list {
   display: grid;
   grid-template-columns: repeat(2, 1fr);

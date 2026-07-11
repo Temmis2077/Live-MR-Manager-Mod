@@ -24,6 +24,14 @@ pub static CACHED_STATE: Mutex<Option<CachedAlignmentState>> = Mutex::new(None);
 
 pub static CANCEL_ALIGNMENT: AtomicBool = AtomicBool::new(false);
 
+/// Serializes forced-alignment runs (same single-permit pattern as
+/// `separation::AI_QUEUE_LOCK`). `CACHED_STATE` and `CANCEL_ALIGNMENT` are
+/// single-slot globals — holding this lock across the whole run guarantees
+/// at most one alignment owns them at any time, so batch-queued requests and
+/// the interactive editor button can never corrupt each other's state.
+pub static ALIGNMENT_QUEUE_LOCK: once_cell::sync::Lazy<tokio::sync::Mutex<()>> =
+    once_cell::sync::Lazy::new(|| tokio::sync::Mutex::new(()));
+
 fn clean_lyrics(text: &str) -> String {
     // 괄호 안의 메타데이터 제거 (e.g. [Chorus], (Intro))
     let re_brackets = Regex::new(r"\[.*?\]|\(.*?\)|<.*?>").unwrap();
@@ -333,6 +341,9 @@ pub async fn run_forced_alignment(
     rep_penalty: Option<f32>,
     _use_vad: Option<bool>
 ) -> Result<AlignmentResult, String> {
+    // -1 sentinel: waiting for a previous alignment to finish (queued).
+    let _ = handle.emit("alignment-progress", -1);
+    let _permit = ALIGNMENT_QUEUE_LOCK.lock().await;
     CANCEL_ALIGNMENT.store(false, Ordering::SeqCst);
     sys_log(&format!("[Alignment] Starting new CTC alignment path: {}", audio_path));
 

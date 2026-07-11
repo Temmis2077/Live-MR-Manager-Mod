@@ -146,6 +146,35 @@ export function getDisplayLines(seg, scope = 'app') {
   return lines;
 }
 
+/**
+ * Merges AI forced-alignment results into lyric segments. Non-destructive:
+ * only segments that are still fully unsynced (start===0 && end===0) are
+ * filled in, matched to alignment lines by sync text (차음 for triplets),
+ * and marked `approx: true` so the UI can flag them for manual review.
+ * Shared by the interactive editor (alignment-viewer.js) and the headless
+ * batch queue (alignment-queue.js) — keep both paths on this one function.
+ * Returns the number of segments updated.
+ */
+export function mergeAlignmentResult(segments, lines) {
+  if (!Array.isArray(segments) || !Array.isArray(lines) || lines.length === 0) return 0;
+  const used = new Array(lines.length).fill(false);
+  let appliedCount = 0;
+  segments.forEach((seg) => {
+    if (!(seg.start === 0 && seg.end === 0)) return; // 이미 싱크된 줄은 보존
+    const text = getSyncText(seg).trim();
+    if (!text) return;
+    const idx = lines.findIndex((l, i) => !used[i] && (l.text || '').trim() === text);
+    if (idx === -1) return;
+    used[idx] = true;
+    const line = lines[idx];
+    seg.start = Math.max(0, line.start_ms / 1000);
+    seg.end = Math.max(seg.start + 0.05, line.end_ms / 1000);
+    seg.approx = true;
+    appliedCount++;
+  });
+  return appliedCount;
+}
+
 export function parseLrc(lrcContent, duration = 0) {
   if (!lrcContent) return [];
 
