@@ -5,6 +5,7 @@ mod types;
 mod youtube;
 mod youtube_url;
 mod model_manager;
+mod custom_models;
 pub mod vocal_remover;
 pub mod audio_player;
 mod separation;
@@ -137,8 +138,13 @@ pub fn run() {
             model_commands::set_mr_cache_format,
             system::get_audio_devices, 
             system::open_cache_folder, 
-            model_commands::delete_ai_model, 
-            model_commands::get_gpu_recommendation, 
+            model_commands::delete_ai_model,
+            model_commands::get_gpu_recommendation,
+            model_commands::list_model_presets,
+            model_commands::list_all_models,
+            model_commands::list_custom_models,
+            model_commands::add_custom_model,
+            model_commands::remove_custom_model,
             library::add_category, library::delete_category,
             library::delete_song, library::map_track_to_categories, 
             system::get_app_paths, 
@@ -157,6 +163,7 @@ pub fn run() {
             alignment::cancel_forced_alignment, alignment::read_audio_file,
             alignment::apply_alignment_tuning,
             alignment::get_waveform_summary, alignment::get_model_list,
+            alignment::download_alignment_model, alignment::list_downloadable_alignment_models,
             alignment::save_lrc_file, alignment::load_lrc_file,
             system::remote_js_log,
             updater::check_for_app_update,
@@ -168,6 +175,7 @@ pub fn run() {
             overlay_server::update_overlay_style,
             overlay_server::update_overlay_lyrics,
             overlay_server::get_overlay_state,
+            overlay_server::get_lan_addresses,
             meloming::meloming_get_user_profile,
             meloming::meloming_get_channel_id,
             meloming::meloming_set_channel_id,

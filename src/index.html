@@ -481,6 +481,15 @@
                   <div class="ai-model-desc">OBS 브라우저 소스에 아래 주소를 붙여넣으세요.</div>
                 </div>
 
+                <!-- Network scope toggle -->
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; background: var(--surface-1); border-radius: 8px; border: 1px solid var(--glass-border);">
+                  <label for="toggle-overlay-lan" style="font-size: 0.8rem; color: var(--text-main); display: flex; flex-direction: column; gap: 2px; cursor: pointer;">
+                    <span style="font-weight: 700;">다른 PC(같은 네트워크)에서 접속</span>
+                    <span style="font-size: 0.72rem; color: var(--text-muted);" id="overlay-lan-status">끄면 이 PC(localhost) 주소만 표시됩니다.</span>
+                  </label>
+                  <input type="checkbox" id="toggle-overlay-lan" style="width: 18px; height: 18px; flex-shrink: 0;">
+                </div>
+
                 <!-- URL 1: Full Info -->
                 <div style="display: flex; flex-direction: column; gap: 8px;">
                   <label style="font-size: 0.8rem; font-weight: 700; color: var(--text-dim);">1. 곡 정보 오버레이 (썸네일 + 곡 정보)</label>
@@ -509,7 +518,8 @@
                   </div>
                   <div style="font-size: 0.75rem; color: var(--text-muted); line-height: 1.5; padding-left: 22px;">
                     • 곡 정보: <span style="color: var(--text-main); font-weight: 700;">1760 × 520</span> 권장<br>
-                    • 가사: <span style="color: var(--text-main); font-weight: 700;">1200 × 300</span> 권장
+                    • 가사: <span style="color: var(--text-main); font-weight: 700;">1200 × 300</span> 권장<br>
+                    • 다른 PC에서 접속이 안 되면 Windows 방화벽에서 <span style="color: var(--text-main); font-weight: 700;">14201, 14202</span> 포트(TCP) 인바운드를 허용해주세요.
                   </div>
                 </div>
               </div>
@@ -757,6 +767,7 @@
                 <div class="ai-actions-right">
                   <button id="btn-download-model" class="btn-ai-action">모델 다운로드</button>
                   <button id="btn-delete-model" class="btn-ai-action danger" style="display: none;">모델 삭제</button>
+                  <button id="btn-manage-custom-models" class="btn-ai-action secondary">커스텀 모델</button>
                   <button id="btn-open-cache" class="btn-ai-action secondary">MR 폴더 열기</button>
                 </div>
               </div>
@@ -1136,6 +1147,11 @@
             </div>
           </div>
 
+          <div class="input-group">
+            <label for="edit-lyrics-link">가사 링크</label>
+            <input type="text" id="edit-lyrics-link" placeholder="가사 원문을 볼 수 있는 링크 (예: 가사 사이트 URL)" autocomplete="off">
+          </div>
+
         </div>
       </div>
       <footer class="modal-footer">
@@ -1163,6 +1179,55 @@
         <button class="secondary-btn" id="confirm-cancel" style="min-width: 100px;">취소</button>
         <button class="primary-btn danger-btn" id="confirm-ok" style="min-width: 100px;">확인</button>
       </footer>
+    </div>
+  </div>
+
+  <!-- 커스텀 AI 분리 모델 관리 -->
+  <div id="custom-model-modal" class="modal-overlay">
+    <div class="modal-content" style="max-width: 560px;">
+      <header class="modal-header">
+        <h3>커스텀 AI 분리 모델</h3>
+        <button class="close-btn" id="custom-model-close">&times;</button>
+      </header>
+      <div class="modal-body" style="display: flex; flex-direction: column; gap: 20px;">
+        <div style="display: flex; flex-direction: column; gap: 12px;">
+          <div style="font-size: 0.75rem; color: var(--text-muted); line-height: 1.5;">
+            직접 받은 ONNX 분리 모델을 추가합니다. 모델의 아키텍처에 맞는 프리셋을 선택해야 정상 동작합니다.
+          </div>
+
+          <label style="font-size: 0.8rem; font-weight: 700;">모델 이름</label>
+          <input id="cm-name" type="text" placeholder="예: MyKaraoke v1" class="hex-text-input" style="width: 100%; padding: 10px 12px;">
+
+          <label style="font-size: 0.8rem; font-weight: 700;">아키텍처 프리셋</label>
+          <div class="custom-select" id="cm-preset-dropdown" style="width: 100%;">
+            <div class="select-trigger">
+              <span class="selected-text" id="cm-preset-text">프리셋 선택...</span>
+              <span class="select-arrow"></span>
+            </div>
+            <div class="select-options" id="cm-preset-options"></div>
+            <input type="hidden" id="cm-preset" value="">
+          </div>
+          <div id="cm-preset-desc" style="font-size: 0.72rem; color: var(--text-muted);"></div>
+
+          <label style="font-size: 0.8rem; font-weight: 700;">모델 소스</label>
+          <div style="display: flex; gap: 20px; align-items: center;">
+            <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 0.85rem;">
+              <input type="radio" name="cm-source" value="file" checked> 로컬 ONNX 파일
+            </label>
+            <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 0.85rem;">
+              <input type="radio" name="cm-source" value="url"> 다운로드 URL
+            </label>
+          </div>
+          <input id="cm-url" type="text" placeholder="https://.../model.onnx" class="hex-text-input" style="width: 100%; padding: 10px 12px; display: none;">
+
+          <button id="cm-add-btn" class="primary-btn" style="margin-top: 4px;">모델 추가</button>
+        </div>
+
+        <div>
+          <div style="font-weight: 700; margin-bottom: 10px; font-size: 0.85rem;">등록된 커스텀 모델</div>
+          <div id="cm-list"></div>
+        </div>
+      </div>
     </div>
   </div>
 
