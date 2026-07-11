@@ -18,6 +18,7 @@ import {
 const modelDescMap = {
   kim: "일반적인 보컬·MR 분리에 적합합니다.",
   inst_hq_3: "MR(반주) 품질이 더 중요할 때 추천합니다.",
+  melband_deux: "최고 품질의 최신 모델 (becruily deux, ~940MB, GPU 권장, 비상업 라이선스 CC-BY-NC-4.0).",
 };
 
 // Cache of the current model list (built-in + custom) for lookups.
@@ -55,6 +56,7 @@ export async function refreshModelDropdown() {
   const labelFor = (m) => {
     if (m.id === "kim") return "Kim Vocal 2 (기본/고속)";
     if (m.id === "inst_hq_3") return "Inst HQ 3 (고품질 반주/MR)";
+    if (m.id === "melband_deux") return "Mel-Band RoFormer Deux (최고 품질)";
     return m.isCustom ? `${m.name} (커스텀)` : m.name;
   };
 

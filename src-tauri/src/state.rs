@@ -15,6 +15,10 @@ use crate::types::SongMetadata;
 pub const MODELS: &[(&str, &str, &str)] = &[
     ("kim", "Kim_Vocal_2.onnx", "https://huggingface.co/seanghay/uvr_models/resolve/main/Kim_Vocal_2.onnx"),
     ("inst_hq_3", "UVR-MDX-NET-Inst_HQ_3.onnx", "https://huggingface.co/seanghay/uvr_models/resolve/main/UVR-MDX-NET-Inst_HQ_3.onnx"),
+    // becruily/mel-band-roformer-deux (CC-BY-NC-4.0, 비상업) — .ckpt를 conv-STFT
+    // 내장 ONNX(opset 17)로 변환한 버전, 전용 GitHub Release에서 배포.
+    // RawWaveform 엔진이므로 spec_from_id가 melband_roformer 프리셋 params를 붙인다.
+    ("melband_deux", "mel_band_roformer_deux.onnx", "https://github.com/Temmis2077/Live-MR-Manager/releases/download/separation-model-deux-v1/mel_band_roformer_deux.onnx"),
 ];
 
 // --- App Paths Management ---
