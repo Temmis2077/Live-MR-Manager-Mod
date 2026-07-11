@@ -9,6 +9,7 @@ use crate::vocal_remover::{InferenceEngine, WaveformRemover};
 use crate::model_manager::{ModelManager, ModelSpec};
 use crate::youtube::YoutubeManager;
 use crate::audio_player::sys_log;
+use crate::youtube_url::normalize_cache_key;
 use super::{SeparationProgress, ROFORMER_ENGINE, AI_QUEUE_LOCK, ACTIVE_SEPARATIONS, MODEL_INIT_LOCK, MODEL_INIT_COOLDOWN_UNTIL};
 
 static MODEL_INIT_ATTEMPT_SEQ: AtomicU64 = AtomicU64::new(1);
@@ -52,9 +53,15 @@ impl SeparationTask {
         let path = self.path;
         let cache_dir = self.cache_dir;
 
-        // 1. Normalize path and register in active map immediately to prevent duplicates
-        let norm_p = path.replace("\\", "/");
-        
+        // 1. Normalize path and register in active map immediately to prevent duplicates.
+        // Must match the exact same normalization `cancel_separation`/`start_mr_separation`
+        // use (model_commands.rs), or a cancel request for a queued-but-not-yet-started
+        // task silently misses its `ACTIVE_SEPARATIONS`/`CANCEL_REQUESTS` entry (this was
+        // previously a bare backslash replace, which diverges from `normalize_cache_key`
+        // for YouTube URLs — e.g. `youtu.be/...` short links or `watch?v=...&list=...`
+        // links — letting a "cancelled" queued job start anyway once its turn came up).
+        let norm_p = normalize_cache_key(&path);
+
         // If a cancel was already requested before the task reached this point, abort immediately.
         if crate::audio_player::CANCEL_REQUESTS.lock().remove(&norm_p) {
             window.emit("separation-progress", SeparationProgress {
@@ -228,8 +235,17 @@ impl SeparationTask {
 
                     let model_path_for_spawn = resolution.path.clone();
                     let model_id_for_spawn = resolution.spec.id.clone();
+                    let model_params_for_spawn = resolution.spec.params.clone();
                     let init_started = std::time::Instant::now();
-                    let timeout_secs = Self::model_init_timeout_secs();
+                    // Large raw-waveform models (Mel-Band RoFormer, ~1GB) can
+                    // take far longer than 90s to load onto the GPU.
+                    let timeout_secs = if resolution.spec.params.as_ref()
+                        .map_or(false, |p| p.engine == crate::vocal_remover::EngineKind::RawWaveform)
+                    {
+                        300
+                    } else {
+                        Self::model_init_timeout_secs()
+                    };
                     let spawn_wait_started = std::time::Instant::now();
                     MODEL_INIT_INFLIGHT.fetch_add(1, Ordering::Relaxed);
                     sys_log(&format!(
@@ -241,7 +257,7 @@ impl SeparationTask {
                     let init_result = tokio::time::timeout(
                         Duration::from_secs(timeout_secs),
                         tokio::task::spawn_blocking(move || {
-                            WaveformRemover::new(&model_path_for_spawn, Some(&model_id_for_spawn))
+                            WaveformRemover::new_with_params(&model_path_for_spawn, Some(&model_id_for_spawn), model_params_for_spawn)
                         })
                     ).await;
                     let inflight_after_wait = MODEL_INIT_INFLIGHT.fetch_sub(1, Ordering::Relaxed).saturating_sub(1);
@@ -421,11 +437,11 @@ impl SeparationTask {
                 sys_log(&format!("[AI-ENGINE] Separation failed: {}", e));
             }
 
-            // Clean up from active map
+            // Clean up from active map (already normalized by `normalize_cache_key`
+            // when this task registered itself; no need to re-normalize here).
             {
                 let mut active = ACTIVE_SEPARATIONS.lock();
-                let norm_p = p_for_cleanup.replace("\\", "/");
-                active.remove(&norm_p);
+                active.remove(&p_for_cleanup);
             }
             
             let _ = tx.send(separation_result.map(|_| ()));
@@ -446,6 +462,14 @@ impl SeparationTask {
                 let _ = std::fs::remove_dir_all(&cache_dir);
                 let status = if e.contains("Cancelled") {
                     "Cancelled".to_string()
+                } else if Self::is_gpu_device_removed_error(&e) {
+                    // The D3D/DXGI device behind this session is permanently gone.
+                    // Evict the cached engine so the next attempt builds a fresh
+                    // session (picking up any provider-order fix, e.g. skipping
+                    // DirectML for heavy RawWaveform models).
+                    sys_log(&format!("[AI-ENGINE] GPU device removed, evicting cached engine: {}", e));
+                    *ROFORMER_ENGINE.lock() = None;
+                    "Error: GPU 처리 중 그래픽 드라이버가 응답하지 않아 중단되었습니다. 다시 시도해주세요 (자동으로 다른 처리 방식으로 전환됩니다).".to_string()
                 } else {
                     sys_log(&format!("[AI-ENGINE] Separation failed: {}", e));
                     format!("Error: {}", e)
@@ -465,6 +489,18 @@ impl SeparationTask {
         }
     }
 
+    /// Detects the DXGI/D3D "device removed" family of errors that ONNX
+    /// Runtime's DirectML EP surfaces when the Windows TDR watchdog kills a
+    /// GPU dispatch that ran too long. HRESULT 887A0005 is
+    /// DXGI_ERROR_DEVICE_REMOVED; the accompanying message may be mangled by
+    /// console codepage translation, so match on the stable hex code instead
+    /// of the localized text.
+    fn is_gpu_device_removed_error(e: &str) -> bool {
+        e.contains("887A0005")
+            || e.contains("DXGI_ERROR_DEVICE_REMOVED")
+            || e.contains("DXGI_ERROR_DEVICE_HUNG")
+    }
+
     fn emit_error(window: &WebviewWindow, path: &str, message: &str, provider: &str, model: &str) {
         window.emit("separation-progress", SeparationProgress {
             path: path.to_string(),
@@ -476,13 +512,13 @@ impl SeparationTask {
     }
 
     fn get_configured_model_name() -> String {
-        let db = crate::state::DB.lock();
-        let model_id = db.query_row("SELECT value FROM Settings WHERE key = 'active_model_id'", [], |row| row.get::<_, String>(0)).unwrap_or_else(|_| "kim".to_string());
-        
-        let (_, model_filename, _) = crate::state::MODELS.iter()
-            .find(|(id, _, _)| *id == model_id)
-            .unwrap_or(&crate::state::MODELS[0]);
-            
-        model_filename.to_string()
+        let model_id = {
+            let db = crate::state::DB.lock();
+            db.query_row("SELECT value FROM Settings WHERE key = 'active_model_id'", [], |row| row.get::<_, String>(0)).unwrap_or_else(|_| "kim".to_string())
+        };
+
+        crate::model_manager::ModelManager::spec_from_id(&model_id)
+            .map(|spec| spec.name)
+            .unwrap_or_else(|_| crate::state::MODELS[0].1.to_string())
     }
 }

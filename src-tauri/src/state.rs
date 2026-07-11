@@ -278,6 +278,8 @@ fn init_db(conn: &mut Connection, app_dir: &PathBuf) {
     )
     .ok();
 
+    crate::custom_models::ensure_table(conn);
+
     // 3. One-time migration from library.json if exists
     let json_path = app_dir.join("library.json");
     if json_path.exists() {

@@ -86,15 +86,204 @@ pub async fn download_ai_model(window: WebviewWindow, model_id: String) -> Resul
 #[tauri::command]
 pub async fn delete_ai_model(window: WebviewWindow, model_id: String) -> Result<(), String> {
     let manager = ModelManager::new(window.app_handle());
-    let (_, name, _) = crate::state::MODELS.iter()
-        .find(|(id, _, _)| *id == model_id)
-        .ok_or_else(|| format!("Unknown model ID: {}", model_id))?;
-        
-    let path = manager.get_model_path(name);
+    let spec = ModelManager::spec_from_id(&model_id)?;
+
+    let path = manager.get_model_path(&spec.name);
     if path.exists() {
         std::fs::remove_file(path).ok();
         let mut engine = crate::separation::ROFORMER_ENGINE.lock();
         *engine = None;
+    }
+    Ok(())
+}
+
+fn active_model_filename() -> String {
+    let model_id = {
+        let db = crate::state::DB.lock();
+        db.query_row("SELECT value FROM Settings WHERE key = 'active_model_id'", [], |row| row.get::<_, String>(0)).unwrap_or_else(|_| "kim".to_string())
+    };
+    ModelManager::spec_from_id(&model_id)
+        .map(|spec| spec.name)
+        .unwrap_or_else(|_| crate::state::MODELS[0].1.to_string())
+}
+
+/// List architecture presets available for custom models.
+#[tauri::command]
+pub fn list_model_presets() -> Vec<crate::custom_models::ArchPreset> {
+    crate::custom_models::PRESETS.to_vec()
+}
+
+/// Combined list of built-in and custom models for the model selector.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelListEntry {
+    pub id: String,
+    pub name: String,
+    pub is_custom: bool,
+    pub preset_key: Option<String>,
+}
+
+#[tauri::command]
+pub fn list_all_models() -> Vec<ModelListEntry> {
+    let mut out: Vec<ModelListEntry> = crate::state::MODELS.iter()
+        .map(|(id, name, _)| ModelListEntry {
+            id: id.to_string(),
+            name: name.to_string(),
+            is_custom: false,
+            preset_key: None,
+        })
+        .collect();
+
+    for c in crate::custom_models::list() {
+        out.push(ModelListEntry {
+            id: c.id,
+            name: c.name,
+            is_custom: true,
+            preset_key: Some(c.preset_key),
+        });
+    }
+    out
+}
+
+#[tauri::command]
+pub fn list_custom_models() -> Vec<crate::custom_models::CustomModel> {
+    crate::custom_models::list()
+}
+
+/// Register a custom model. `source_kind` is either `"file"` (a local path that
+/// is copied into the models dir) or `"url"` (downloaded on first use).
+#[tauri::command]
+pub async fn add_custom_model(
+    window: WebviewWindow,
+    name: String,
+    source_kind: String,
+    source: String,
+    preset_key: String,
+) -> Result<crate::custom_models::CustomModel, String> {
+    if name.trim().is_empty() {
+        return Err("모델 이름을 입력해주세요.".into());
+    }
+    if crate::custom_models::preset_by_key(&preset_key).is_none() {
+        return Err(format!("알 수 없는 아키텍처 프리셋: {}", preset_key));
+    }
+
+    let id = format!(
+        "custom_{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis())
+            .unwrap_or(0)
+    );
+    let filename = format!("{}.onnx", id);
+
+    // Clone the path before any `.await` so we don't hold the `State` guard
+    // across a suspension point (which would make the future non-Send).
+    let models_dir = window.state::<crate::state::AppPaths>().models.clone();
+    let dest = models_dir.join(&filename);
+
+    let url = match source_kind.as_str() {
+        "file" => {
+            // Open a native file picker (consistent with the app's other
+            // import flows). `source` is ignored for file mode.
+            let _ = source;
+            let picked = rfd::AsyncFileDialog::new()
+                .add_filter("ONNX Model", &["onnx"])
+                .pick_file()
+                .await
+                .ok_or_else(|| "CANCELLED".to_string())?;
+            let src = picked.path().to_path_buf();
+            std::fs::copy(&src, &dest).map_err(|e| format!("모델 파일 복사 실패: {}", e))?;
+            String::new()
+        }
+        "url" => {
+            if source.trim().is_empty() {
+                return Err("다운로드 URL을 입력해주세요.".into());
+            }
+            source.trim().to_string()
+        }
+        other => return Err(format!("알 수 없는 소스 종류: {}", other)),
+    };
+
+    // Validate the ONNX input signature against the chosen preset (file mode
+    // only; URL models surface errors on first load). RawWaveform models take
+    // a rank-3 waveform input [1, 2, N]; spectrogram models take rank 4.
+    if url.is_empty() {
+        let preset_engine = crate::custom_models::preset_by_key(&preset_key)
+            .map(|p| p.engine)
+            .unwrap_or(crate::vocal_remover::EngineKind::Spectrogram);
+        let expected_rank: usize = match preset_engine {
+            crate::vocal_remover::EngineKind::RawWaveform => 3,
+            crate::vocal_remover::EngineKind::Spectrogram => 4,
+        };
+
+        let dest_for_check = dest.clone();
+        let rank_res = tokio::task::spawn_blocking(move || -> Result<usize, String> {
+            let session = ort::session::Session::builder()
+                .map_err(|e| e.to_string())?
+                .with_optimization_level(ort::session::builder::GraphOptimizationLevel::Disable)
+                .map_err(|e| e.to_string())?
+                .commit_from_file(&dest_for_check)
+                .map_err(|e| format!("유효한 ONNX 파일이 아닙니다: {}", e))?;
+            match session.inputs()[0].dtype() {
+                ort::value::ValueType::Tensor { shape, .. } => Ok(shape.len()),
+                _ => Ok(0),
+            }
+        })
+        .await
+        .map_err(|e| e.to_string())?;
+
+        match rank_res {
+            Ok(rank) if rank == expected_rank => {}
+            Ok(rank) => {
+                let _ = std::fs::remove_file(&dest);
+                return Err(format!(
+                    "모델 입력 형식이 프리셋과 맞지 않습니다 (입력 rank {}, 기대 rank {}). 아키텍처 프리셋을 다시 확인해주세요.",
+                    rank, expected_rank
+                ));
+            }
+            Err(e) => {
+                let _ = std::fs::remove_file(&dest);
+                return Err(e);
+            }
+        }
+    }
+
+    let model = crate::custom_models::CustomModel {
+        id,
+        name: name.trim().to_string(),
+        filename,
+        url,
+        preset_key,
+    };
+    crate::custom_models::insert(&model)?;
+    let _ = sys_log(&format!("[Model] Custom model added: id={}, preset={}", model.id, model.preset_key));
+    Ok(model)
+}
+
+#[tauri::command]
+pub async fn remove_custom_model(window: WebviewWindow, model_id: String) -> Result<(), String> {
+    let custom = crate::custom_models::get(&model_id)
+        .ok_or_else(|| format!("Unknown custom model: {}", model_id))?;
+
+    // Remove the model file from disk.
+    let paths = window.state::<crate::state::AppPaths>();
+    let file = paths.models.join(&custom.filename);
+    if file.exists() {
+        std::fs::remove_file(&file).ok();
+    }
+
+    crate::custom_models::delete(&model_id)?;
+
+    // If this was the active model, revert to the default built-in one and drop
+    // any loaded engine so the next separation reloads.
+    {
+        let db = crate::state::DB.lock();
+        let active: String = db.query_row("SELECT value FROM Settings WHERE key = 'active_model_id'", [], |row| row.get(0)).unwrap_or_default();
+        if active == model_id {
+            db.execute("INSERT OR REPLACE INTO Settings (key, value) VALUES ('active_model_id', 'kim')", []).ok();
+            let mut engine = crate::separation::ROFORMER_ENGINE.lock();
+            *engine = None;
+        }
     }
     Ok(())
 }
@@ -148,17 +337,12 @@ pub fn cancel_separation(window: WebviewWindow, path: String) -> Result<(), Stri
     let norm = normalize_cache_key(&path);
     let removed = if let Some((original_path, flag)) = crate::separation::ACTIVE_SEPARATIONS.lock().remove(&norm) {
         flag.store(true, Ordering::Relaxed);
-        let db = crate::state::DB.lock();
-        let model_id = db.query_row("SELECT value FROM Settings WHERE key = 'active_model_id'", [], |row| row.get::<_, String>(0)).unwrap_or_else(|_| "kim".to_string());
-        let (_, model_filename, _) = crate::state::MODELS.iter()
-            .find(|(id, _, _)| *id == model_id)
-            .unwrap_or(&crate::state::MODELS[0]);
         window.emit("separation-progress", crate::separation::SeparationProgress {
             path: original_path,
             percentage: 0.0,
             status: "Cancelled".into(),
             provider: "SYSTEM".into(),
-            model: model_filename.to_string(),
+            model: active_model_filename(),
         }).ok();
         true
     } else {
@@ -166,17 +350,12 @@ pub fn cancel_separation(window: WebviewWindow, path: String) -> Result<(), Stri
     };
     crate::audio_player::CANCEL_REQUESTS.lock().insert(norm);
     if !removed {
-        let db = crate::state::DB.lock();
-        let model_id = db.query_row("SELECT value FROM Settings WHERE key = 'active_model_id'", [], |row| row.get::<_, String>(0)).unwrap_or_else(|_| "kim".to_string());
-        let (_, model_filename, _) = crate::state::MODELS.iter()
-            .find(|(id, _, _)| *id == model_id)
-            .unwrap_or(&crate::state::MODELS[0]);
         window.emit("separation-progress", crate::separation::SeparationProgress {
             path,
             percentage: 0.0,
             status: "Cancelled".into(),
             provider: "SYSTEM".into(),
-            model: model_filename.to_string(),
+            model: active_model_filename(),
         }).ok();
     }
     Ok(())
