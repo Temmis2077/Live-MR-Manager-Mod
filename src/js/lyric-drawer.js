@@ -225,18 +225,20 @@ export function updateLyrics(segments) {
 
     container.innerHTML = segments.map((s, i) => `
         <div class="lyric-line-item drawer-lyric-item" data-index="${i}">
-            <span class="lyric-text">${displayText(s)}</span>
+            <span class="lyric-text">${displayText(s, 'app')}</span>
         </div>
     `).join('');
 }
 
 /**
- * 원문(+차음, 설정에 따라 번역)을 표시용으로 합친 텍스트. 일반 가사는 text 그대로.
+ * 설정된 표시 항목(원문/차음/번역)을 합친 텍스트. 일반 가사는 text 그대로.
  * 두 번째 줄부터는 살짝 작게 — 오버레이/드로어 모두 innerHTML로 렌더링하고
  * white-space: normal이라 `\n`은 그냥 공백으로 뭉개지므로 `<br>`로 조인.
+ * `scope`는 'app'(인앱 드로어) 또는 'overlay'(OBS 오버레이) — 서로 독립적으로
+ * 설정 가능하다(lrc-parser.js의 getLineVisibility).
  */
-function displayText(seg) {
-    const lines = getDisplayLines(seg).filter(Boolean);
+function displayText(seg, scope = 'app') {
+    const lines = getDisplayLines(seg, scope).filter(Boolean);
     if (lines.length === 0) return '';
     if (lines.length === 1) return lines[0];
     const [first, ...rest] = lines;
@@ -264,10 +266,10 @@ function syncLyricsWithTime(currentTime) {
         }
     }
 
-    const current = (playingIndex !== -1) ? displayText(lyrics[playingIndex]) : "";
+    const current = (playingIndex !== -1) ? displayText(lyrics[playingIndex], 'overlay') : "";
     const next = (playingIndex !== -1)
-        ? ((playingIndex + 1 < lyrics.length) ? displayText(lyrics[playingIndex + 1]) : "")
-        : ((lyrics.length > 0) ? displayText(lyrics[0]) : "");
+        ? ((playingIndex + 1 < lyrics.length) ? displayText(lyrics[playingIndex + 1], 'overlay') : "")
+        : ((lyrics.length > 0) ? displayText(lyrics[0], 'overlay') : "");
 
     // IMPORTANT: Don't skip overlay update only because index didn't change.
     // At song start, index can stay -1 for a while but first line still needs to appear in "next".

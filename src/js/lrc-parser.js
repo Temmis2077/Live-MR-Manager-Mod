@@ -94,27 +94,55 @@ export function getSyncText(seg) {
   return isTriplet(seg) ? (seg.pronunciation || '') : (seg.text || '');
 }
 
-// Shared global setting (alignment editor + lyric drawer + overlay all read
-// this): whether the 번역(translation) line of a triplet cue is shown.
-// Default off — only 원문(original) + 차음(pronunciation) show out of the box.
-const SHOW_TRANSLATION_KEY = 'lyricsShowTranslation';
+// Per-surface triplet line visibility. 'app' covers the sync editor preview
+// + the in-app lyric drawer; 'overlay' covers the OBS-facing overlay only —
+// letting users show e.g. only 차음 on stream while keeping 원문+차음 in-app,
+// or any other combination of 원문/차음/번역 per surface.
+const LINE_VISIBILITY_KEY_PREFIX = 'lyricsLineVisibility_';
+const DEFAULT_LINE_VISIBILITY = { original: true, pronunciation: true, translation: false };
 
-export function getShowTranslation() {
-  return localStorage.getItem(SHOW_TRANSLATION_KEY) === 'true';
+export function getLineVisibility(scope = 'app') {
+  const raw = localStorage.getItem(LINE_VISIBILITY_KEY_PREFIX + scope);
+  if (!raw) return { ...DEFAULT_LINE_VISIBILITY };
+  try {
+    return { ...DEFAULT_LINE_VISIBILITY, ...JSON.parse(raw) };
+  } catch (e) {
+    return { ...DEFAULT_LINE_VISIBILITY };
+  }
 }
 
-export function setShowTranslation(show) {
-  localStorage.setItem(SHOW_TRANSLATION_KEY, show ? 'true' : 'false');
+export function setLineVisibility(scope, key, value) {
+  const current = getLineVisibility(scope);
+  current[key] = value;
+  localStorage.setItem(LINE_VISIBILITY_KEY_PREFIX + scope, JSON.stringify(current));
 }
 
-/** Builds the display text for a segment: original(+pronunciation) stacked for
- * triplet cues (translation only if the global setting is on), plain `text`
- * otherwise. `joiner` lets callers pick `\n` (drawer/overlay) vs a literal
- * string for contexts that render each part separately. */
-export function getDisplayLines(seg) {
+/** Back-compat helpers for the sync editor's single "번역 보기" quick toggle —
+ * scoped to 'app' since that toggle only ever affected the in-app preview. */
+export function getShowTranslation(scope = 'app') {
+  return getLineVisibility(scope).translation;
+}
+
+export function setShowTranslation(show, scope = 'app') {
+  setLineVisibility(scope, 'translation', show);
+}
+
+/** Builds the display lines for a segment per-surface visibility settings.
+ * Plain (non-triplet) segments always just return their `text`. If a triplet
+ * cue's visible set is empty (user turned everything off for this surface),
+ * falls back to the pronunciation line (or whatever's available) rather than
+ * rendering nothing. */
+export function getDisplayLines(seg, scope = 'app') {
   if (!isTriplet(seg)) return [seg?.text || ''];
-  const lines = [seg.original || '', seg.pronunciation || ''].filter((l) => l);
-  if (getShowTranslation() && seg.translation) lines.push(seg.translation);
+  const vis = getLineVisibility(scope);
+  const lines = [];
+  if (vis.original && seg.original) lines.push(seg.original);
+  if (vis.pronunciation && seg.pronunciation) lines.push(seg.pronunciation);
+  if (vis.translation && seg.translation) lines.push(seg.translation);
+  if (lines.length === 0) {
+    const fallback = seg.pronunciation || seg.original || seg.translation || '';
+    if (fallback) lines.push(fallback);
+  }
   return lines;
 }
 

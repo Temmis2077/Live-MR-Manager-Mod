@@ -509,7 +509,31 @@
                     <button class="btn-ai-action secondary" id="btn-copy-lyrics-overlay-url" style="width: auto; padding: 0 20px; white-space: nowrap; height: auto;">URL 복사</button>
                   </div>
                 </div>
-                
+
+                <!-- 3줄(원문/차음/번역) 가사 표시 설정 -->
+                <div style="display: flex; flex-direction: column; gap: 10px; padding: 12px 14px; background: var(--surface-1); border-radius: 8px; border: 1px solid var(--glass-border);">
+                  <label style="font-size: 0.8rem; font-weight: 700; color: var(--text-dim);">3줄(원문/차음/번역) 가사 표시 항목</label>
+                  <div style="font-size: 0.72rem; color: var(--text-muted); line-height: 1.4;">일본어 등 3줄 모드 가사에서 인앱 가사창과 OBS 오버레이에 각각 어떤 줄을 보여줄지 독립적으로 고를 수 있습니다. 전부 끄면 차음(발음) 줄로 대체 표시됩니다.</div>
+
+                  <div style="display: flex; flex-direction: column; gap: 6px;">
+                    <span style="font-size: 0.75rem; font-weight: 700; color: var(--text-main);">인앱 가사창 (가사 드로어 / 정렬 편집 미리보기)</span>
+                    <div style="display: flex; gap: 16px; flex-wrap: wrap;">
+                      <label style="display: flex; align-items: center; gap: 6px; font-size: 0.8rem; cursor: pointer;"><input type="checkbox" class="lyric-line-visibility-toggle" data-scope="app" data-field="original"> 원문</label>
+                      <label style="display: flex; align-items: center; gap: 6px; font-size: 0.8rem; cursor: pointer;"><input type="checkbox" class="lyric-line-visibility-toggle" data-scope="app" data-field="pronunciation"> 차음</label>
+                      <label style="display: flex; align-items: center; gap: 6px; font-size: 0.8rem; cursor: pointer;"><input type="checkbox" class="lyric-line-visibility-toggle" data-scope="app" data-field="translation"> 번역</label>
+                    </div>
+                  </div>
+
+                  <div style="display: flex; flex-direction: column; gap: 6px;">
+                    <span style="font-size: 0.75rem; font-weight: 700; color: var(--text-main);">OBS 오버레이</span>
+                    <div style="display: flex; gap: 16px; flex-wrap: wrap;">
+                      <label style="display: flex; align-items: center; gap: 6px; font-size: 0.8rem; cursor: pointer;"><input type="checkbox" class="lyric-line-visibility-toggle" data-scope="overlay" data-field="original"> 원문</label>
+                      <label style="display: flex; align-items: center; gap: 6px; font-size: 0.8rem; cursor: pointer;"><input type="checkbox" class="lyric-line-visibility-toggle" data-scope="overlay" data-field="pronunciation"> 차음</label>
+                      <label style="display: flex; align-items: center; gap: 6px; font-size: 0.8rem; cursor: pointer;"><input type="checkbox" class="lyric-line-visibility-toggle" data-scope="overlay" data-field="translation"> 번역</label>
+                    </div>
+                  </div>
+                </div>
+
                 <!-- Guide Box -->
                 <div style="padding: 12px 14px; background: var(--surface-2); border-radius: 8px; border: 1px solid var(--glass-border);">
                   <div style="display: flex; align-items: center; gap: 8px; color: var(--accent-primary); font-size: 0.8rem; font-weight: 700; margin-bottom: 6px;">

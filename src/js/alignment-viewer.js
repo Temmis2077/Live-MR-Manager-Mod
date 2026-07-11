@@ -150,7 +150,7 @@ export class ForcedAlignmentViewer {
                             <h3>가사 싱크 결과</h3>
                             <div style="display:flex; gap:8px; align-items:center;">
                                 <span id="sync-save-status" class="sync-save-status" style="min-width:52px; text-align:right; font-size:0.78rem; color:#94a3b8;">저장됨</span>
-                                <button id="toggle-translation-btn" class="sync-reset-btn" title="번역 줄 표시 여부 — 여기서 켜고 끄면 가사 드로어/오버레이 기본 표시에도 동일하게 적용됩니다.">번역 보기</button>
+                                <button id="toggle-translation-btn" class="sync-reset-btn" title="번역 줄 표시 여부 — 여기서 켜고 끄면 인앱 가사창(드로어)에도 동일하게 적용됩니다. OBS 오버레이 표시 항목은 설정 화면에서 별도로 조정하세요.">번역 보기</button>
                                 <button id="reset-sync-btn" class="sync-reset-btn">초기화</button>
                             </div>
                         </div>

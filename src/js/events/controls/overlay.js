@@ -2,6 +2,7 @@
  * OBS overlay customization control listeners
  */
 import { updateOverlayLyrics, updateOverlayStyle, getLanAddresses } from '../../overlay-api.js';
+import { getLineVisibility, setLineVisibility } from '../../lrc-parser.js';
 
 const OVERLAY_LAN_PREF_KEY = 'overlay-use-lan-address';
 let cachedLanAddress = null;
@@ -409,6 +410,19 @@ export function initOverlayListeners() {
       updateOverlaySettings(true);
     })
     .catch((err) => console.error('Failed to get LAN address:', err));
+
+  // 3줄(원문/차음/번역) 모드 표시 항목 — 'app'(인앱 가사창)과 'overlay'(OBS)를
+  // 독립적으로 설정. 두 스코프의 초기 체크 상태를 저장된 값으로 채우고,
+  // 바뀔 때마다 해당 스코프에만 저장한다(lrc-parser.js::getLineVisibility).
+  document.querySelectorAll('.lyric-line-visibility-toggle').forEach((box) => {
+    const scope = box.dataset.scope;
+    const field = box.dataset.field;
+    if (!scope || !field) return;
+    box.checked = !!getLineVisibility(scope)[field];
+    box.addEventListener('change', () => {
+      setLineVisibility(scope, field, box.checked);
+    });
+  });
 
   loadOverlaySettings();
   updateOverlaySettings(true);
