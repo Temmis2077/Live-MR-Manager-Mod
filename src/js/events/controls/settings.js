@@ -335,4 +335,16 @@ export function initSettingsListeners({ syncAllOverlayStylesToBackend }) {
       }
     };
   }
+
+  // 인트로 자동 건너뛰기 — 가사 싱크 탭에서 지정한 "보컬 시작 지점" 마커가
+  // 있는 곡은 재생 시작 시 그 지점으로 자동 탐색(player.js::selectTrack).
+  // 기본 켜짐, localStorage에 저장(다른 순수 프론트 토글과 동일 패턴).
+  const toggleIntroSkip = document.getElementById('toggle-intro-skip');
+  if (toggleIntroSkip) {
+    const stored = localStorage.getItem('introSkipEnabled');
+    toggleIntroSkip.checked = stored === null ? true : stored === 'true';
+    toggleIntroSkip.onchange = (e) => {
+      localStorage.setItem('introSkipEnabled', String(!!e.target.checked));
+    };
+  }
 }

@@ -617,6 +617,33 @@
 
             <section class="settings-group">
               <div class="group-header">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round">
+                  <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                </svg>
+                <h3>재생</h3>
+              </div>
+              <div class="ai-model-card">
+                <div class="ai-info-left">
+                  <h2 class="ai-title-large">인트로 자동 건너뛰기</h2>
+                  <div class="ai-model-desc">
+                    유튜브 영상 앞에 뮤비 형식 인트로 등 노래와 무관한 구간이 있는 곡은,
+                    가사 싱크 탭에서 "보컬 시작 지점"을 지정해두면 재생 시 그 지점으로
+                    자동으로 건너뜁니다. 지점을 지정하지 않은 곡은 평소처럼 처음부터
+                    재생됩니다.
+                  </div>
+                </div>
+                <div class="ai-actions-right">
+                  <label class="switch">
+                    <input type="checkbox" id="toggle-intro-skip" checked>
+                    <span class="slider round"></span>
+                  </label>
+                </div>
+              </div>
+            </section>
+
+            <section class="settings-group">
+              <div class="group-header">
                 <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
                   <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
