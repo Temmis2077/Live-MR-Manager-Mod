@@ -1758,6 +1758,16 @@ export class ForcedAlignmentViewer {
         if (cancelBtn) cancelBtn.style.display = 'inline-flex';
         if (statusEl) statusEl.textContent = 'AI 정렬 준비 중...';
 
+        // 에디터 단발 실행도 AI 프로세싱 탭의 정렬 대기열에 표시(진행률 포함).
+        // 배치 대기열이 처리하는 항목은 아니고 가시성 전용 — 상태 기록은 finish로.
+        let finishQueueItem = null;
+        try {
+            const { beginExternalAlignment } = await import('./alignment-queue.js');
+            finishQueueItem = await beginExternalAlignment(this.state.currentPath);
+        } catch (err) {
+            console.error('[Alignment] queue-visibility hook failed:', err);
+        }
+
         try {
             const result = await this.invoke('run_forced_alignment', {
                 audioPath: this.state.currentPath,
@@ -1769,6 +1779,7 @@ export class ForcedAlignmentViewer {
             const lines = (result && result.lines) || [];
             if (lines.length === 0) {
                 showNotification('AI 정렬 결과가 비어 있습니다. 가사와 음성이 잘 맞는지 확인해주세요.', 'warning');
+                if (finishQueueItem) finishQueueItem('error', { error: '정렬 결과 비어 있음' });
                 return;
             }
 
@@ -1776,19 +1787,23 @@ export class ForcedAlignmentViewer {
 
             if (appliedCount === 0) {
                 showNotification('AI가 정렬한 줄과 일치하는 미싱크 가사를 찾지 못했습니다.', 'warning');
+                if (finishQueueItem) finishQueueItem('error', { error: '일치하는 미싱크 가사 없음' });
                 return;
             }
 
             this.renderLyricList();
             this.drawWaveform();
             this.markDirtyAndScheduleSave();
+            if (finishQueueItem) finishQueueItem('done', { note: `${appliedCount}줄 배치됨` });
             showNotification(`AI 자동 정렬로 ${appliedCount}줄을 배치했습니다. 노래 음성 특성상 정확하지 않을 수 있으니 점선 표시 구간을 직접 확인해주세요.`, 'success');
         } catch (err) {
             const msg = String(err);
             if (msg.includes('취소')) {
+                if (finishQueueItem) finishQueueItem('cancelled');
                 showNotification('AI 정렬이 취소되었습니다.', 'info');
             } else {
                 console.error('AI alignment failed:', err);
+                if (finishQueueItem) finishQueueItem('error', { error: msg });
                 showNotification('AI 정렬 실패: ' + msg, 'error');
             }
         } finally {

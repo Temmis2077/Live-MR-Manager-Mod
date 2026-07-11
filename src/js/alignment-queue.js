@@ -224,6 +224,35 @@ export function enqueueAlignment(paths) {
     return added;
 }
 
+/**
+ * 가사 싱크 탭(에디터)의 단발 "AI 자동 정렬" 실행을 대기열 UI에 표시하기
+ * 위한 훅. 배치 대기열(runQueue)이 처리하는 항목이 아니라(상태가 바로
+ * 'processing'이라 runQueue의 'queued' 스캔에 안 걸림) 표시 전용 항목이며,
+ * 진행률은 기존 alignment-progress 리스너가 'processing' 항목에 귀속시키는
+ * 로직을 그대로 탄다. 반환된 finish(status, extra)로 종료 상태를 기록한다.
+ */
+export async function beginExternalAlignment(path) {
+    await ensureProgressListener();
+    const staleIdx = state.alignmentQueue.findIndex((i) => i.path === path && i.status !== 'processing');
+    if (staleIdx !== -1) state.alignmentQueue.splice(staleIdx, 1);
+    const song = state.songLibrary.find((s) => s.path === path);
+    const item = {
+        path,
+        title: song?.title || path,
+        thumbnail: song?.thumbnail || '',
+        status: 'processing',
+        percentage: 0,
+        external: true,
+    };
+    state.alignmentQueue.push(item);
+    notifyQueueChanged();
+    return (status, extra = {}) => {
+        item.status = status;
+        Object.assign(item, extra);
+        notifyQueueChanged();
+    };
+}
+
 /** 대기열 항목 취소/제거. queued는 즉시 제거(백엔드 호출 없음), processing은
  *  전역 취소 커맨드 호출(활성 정렬은 항상 1개라 안전). done/error 등 완료
  *  상태는 목록에서 치우는 용도. */
