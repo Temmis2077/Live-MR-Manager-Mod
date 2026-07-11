@@ -153,15 +153,17 @@ export function initOverlayListeners() {
 
     const setupCopyBtn = (id, text) => {
       const btn = document.getElementById(id);
-      if (btn && !btn.dataset.listenerAdded) {
-        btn.dataset.listenerAdded = 'true';
-        btn.onclick = async () => {
-          try {
-            await navigator.clipboard.writeText(text);
-            import('../../utils.js').then(m => m.showNotification("URL이 클립보드에 복사되었습니다.", "success"));
-          } catch (err) { console.error("Failed to copy:", err); }
-        };
-      }
+      if (!btn) return;
+      // Reassigned on every call (not guarded to "once") since `text` closes
+      // over the current infoUrl/lyricsUrl, which changes when the LAN toggle
+      // flips — a one-time guard here would freeze the copy button on
+      // whatever address was current the first time this ran.
+      btn.onclick = async () => {
+        try {
+          await navigator.clipboard.writeText(text);
+          import('../../utils.js').then(m => m.showNotification("URL이 클립보드에 복사되었습니다.", "success"));
+        } catch (err) { console.error("Failed to copy:", err); }
+      };
     };
     setupCopyBtn('btn-copy-overlay-url', infoUrl);
     setupCopyBtn('btn-copy-lyrics-overlay-url', lyricsUrl);

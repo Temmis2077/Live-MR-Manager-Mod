@@ -170,7 +170,6 @@ pub async fn get_separated_audio_list(handle: AppHandle) -> Result<Vec<Separated
     Ok(tracks)
 }
 
-#[command]
 /// Downloadable forced-alignment model registry (separate from the vocal
 /// separation models in `state.rs::MODELS`, since these carry two files —
 /// the ONNX acoustic model and its `tokens.txt` vocab — instead of one, and
