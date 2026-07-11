@@ -402,6 +402,25 @@ pub fn check_mr_separated(window: WebviewWindow, path: String) -> bool {
     mr_separated_files_exist(paths.inner(), &path)
 }
 
+/// 곡별 MR 분리 기록 조회 — 분리 완료 시 캐시 폴더에 함께 저장되는
+/// `separation_info.json`({modelId, modelName, provider, completedAt})을
+/// 읽어 반환한다. 기록이 없으면(구버전에서 분리했거나 미분리) None.
+#[tauri::command]
+pub fn get_separation_info(window: WebviewWindow, path: String) -> Option<serde_json::Value> {
+    let separated_root = window.state::<crate::state::AppPaths>().separated.clone();
+    for key in cache_key_variants(&path) {
+        let info_path = separated_root
+            .join(urlencoding::encode(&key).to_string())
+            .join("separation_info.json");
+        if let Ok(content) = std::fs::read_to_string(&info_path) {
+            if let Ok(value) = serde_json::from_str::<serde_json::Value>(&content) {
+                return Some(value);
+            }
+        }
+    }
+    None
+}
+
 #[tauri::command]
 pub fn delete_mr(window: WebviewWindow, path: String) -> Result<(), String> {
     let separated_root = window.state::<crate::state::AppPaths>().separated.clone();

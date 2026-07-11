@@ -51,6 +51,15 @@ async function refreshModalState() {
     const titleEl = document.getElementById('separation-mode-song-title');
     if (titleEl && pendingSong) {
         titleEl.textContent = `"${pendingSong.title || pendingSong.path}" 곡을 어떤 방식으로 분리할까요?`;
+        // 이전 분리 기록이 있으면 참고용으로 같이 표시 (재분리 판단에 도움)
+        const songPath = pendingSong.path;
+        import('./model-api.js').then(({ getSeparationInfo }) => getSeparationInfo(songPath)).then((info) => {
+            if (!info || !pendingSong || pendingSong.path !== songPath) return;
+            const when = info.completedAt
+                ? new Date(info.completedAt * 1000).toLocaleDateString('ko-KR')
+                : '';
+            titleEl.textContent += ` (이전 분리: ${info.modelName || info.modelId}${when ? `, ${when}` : ''})`;
+        }).catch(() => {});
     }
     const saveDefault = document.getElementById('separation-mode-save-default');
     if (saveDefault) saveDefault.checked = false;

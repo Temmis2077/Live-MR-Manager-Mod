@@ -28,6 +28,11 @@ export async function getActiveSeparations() {
   return invoke('get_active_separations');
 }
 
+/** 곡별 MR 분리 기록 ({modelId, modelName, provider, completedAt} 또는 null). */
+export async function getSeparationInfo(path) {
+  return invoke('get_separation_info', { path });
+}
+
 // --- Custom models ---
 
 export async function listModelPresets() {

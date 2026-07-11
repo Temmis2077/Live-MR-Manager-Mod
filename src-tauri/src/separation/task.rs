@@ -143,7 +143,7 @@ impl SeparationTask {
         }).ok();
 
         // 7. Execute core separation logic in a dedicated thread
-        Self::execute_separation(window, path, source_path, cache_dir, engine, cancel_flag, norm_p).await;
+        Self::execute_separation(window, path, source_path, cache_dir, engine, cancel_flag, norm_p, task_model_id).await;
     }
 
     fn now_secs() -> u64 {
@@ -398,13 +398,14 @@ impl SeparationTask {
     }
 
     async fn execute_separation(
-        window: WebviewWindow, 
-        path: String, 
-        source_path: PathBuf, 
-        cache_dir: PathBuf, 
+        window: WebviewWindow,
+        path: String,
+        source_path: PathBuf,
+        cache_dir: PathBuf,
         engine: Arc<dyn InferenceEngine>,
         cancel_flag: Arc<AtomicBool>,
-        norm_p: String
+        norm_p: String,
+        task_model_id: String,
     ) {
         let window_clone = window.clone();
         let path_clone = path.clone();
@@ -474,6 +475,9 @@ impl SeparationTask {
         // Await thread result
         match rx.await {
             Ok(Ok(_)) => {
+                // 어떤 모델로 분리했는지 곡별로 기록 — 분리 산출물 옆에 저장해서
+                // MR 캐시 삭제/재분리 시 자연스럽게 함께 갱신·폐기되게 한다.
+                Self::write_separation_info(&cache_dir, &task_model_id, &engine.get_model_name(), &engine.get_provider());
                 window.emit("separation-progress", SeparationProgress {
                     path: path.clone(),
                     percentage: 100.0,
@@ -511,6 +515,26 @@ impl SeparationTask {
                 let _ = std::fs::remove_dir_all(&cache_dir);
                 Self::emit_error(&window, &path, "Process panicked", "SYSTEM", &Self::get_configured_model_name());
             }
+        }
+    }
+
+    /// Persists which model produced this song's separated stems, next to the
+    /// stems themselves (`separation_info.json` in the cache dir). Failure is
+    /// non-fatal — this is informational metadata only.
+    fn write_separation_info(cache_dir: &PathBuf, model_id: &str, model_name: &str, provider: &str) {
+        let completed_at = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        let info = serde_json::json!({
+            "modelId": model_id,
+            "modelName": model_name,
+            "provider": provider,
+            "completedAt": completed_at,
+        });
+        let path = cache_dir.join("separation_info.json");
+        if let Err(e) = std::fs::write(&path, info.to_string()) {
+            sys_log(&format!("[AI-ENGINE] Failed to write separation info: {}", e));
         }
     }
 
