@@ -4,6 +4,7 @@
 import { listen, invoke } from './tauri-bridge.js';
 import { state } from './state.js';
 import { registerAppHandler, callAppHandler } from './app-context.js';
+import { getDisplayLines } from './lrc-parser.js';
 
 let lastOverlayCurrent = null;
 let lastOverlayNext = null;
@@ -224,9 +225,23 @@ export function updateLyrics(segments) {
 
     container.innerHTML = segments.map((s, i) => `
         <div class="lyric-line-item drawer-lyric-item" data-index="${i}">
-            <span class="lyric-text">${s.text}</span>
+            <span class="lyric-text">${displayText(s)}</span>
         </div>
     `).join('');
+}
+
+/**
+ * 원문(+차음, 설정에 따라 번역)을 표시용으로 합친 텍스트. 일반 가사는 text 그대로.
+ * 두 번째 줄부터는 살짝 작게 — 오버레이/드로어 모두 innerHTML로 렌더링하고
+ * white-space: normal이라 `\n`은 그냥 공백으로 뭉개지므로 `<br>`로 조인.
+ */
+function displayText(seg) {
+    const lines = getDisplayLines(seg).filter(Boolean);
+    if (lines.length === 0) return '';
+    if (lines.length === 1) return lines[0];
+    const [first, ...rest] = lines;
+    const restHtml = rest.map((l) => `<span style="font-size:0.7em;opacity:0.85;">${l}</span>`).join('<br>');
+    return `${first}<br>${restHtml}`;
 }
 
 /**
@@ -249,10 +264,10 @@ function syncLyricsWithTime(currentTime) {
         }
     }
 
-    const current = (playingIndex !== -1) ? lyrics[playingIndex].text : "";
+    const current = (playingIndex !== -1) ? displayText(lyrics[playingIndex]) : "";
     const next = (playingIndex !== -1)
-        ? ((playingIndex + 1 < lyrics.length) ? lyrics[playingIndex + 1].text : "")
-        : ((lyrics.length > 0) ? lyrics[0].text : "");
+        ? ((playingIndex + 1 < lyrics.length) ? displayText(lyrics[playingIndex + 1]) : "")
+        : ((lyrics.length > 0) ? displayText(lyrics[0]) : "");
 
     // IMPORTANT: Don't skip overlay update only because index didn't change.
     // At song start, index can stay -1 for a while but first line still needs to appear in "next".

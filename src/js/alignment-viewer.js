@@ -2,6 +2,7 @@ import { showNotification, getThumbnailUrl } from './utils.js';
 import { invoke, listen } from './tauri-bridge.js';
 import { state } from './state.js';
 import { parseLrc } from './lyrics.js';
+import { parseMarkers, formatMarkerLine, isTriplet, getSyncText, getDisplayLines, getShowTranslation, setShowTranslation } from './lrc-parser.js';
 
 export class ForcedAlignmentViewer {
     constructor(containerId) {
@@ -26,7 +27,18 @@ export class ForcedAlignmentViewer {
             isResizing: false,
             resizeTarget: null,
             hoveringTarget: null,
-            selectedTarget: null
+            selectedTarget: null,
+            // 보컬 시작 지점(초) — 그리드 배치의 기준점. null이면 자동감지/백엔드 추정값 사용.
+            vocalStartSec: null,
+            // 간주(무보컬) 구간 목록. 그리드 배치가 이 구간들을 건너뛰고 줄을 배분함.
+            interludes: [],
+            // 파형 기반 자동감지 후보 (사용자가 수락하기 전까지 별도 표시).
+            suggestedInterludes: [],
+            suggestedVocalStartSec: null,
+            interludeHoverTarget: null,
+            interludeResizeTarget: null,
+            // 원문/차음/번역 3줄 모드 (일본어 가사 등). 수동 토글, 기본 꺼짐.
+            tripletMode: false
         };
         this.autoSaveTimer = null;
         this.autoSaveDelayMs = 1000;
@@ -61,9 +73,14 @@ export class ForcedAlignmentViewer {
                             </div>
                         </section>
                         <section style="flex:1; display:flex; flex-direction:column; min-height:0;">
-                            <div class="card-header" style="margin-bottom: 12px;">
+                            <div class="card-header" style="margin-bottom: 8px; justify-content: space-between;">
                                 <h3>가사 원고</h3>
+                                <button id="lyrics-link-btn" type="button" class="sync-reset-btn" style="display:none;" title="곡 정보에 등록된 가사 원문 링크를 엽니다">가사 원문 링크</button>
                             </div>
+                            <label style="display:flex; align-items:center; gap:6px; font-size:0.78rem; color:var(--align-text-soft); margin-bottom:8px; cursor:pointer;" title="예: 일본어 원문 / 한글 차음 / 한국어 번역이 3줄 1세트로 반복되는 가사를 붙여넣을 때 켜세요.">
+                                <input type="checkbox" id="triplet-mode-toggle">
+                                원문/차음/번역 3줄 모드
+                            </label>
                             <textarea id="lyrics-input" class="lyrics-textarea" placeholder="가사를 입력하세요..."></textarea>
                         </section>
                     </div>
@@ -118,6 +135,11 @@ export class ForcedAlignmentViewer {
                                     <span id="time-display" style="font-family:monospace; color:#94a3b8; font-size:0.85rem;">00:00 / 00:00</span>
                                 </div>
                             </div>
+                            <div class="sync-bottom-row" style="margin-top:8px; flex-wrap:wrap; gap:8px;">
+                                <button id="mark-vocal-start-btn" class="sync-reset-btn" title="현재 재생 위치를 보컬이 시작되는 지점으로 지정합니다.">보컬 시작 지점 지정</button>
+                                <button id="add-interlude-btn" class="sync-reset-btn" title="현재 재생 위치 근처에 간주(무보컬) 구간을 추가합니다. 경계를 드래그해 조정하세요.">간주 구간 추가</button>
+                                <span id="marker-suggestion-bar" style="display:none; align-items:center; gap:6px; font-size:0.75rem; color:var(--align-text-soft);"></span>
+                            </div>
                         </div>
                     </div>
                 </main>
@@ -126,10 +148,24 @@ export class ForcedAlignmentViewer {
                     <div class="alignment-card">
                         <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
                             <h3>가사 싱크 결과</h3>
-                            <div style="display:flex; gap:8px;">
+                            <div style="display:flex; gap:8px; align-items:center;">
                                 <span id="sync-save-status" class="sync-save-status" style="min-width:52px; text-align:right; font-size:0.78rem; color:#94a3b8;">저장됨</span>
+                                <button id="toggle-translation-btn" class="sync-reset-btn" title="번역 줄 표시 여부 — 여기서 켜고 끄면 가사 드로어/오버레이 기본 표시에도 동일하게 적용됩니다.">번역 보기</button>
                                 <button id="reset-sync-btn" class="sync-reset-btn">초기화</button>
                             </div>
+                        </div>
+                        <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px; flex-wrap:wrap;">
+                            <button id="bpm-grid-btn" class="sync-reset-btn" style="background:var(--align-item-active-bg); color:var(--accent-primary); border-color:var(--align-item-active-border);" title="BPM을 분석해 아직 싱크가 없는 줄들을 대략적인 박자 간격으로 배치합니다. 정확하지 않으니 이후 직접 다듬어주세요.">그리드에 맞춰 초기 배치</button>
+                            <select id="bpm-grid-beats-per-line" title="한 줄당 비트 수 (장르에 따라 조절)" style="font-size:0.75rem; padding:4px 6px; border-radius:6px; background:var(--align-surface-input); color:var(--align-text-soft); border:1px solid var(--align-item-border);">
+                                <option value="2">2비트/줄</option>
+                                <option value="4" selected>4비트/줄</option>
+                                <option value="8">8비트/줄</option>
+                            </select>
+                        </div>
+                        <div style="display:flex; align-items:center; gap:8px; margin-bottom:12px; flex-wrap:wrap;">
+                            <button id="ai-align-btn" class="sync-reset-btn" style="background:var(--align-item-active-bg); color:var(--accent-primary); border-color:var(--align-item-active-border);" title="AI 음성인식 모델로 가사와 오디오를 자동 정렬합니다. 노래 음성 특성상 완벽하지 않을 수 있어 결과는 직접 다듬어야 합니다.">AI 자동 정렬</button>
+                            <button id="ai-align-cancel-btn" class="sync-reset-btn" style="display:none;">취소</button>
+                            <span id="ai-align-status" style="font-size:0.75rem; color:var(--align-text-soft);"></span>
                         </div>
                         <div id="lyric-lines-container" class="lyric-lines-list">
                             <div style="color:#475569; text-align:center; padding-top:40px;">정렬을 시작하세요.</div>
@@ -153,11 +189,22 @@ export class ForcedAlignmentViewer {
 
         get('play-btn').onclick = () => this.togglePlayback();
         get('sync-tap-btn').onclick = () => this.handleTap();
+        get('lyrics-link-btn').onclick = () => this.openLyricsLink();
+        get('bpm-grid-btn').onclick = () => this.applyBpmGridPlacement();
+        get('mark-vocal-start-btn').onclick = () => this.markVocalStart();
+        get('add-interlude-btn').onclick = () => this.addInterludeAtCurrentTime();
+        get('ai-align-btn').onclick = () => this.runAiAlignment();
+        get('ai-align-cancel-btn').onclick = () => this.cancelAiAlignment();
+        get('toggle-translation-btn').onclick = () => {
+            setShowTranslation(!getShowTranslation());
+            this.renderLyricList();
+        };
         get('reset-sync-btn').onclick = () => {
             if (confirm('모든 싱크 데이터를 초기화하시겠습니까?')) {
                 this.state.segments.forEach(s => {
                     s.start = 0;
                     s.end = 0;
+                    s.approx = false;
                 });
                 this.state.currentSyncIndex = 0;
                 this.state.selectedTarget = null;
@@ -171,6 +218,14 @@ export class ForcedAlignmentViewer {
         const lyricsInput = get('lyrics-input');
         if (lyricsInput) {
             lyricsInput.addEventListener('input', () => this.parseLyrics());
+        }
+
+        const tripletToggle = get('triplet-mode-toggle');
+        if (tripletToggle) {
+            tripletToggle.addEventListener('change', () => {
+                this.state.tripletMode = tripletToggle.checked;
+                this.parseLyrics();
+            });
         }
 
         // Zoom Controls
@@ -189,7 +244,12 @@ export class ForcedAlignmentViewer {
 
         this.canvas.addEventListener('mousedown', (e) => {
             if (e.button === 0) {
-                if (this.state.hoveringTarget) {
+                if (this.state.interludeHoverTarget) {
+                    this.state.isResizingInterlude = true;
+                    this.state.interludeResizeTarget = this.state.interludeHoverTarget;
+                    const il = this.state.interludes[this.state.interludeHoverTarget.index];
+                    this.seekTo(this.state.interludeHoverTarget.type === 'start' ? il.start : il.end);
+                } else if (this.state.hoveringTarget) {
                     this.state.isResizing = true;
                     this.state.resizeTarget = this.state.hoveringTarget;
                     this.state.selectedTarget = this.state.hoveringTarget;
@@ -213,8 +273,20 @@ export class ForcedAlignmentViewer {
             }
         });
 
+        this.canvas.addEventListener('dblclick', (e) => {
+            const rect = this.canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const t = this.xToTime(x);
+            const idx = this.state.interludes.findIndex(il => t >= il.start && t <= il.end);
+            if (idx !== -1 && confirm('이 간주 구간을 삭제하시겠습니까?')) {
+                this.state.interludes.splice(idx, 1);
+                this.drawWaveform();
+                this.markDirtyAndScheduleSave();
+            }
+        });
+
         this.canvas.addEventListener('mousemove', (e) => {
-            if (this.state.isPanning || this.state.isScrolling || this.state.isResizing) return;
+            if (this.state.isPanning || this.state.isScrolling || this.state.isResizing || this.state.isResizingInterlude) return;
 
             const x = e.offsetX;
             const hitThreshold = 8; // Pixels
@@ -228,8 +300,17 @@ export class ForcedAlignmentViewer {
                 else if (Math.abs(x - xEnd) < hitThreshold) found = { index: idx, type: 'end' };
             });
 
+            let foundInterlude = null;
+            this.state.interludes.forEach((il, idx) => {
+                const xStart = this.timeToX(il.start);
+                const xEnd = this.timeToX(il.end);
+                if (Math.abs(x - xStart) < hitThreshold) foundInterlude = { index: idx, type: 'start' };
+                else if (Math.abs(x - xEnd) < hitThreshold) foundInterlude = { index: idx, type: 'end' };
+            });
+
             this.state.hoveringTarget = found;
-            this.canvas.style.cursor = found ? 'col-resize' : 'default';
+            this.state.interludeHoverTarget = foundInterlude;
+            this.canvas.style.cursor = (found || foundInterlude) ? 'col-resize' : 'default';
             this.drawWaveform(); // Redraw to show boundary highlight
         });
 
@@ -245,7 +326,7 @@ export class ForcedAlignmentViewer {
                 if (this.state.resizeTarget.type === 'start') {
                     const finalTime = Math.min(newTime, seg.end - 0.05);
                     seg.start = finalTime;
-                    
+
                     // 앞 가사의 종료 지점도 함께 이동
                     if (idx > 0) {
                         this.state.segments[idx - 1].end = finalTime;
@@ -253,15 +334,33 @@ export class ForcedAlignmentViewer {
                 } else {
                     const finalTime = Math.max(newTime, seg.start + 0.05);
                     seg.end = finalTime;
-                    
+
                     // 다음 가사의 시작 지점도 함께 이동
                     if (idx < this.state.segments.length - 1) {
                         this.state.segments[idx + 1].start = finalTime;
                     }
                 }
+                // 사용자가 직접 조정했으니 "대략적 배치" 표시 해제
+                seg.approx = false;
 
                 this.drawWaveform();
                 this.renderLyricList();
+                this.markDirtyAndScheduleSave();
+            }
+
+            if (this.state.isResizingInterlude && this.state.interludeResizeTarget) {
+                const rect = this.canvas.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const newTime = Math.max(0, Math.min(this.state.duration, this.xToTime(x)));
+
+                const idx = this.state.interludeResizeTarget.index;
+                const il = this.state.interludes[idx];
+                if (this.state.interludeResizeTarget.type === 'start') {
+                    il.start = Math.min(newTime, il.end - 0.2);
+                } else {
+                    il.end = Math.max(newTime, il.start + 0.2);
+                }
+                this.drawWaveform();
                 this.markDirtyAndScheduleSave();
             }
 
@@ -279,7 +378,7 @@ export class ForcedAlignmentViewer {
         });
 
         window.addEventListener('mouseup', () => {
-            const wasResizing = this.state.isResizing;
+            const wasResizing = this.state.isResizing || this.state.isResizingInterlude;
             if (this.state.isPanning) {
                 this.state.isPanning = false;
                 this.canvas.style.cursor = 'default';
@@ -287,6 +386,8 @@ export class ForcedAlignmentViewer {
             this.state.isScrolling = false;
             this.state.isResizing = false;
             this.state.resizeTarget = null;
+            this.state.isResizingInterlude = false;
+            this.state.interludeResizeTarget = null;
             if (wasResizing) {
                 this.markDirtyAndScheduleSave();
             }
@@ -309,6 +410,7 @@ export class ForcedAlignmentViewer {
                     } else {
                         seg.end = Math.max(seg.start + 0.05, seg.end - step);
                     }
+                    seg.approx = false;
                     changed = true;
                 } else if (e.key === 'ArrowRight') {
                     if (this.state.selectedTarget.type === 'start') {
@@ -316,6 +418,7 @@ export class ForcedAlignmentViewer {
                     } else {
                         seg.end = Math.min(this.state.duration, seg.end + step);
                     }
+                    seg.approx = false;
                     changed = true;
                 } else if (e.key === 'Escape' || e.key === 'Enter') {
                     this.state.selectedTarget = null;
@@ -404,6 +507,16 @@ export class ForcedAlignmentViewer {
             unlisten();
             window._alignmentUnlistenStatus = null;
         }
+        if (window._alignmentUnlistenAlignProgress) {
+            const unlisten = await window._alignmentUnlistenAlignProgress;
+            unlisten();
+            window._alignmentUnlistenAlignProgress = null;
+        }
+        if (window._alignmentUnlistenModelDownload) {
+            const unlisten = await window._alignmentUnlistenModelDownload;
+            unlisten();
+            window._alignmentUnlistenModelDownload = null;
+        }
 
         // Now setup fresh, single listeners
         window._alignmentUnlistenProgress = listen('playback-progress', (event) => {
@@ -428,6 +541,20 @@ export class ForcedAlignmentViewer {
             const { status } = event.payload;
             this.state.isPlaying = (status && status.toLowerCase() === 'playing');
             this.updatePlayButton();
+        });
+
+        // AI 자동 정렬 진행률 리스너
+        window._alignmentUnlistenAlignProgress = listen('alignment-progress', (event) => {
+            const percent = typeof event.payload === 'number' ? event.payload : 0;
+            const statusEl = document.getElementById('ai-align-status');
+            if (statusEl) statusEl.textContent = `AI 정렬 중... ${Math.round(percent)}%`;
+        });
+
+        // AI 정렬 모델 다운로드 진행률 리스너
+        window._alignmentUnlistenModelDownload = listen('alignment-model-download-progress', (event) => {
+            const percent = typeof event.payload === 'number' ? event.payload : 0;
+            const statusEl = document.getElementById('ai-align-status');
+            if (statusEl) statusEl.textContent = `AI 정렬 모델 다운로드 중... ${Math.round(percent)}%`;
         });
 
         // 유튜브 다운로드 진행률 리스너 추가
@@ -491,12 +618,15 @@ export class ForcedAlignmentViewer {
                 if (ui.updateThumbnailOverlay) ui.updateThumbnailOverlay();
                 if (ui.updateAiTogglesState) ui.updateAiTogglesState(matchedSong);
                 if (ui.updatePlayButton) ui.updatePlayButton();
+                this.updateLyricsLinkButton(matchedSong.lyricsLink || matchedSong.lyrics_link || '');
 
                 // In lyric sync workflow, always monitor with vocals enabled.
                 const audio = await import('./audio.js');
                 if (audio.toggleAiFeature) {
                     await audio.toggleAiFeature("vocal", true);
                 }
+            } else {
+                this.updateLyricsLinkButton('');
             }
 
             console.log("[Alignment] Loading audio:", path);
@@ -510,9 +640,17 @@ export class ForcedAlignmentViewer {
             this.state.segments = [];
             this.state.currentSyncIndex = 0;
             this.state.isSyncMode = false;
+            this.state.vocalStartSec = null;
+            this.state.interludes = [];
+            this.state.suggestedInterludes = [];
+            this.state.suggestedVocalStartSec = null;
+            this.state.tripletMode = false;
+            const tripletToggleReset = document.getElementById('triplet-mode-toggle');
+            if (tripletToggleReset) tripletToggleReset.checked = false;
             const inputElement = document.getElementById('lyrics-input');
             if (inputElement) inputElement.value = '';
             this.renderLyricList();
+            this.updateMarkerSuggestionBar();
             this.isDirty = false;
             this.updateSaveStatus('저장됨');
 
@@ -523,15 +661,36 @@ export class ForcedAlignmentViewer {
                     const parsedSegments = parseLrc(lrcContent, this.state.duration);
                     // Clean up imported lyrics: remove meaningless blank lines and trim noisy spacing.
                     const normalizedSegments = parsedSegments
-                        .map((seg) => ({
-                            ...seg,
-                            text: (seg.text || '').replace(/\s+/g, ' ').trim()
-                        }))
+                        .map((seg) => {
+                            const cleanText = (seg.text || '').replace(/\s+/g, ' ').trim();
+                            if (isTriplet(seg)) {
+                                return {
+                                    ...seg,
+                                    text: cleanText,
+                                    original: cleanText,
+                                    pronunciation: (seg.pronunciation || '').replace(/\s+/g, ' ').trim(),
+                                    translation: (seg.translation || '').replace(/\s+/g, ' ').trim(),
+                                };
+                            }
+                            return { ...seg, text: cleanText };
+                        })
                         .filter((seg) => seg.text.length > 0);
 
                     this.state.segments = normalizedSegments;
 
-                    const rawLyrics = this.state.segments.map(s => s.text);
+                    // 저장된 파일에 3줄 큐가 있으면 트리플렛 모드를 자동으로 켜서 토글과 동기화.
+                    this.state.tripletMode = normalizedSegments.some((seg) => isTriplet(seg));
+                    const tripletToggleEl = document.getElementById('triplet-mode-toggle');
+                    if (tripletToggleEl) tripletToggleEl.checked = this.state.tripletMode;
+
+                    const rawLyrics = [];
+                    this.state.segments.forEach((s) => {
+                        if (isTriplet(s)) {
+                            rawLyrics.push(s.original || '', s.pronunciation || '', s.translation || '');
+                        } else {
+                            rawLyrics.push(s.text);
+                        }
+                    });
                     if (inputElement) inputElement.value = rawLyrics.join('\n');
 
                     let nextIdx = this.state.segments.findIndex(s => s.start === 0);
@@ -539,6 +698,11 @@ export class ForcedAlignmentViewer {
                     this.state.currentSyncIndex = nextIdx;
 
                     this.state.isSyncMode = true;
+
+                    const markers = parseMarkers(lrcContent);
+                    this.state.vocalStartSec = markers.vocalStartSec;
+                    this.state.interludes = markers.interludes;
+
                     this.renderLyricList();
                     this.isDirty = false;
                     this.updateSaveStatus('저장됨');
@@ -561,6 +725,7 @@ export class ForcedAlignmentViewer {
                         this.state.duration = summary.duration_sec;
                         this.updateTimeDisplay();
                     }
+                    this.detectMarkerCandidates();
                     this.drawWaveform();
                 }
             }).catch(e => {
@@ -682,6 +847,66 @@ export class ForcedAlignmentViewer {
         const startTime = this.state.scrollTime;
         const endTime = startTime + visibleDuration;
 
+        // 0a. Interludes (confirmed) — hatched region + draggable edge handles
+        const drawInterludeBand = (il, idx, confirmed) => {
+            if (il.end < startTime || il.start > endTime) return;
+            const x1 = Math.max(0, this.timeToX(il.start));
+            const x2 = Math.min(width, this.timeToX(il.end));
+            if (x2 <= x1) return;
+
+            this.ctx.save();
+            this.ctx.globalAlpha = confirmed ? 0.28 : 0.16;
+            this.ctx.fillStyle = '#94a3b8';
+            this.ctx.fillRect(x1, 0, x2 - x1, height);
+            this.ctx.restore();
+
+            this.ctx.strokeStyle = confirmed ? '#64748b' : 'rgba(148, 163, 184, 0.6)';
+            this.ctx.lineWidth = confirmed ? 2 : 1;
+            if (!confirmed) this.ctx.setLineDash([3, 3]);
+            this.ctx.strokeRect(x1, 1, x2 - x1, height - 2);
+            this.ctx.setLineDash([]);
+
+            if (confirmed) {
+                const hover = this.state.interludeHoverTarget;
+                [{ x: x1, type: 'start' }, { x: x2, type: 'end' }].forEach(({ x, type }) => {
+                    const isHover = hover && hover.index === idx && hover.type === type;
+                    this.ctx.strokeStyle = isHover ? '#f59e0b' : '#64748b';
+                    this.ctx.lineWidth = isHover ? 3 : 2;
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(x, 0);
+                    this.ctx.lineTo(x, height);
+                    this.ctx.stroke();
+                });
+            }
+        };
+        this.state.suggestedInterludes.forEach((il) => drawInterludeBand(il, -1, false));
+        this.state.interludes.forEach((il, idx) => drawInterludeBand(il, idx, true));
+
+        // 0b. Vocal start marker (confirmed = solid, suggestion = dashed)
+        const drawVocalStartLine = (sec, confirmed) => {
+            if (sec == null || sec < startTime || sec > endTime) return;
+            const x = this.timeToX(sec);
+            this.ctx.strokeStyle = confirmed ? '#22c55e' : 'rgba(34, 197, 94, 0.55)';
+            this.ctx.lineWidth = confirmed ? 2 : 1.5;
+            if (!confirmed) this.ctx.setLineDash([3, 3]);
+            this.ctx.beginPath();
+            this.ctx.moveTo(x, 0);
+            this.ctx.lineTo(x, height);
+            this.ctx.stroke();
+            this.ctx.setLineDash([]);
+            if (confirmed) {
+                this.ctx.fillStyle = '#22c55e';
+                this.ctx.beginPath();
+                this.ctx.moveTo(x, 0);
+                this.ctx.lineTo(x + 6, 0);
+                this.ctx.lineTo(x, 8);
+                this.ctx.closePath();
+                this.ctx.fill();
+            }
+        };
+        drawVocalStartLine(this.state.suggestedVocalStartSec, false);
+        drawVocalStartLine(this.state.vocalStartSec, true);
+
         // 1. Segments
         this.state.segments.forEach((seg, idx) => {
             if (seg.end < startTime || seg.start > endTime) return;
@@ -690,11 +915,14 @@ export class ForcedAlignmentViewer {
 
             // Fill background
             this.ctx.fillStyle = (idx === this.state.currentSyncIndex - 1) ? palette.segmentFillActive : palette.segmentFillIdle;
+            this.ctx.globalAlpha = seg.approx ? 0.5 : 1;
             this.ctx.fillRect(Math.max(0, x1), 0, Math.min(width, x2) - Math.max(0, x1), height);
+            this.ctx.globalAlpha = 1;
 
-            // Default subtle boundary lines
+            // Default subtle boundary lines (dashed for BPM-grid "approximate" placements)
             this.ctx.strokeStyle = palette.segmentBorder;
             this.ctx.lineWidth = 1;
+            if (seg.approx) this.ctx.setLineDash([4, 3]);
             [x1, x2].forEach(bx => {
                 if (bx >= 0 && bx <= width) {
                     this.ctx.beginPath();
@@ -703,6 +931,7 @@ export class ForcedAlignmentViewer {
                     this.ctx.stroke();
                 }
             });
+            if (seg.approx) this.ctx.setLineDash([]);
 
             // Boundary Highlighting (on hover)
             const ht = this.state.hoveringTarget;
@@ -903,14 +1132,41 @@ export class ForcedAlignmentViewer {
             .map((line) => line.trim())
             .filter((line) => line.length > 0);
 
-        const newSegments = newLines.map((text) => {
-            // 1순위: 텍스트가 완전히 동일한 기존 라인을 찾아 시간 복사
-            const exactMatch = oldSegments.find(s => s.text === text && !s._used);
+        // 3줄 모드: 원문/차음/번역이 3줄 1세트로 반복되는 가사를 하나의 큐로 묶음.
+        // 3의 배수가 아니면 마지막 불완전 세트는 있는 줄만 채우고 관대하게 처리.
+        let newCues;
+        if (this.state.tripletMode) {
+            newCues = [];
+            for (let i = 0; i < newLines.length; i += 3) {
+                const original = newLines[i] || '';
+                if (!original) continue;
+                newCues.push({
+                    text: original,
+                    original,
+                    pronunciation: newLines[i + 1] || '',
+                    translation: newLines[i + 2] || '',
+                });
+            }
+        } else {
+            newCues = newLines.map((text) => ({ text }));
+        }
+
+        // 트리플렛 큐는 원문(original) 기준으로, 일반 줄은 text 기준으로 동일 여부 판단.
+        const sameIdentity = (a, b) => {
+            if (isTriplet(a) || isTriplet(b)) {
+                return isTriplet(a) && isTriplet(b) && a.original === b.original;
+            }
+            return a.text === b.text;
+        };
+
+        const newSegments = newCues.map((cue) => {
+            // 1순위: 동일한 기존 큐를 찾아 시간 복사
+            const exactMatch = oldSegments.find(s => sameIdentity(cue, s) && !s._used);
             if (exactMatch) {
                 exactMatch._used = true;
-                return { text, start: exactMatch.start, end: exactMatch.end };
+                return { ...cue, start: exactMatch.start, end: exactMatch.end };
             }
-            return { text, start: 0, end: 0 };
+            return { ...cue, start: 0, end: 0 };
         });
 
         // 2순위: 텍스트가 수정되었으나 같은 줄 번호(인덱스)에 있던 시간 복사 (오타 수정 대응)
@@ -952,6 +1208,7 @@ export class ForcedAlignmentViewer {
         if (idx < 0 || idx >= this.state.segments.length) return;
 
         this.state.segments[idx].start = this.state.currentTime;
+        this.state.segments[idx].approx = false;
         if (idx > 0 && this.state.segments[idx - 1].start > 0) {
             // If the previous segment has a valid start time, set its end time
             this.state.segments[idx - 1].end = this.state.currentTime;
@@ -962,15 +1219,183 @@ export class ForcedAlignmentViewer {
         this.markDirtyAndScheduleSave();
     }
 
+    markVocalStart() {
+        if (this.state.duration <= 0) {
+            showNotification('먼저 음원을 로드해주세요.', 'warning');
+            return;
+        }
+        this.state.vocalStartSec = this.state.currentTime;
+        this.state.suggestedVocalStartSec = null; // 수동 지정이 자동 제안을 대체
+        this.drawWaveform();
+        this.markDirtyAndScheduleSave();
+        showNotification(`보컬 시작 지점을 ${this.formatTime(this.state.currentTime)}로 지정했습니다.`, 'success');
+    }
+
+    addInterludeAtCurrentTime() {
+        if (this.state.duration <= 0) {
+            showNotification('먼저 음원을 로드해주세요.', 'warning');
+            return;
+        }
+        const center = this.state.currentTime;
+        const half = 2.5;
+        const start = Math.max(0, center - half);
+        const end = Math.min(this.state.duration, center + half);
+        if (end - start < 0.5) return;
+
+        this.state.interludes.push({ start, end });
+        this.state.interludes.sort((a, b) => a.start - b.start);
+        this.drawWaveform();
+        this.markDirtyAndScheduleSave();
+        showNotification('간주 구간을 추가했습니다. 파형에서 경계를 드래그해 조정하고, 더블클릭하면 삭제됩니다.', 'info');
+    }
+
+    /**
+     * Scans the already-loaded waveform (usually the isolated vocal stem,
+     * since `get_waveform_summary` prefers it when the track was separated)
+     * for candidate markers: a sustained low-amplitude interior stretch is
+     * treated as a likely instrumental interlude, and the first sustained
+     * above-threshold stretch as a likely vocal entrance. Purely a suggestion
+     * — never overwrites anything the user already confirmed.
+     */
+    detectMarkerCandidates() {
+        const points = this.state.waveformPoints;
+        if (!points || !points.length || this.state.duration <= 0) return;
+
+        const bucketDur = this.state.duration / points.length;
+        const amps = points.map(p => Math.max(Math.abs(p[0] || 0), Math.abs(p[1] || 0)));
+        const peak = amps.reduce((m, a) => Math.max(m, a), 0);
+        if (peak <= 0) return;
+        const threshold = peak * 0.08;
+
+        // Vocal start candidate: first point sustained above threshold for ~1s.
+        if (this.state.vocalStartSec == null) {
+            const sustainBuckets = Math.max(1, Math.round(1.0 / bucketDur));
+            for (let i = 0; i < amps.length - sustainBuckets; i++) {
+                let ok = true;
+                for (let k = 0; k < sustainBuckets; k++) {
+                    if (amps[i + k] < threshold) { ok = false; break; }
+                }
+                if (ok) {
+                    this.state.suggestedVocalStartSec = i * bucketDur;
+                    break;
+                }
+            }
+        }
+
+        // Interlude candidates: interior low-amplitude runs of >=3s.
+        // Runs touching the very start/end are the intro/outro, not an
+        // interlude, so they're excluded here.
+        const minSilenceBuckets = Math.max(1, Math.round(3.0 / bucketDur));
+        const runs = [];
+        let runStart = -1;
+        for (let i = 0; i < amps.length; i++) {
+            const low = amps[i] < threshold;
+            if (low && runStart === -1) runStart = i;
+            if (!low && runStart !== -1) {
+                runs.push([runStart, i - 1]);
+                runStart = -1;
+            }
+        }
+        if (runStart !== -1) runs.push([runStart, amps.length - 1]);
+
+        const overlapsConfirmed = (start, end) => this.state.interludes.some(il =>
+            Math.min(end, il.end) - Math.max(start, il.start) > (end - start) * 0.5
+        );
+
+        this.state.suggestedInterludes = runs
+            .filter(([s, e]) => (e - s + 1) >= minSilenceBuckets && s > 0 && e < amps.length - 1)
+            .map(([s, e]) => ({ start: s * bucketDur, end: (e + 1) * bucketDur }))
+            .filter(il => !overlapsConfirmed(il.start, il.end));
+
+        this.updateMarkerSuggestionBar();
+    }
+
+    updateMarkerSuggestionBar() {
+        const bar = document.getElementById('marker-suggestion-bar');
+        if (!bar) return;
+        const hasVocalSuggestion = this.state.suggestedVocalStartSec != null;
+        const interludeCount = this.state.suggestedInterludes.length;
+
+        if (!hasVocalSuggestion && interludeCount === 0) {
+            bar.style.display = 'none';
+            bar.innerHTML = '';
+            return;
+        }
+
+        bar.style.display = 'inline-flex';
+        const parts = ['자동 감지:'];
+        if (hasVocalSuggestion) {
+            parts.push(`보컬 시작 ${this.formatTime(this.state.suggestedVocalStartSec)}`);
+            parts.push('<button type="button" id="accept-vocal-suggestion" class="marker-suggestion-btn">적용</button>');
+        }
+        if (interludeCount > 0) {
+            parts.push(`간주 후보 ${interludeCount}개`);
+            parts.push('<button type="button" id="accept-interlude-suggestions" class="marker-suggestion-btn">모두 적용</button>');
+        }
+        parts.push('<button type="button" id="dismiss-marker-suggestions" class="marker-suggestion-btn">닫기</button>');
+        bar.innerHTML = parts.join(' ');
+
+        const acceptVocal = document.getElementById('accept-vocal-suggestion');
+        if (acceptVocal) {
+            acceptVocal.onclick = () => {
+                this.state.vocalStartSec = this.state.suggestedVocalStartSec;
+                this.state.suggestedVocalStartSec = null;
+                this.updateMarkerSuggestionBar();
+                this.drawWaveform();
+                this.markDirtyAndScheduleSave();
+            };
+        }
+        const acceptInterludes = document.getElementById('accept-interlude-suggestions');
+        if (acceptInterludes) {
+            acceptInterludes.onclick = () => {
+                this.state.interludes.push(...this.state.suggestedInterludes);
+                this.state.interludes.sort((a, b) => a.start - b.start);
+                this.state.suggestedInterludes = [];
+                this.updateMarkerSuggestionBar();
+                this.drawWaveform();
+                this.markDirtyAndScheduleSave();
+            };
+        }
+        const dismiss = document.getElementById('dismiss-marker-suggestions');
+        if (dismiss) {
+            dismiss.onclick = () => {
+                this.state.suggestedVocalStartSec = null;
+                this.state.suggestedInterludes = [];
+                this.updateMarkerSuggestionBar();
+                this.drawWaveform();
+            };
+        }
+    }
+
     renderLyricList() {
         const container = document.getElementById('lyric-lines-container');
         if (!container) return;
-        container.innerHTML = this.state.segments.map((s, i) => `
+        const toggleBtn = document.getElementById('toggle-translation-btn');
+        if (toggleBtn) {
+            const showing = getShowTranslation();
+            toggleBtn.textContent = showing ? '번역 숨기기' : '번역 보기';
+            toggleBtn.classList.toggle('active-toggle', showing);
+        }
+        container.innerHTML = this.state.segments.map((s, i) => {
+            if (isTriplet(s)) {
+                const displayLines = getDisplayLines(s);
+                const html = displayLines.length
+                    ? displayLines.map((l, li) => `<span class="triplet-line triplet-line-${li}">${l}</span>`).join('')
+                    : '&nbsp;';
+                return `
+            <div class="lyric-line-item" data-index="${i}">
+                <span class="time-range" title="이 시간으로 재생 이동">${this.formatTime(s.start)}</span>
+                <span class="lyric-text triplet-text" title="이 가사 위치로 탐색 및 타겟 지정">${html}</span>
+            </div>
+        `;
+            }
+            return `
             <div class="lyric-line-item" data-index="${i}">
                 <span class="time-range" title="이 시간으로 재생 이동">${this.formatTime(s.start)}</span>
                 <span class="lyric-text" title="이 가사 위치로 탐색 및 타겟 지정">${(s.text && s.text.trim()) ? s.text : '&nbsp;'}</span>
             </div>
-        `).join('');
+        `;
+        }).join('');
 
         // 클릭 이벤트 추가 (기능 분리: 이동 vs 타겟 지정)
         container.querySelectorAll('.lyric-line-item').forEach((item) => {
@@ -1088,9 +1513,310 @@ export class ForcedAlignmentViewer {
         }
     }
 
+    /** Interludes overlapping [rangeStart, rangeEnd), clipped to that range and time-sorted. */
+    getInterludesOverlapping(rangeStart, rangeEnd) {
+        return (this.state.interludes || [])
+            .filter(il => il.end > rangeStart && il.start < rangeEnd)
+            .map(il => ({ start: Math.max(il.start, rangeStart), end: Math.min(il.end, rangeEnd) }))
+            .sort((a, b) => a.start - b.start);
+    }
+
+    /** Total non-interlude ("active"/vocal) seconds within [rangeStart, rangeEnd). */
+    activeDurationInRange(rangeStart, rangeEnd) {
+        const ils = this.getInterludesOverlapping(rangeStart, rangeEnd);
+        let total = rangeEnd - rangeStart;
+        ils.forEach(il => { total -= (il.end - il.start); });
+        return Math.max(0, total);
+    }
+
+    /** Advances cursor `t` by `delta` seconds of *active* time, jumping over any interludes in between. */
+    advanceActiveTime(t, delta, rangeEnd) {
+        let cur = t;
+        let remaining = delta;
+        for (const il of this.getInterludesOverlapping(t, rangeEnd)) {
+            if (cur >= il.end) continue;
+            const avail = Math.max(0, il.start - cur);
+            if (avail >= remaining) return cur + remaining;
+            remaining -= avail;
+            cur = il.end; // skip across the interlude
+        }
+        return cur + remaining;
+    }
+
+    async applyBpmGridPlacement() {
+        if (this.state.duration <= 0) {
+            showNotification('먼저 음원을 로드해주세요.', 'warning');
+            return;
+        }
+        const segs = this.state.segments;
+        if (!segs.length) return;
+
+        const beatsSelect = document.getElementById('bpm-grid-beats-per-line');
+        const beatsPerLine = parseInt(beatsSelect?.value || '4', 10) || 4;
+
+        const btn = document.getElementById('bpm-grid-btn');
+        if (btn) btn.disabled = true;
+        try {
+            const { bpm, firstOnsetSec } = await this.invoke('analyze_key_bpm', { path: this.state.currentPath });
+            if (!bpm || !Number.isFinite(bpm)) {
+                showNotification('BPM 분석에 실패했습니다.', 'error');
+                return;
+            }
+            // 사용자가 직접 지정한 보컬 시작 지점이 있으면 그걸 우선 사용 — 백엔드의
+            // firstOnsetSec는 반주(MR) 트랙 기준 첫 비트라 보컬 시작과 다를 수 있음.
+            const vocalAnchor = this.state.vocalStartSec != null ? this.state.vocalStartSec : (firstOnsetSec || 0);
+            const beatInterval = 60 / bpm;
+            const gridInterval = beatInterval * beatsPerLine;
+
+            let placedCount = 0;
+            let skippedForInterlude = 0;
+            let i = 0;
+            while (i < segs.length) {
+                // 이미 싱크가 있는 구간은 절대 건드리지 않음 — 완전히 미싱크(start===0 && end===0)인
+                // 연속 구간만 대상으로 함.
+                if (!(segs[i].start === 0 && segs[i].end === 0)) {
+                    i++;
+                    continue;
+                }
+                let runStart = i;
+                let runEnd = i;
+                while (runEnd + 1 < segs.length && segs[runEnd + 1].start === 0 && segs[runEnd + 1].end === 0) {
+                    runEnd++;
+                }
+                const runLength = runEnd - runStart + 1;
+
+                const prevSeg = runStart > 0 ? segs[runStart - 1] : null;
+                const nextSeg = runEnd < segs.length - 1 ? segs[runEnd + 1] : null;
+                let rangeStart = (prevSeg && prevSeg.start > 0) ? prevSeg.end : vocalAnchor;
+                const rangeEnd = (nextSeg && nextSeg.start > 0) ? nextSeg.start : this.state.duration;
+
+                // rangeStart가 간주 구간 안이면(예: 앞줄이 간주 직전에 끝난 경우) 간주 끝으로 밀어냄.
+                const startingInterlude = this.getInterludesOverlapping(rangeStart, rangeEnd)
+                    .find(il => rangeStart >= il.start && rangeStart < il.end);
+                if (startingInterlude) rangeStart = startingInterlude.end;
+
+                const activeTotal = this.activeDurationInRange(rangeStart, rangeEnd);
+
+                if (rangeEnd > rangeStart && activeTotal > 0) {
+                    // 비트 간격에 맞추되, 줄 수가 많아 구간(간주 제외 실질 구간)을 넘어서면
+                    // 그 실질 구간 안에 균등 배분으로 대체.
+                    const fitsGrid = gridInterval * runLength <= activeTotal;
+                    const interval = fitsGrid ? gridInterval : (activeTotal / runLength);
+
+                    let cursor = rangeStart;
+                    for (let k = 0; k < runLength; k++) {
+                        const seg = segs[runStart + k];
+                        seg.start = cursor;
+                        cursor = (k === runLength - 1) ? rangeEnd : this.advanceActiveTime(cursor, interval, rangeEnd);
+                        seg.end = cursor;
+                        seg.approx = true;
+                        placedCount++;
+                    }
+                } else if (rangeEnd > rangeStart) {
+                    skippedForInterlude += runLength;
+                }
+                i = runEnd + 1;
+            }
+
+            if (placedCount === 0) {
+                showNotification('배치할 미싱크 가사가 없습니다.', 'info');
+                return;
+            }
+
+            this.renderLyricList();
+            this.drawWaveform();
+            this.markDirtyAndScheduleSave();
+            const extra = skippedForInterlude > 0 ? ` (${skippedForInterlude}줄은 간주 구간에 막혀 배치하지 못했습니다)` : '';
+            showNotification(`BPM(${Math.round(bpm)}) 기준으로 ${placedCount}줄을 대략 배치했습니다.${extra} 점선으로 표시된 구간은 직접 다듬어주세요.`, 'success');
+        } catch (err) {
+            console.error('BPM grid placement failed:', err);
+            showNotification('BPM 분석 실패: ' + err, 'error');
+        } finally {
+            if (btn) btn.disabled = false;
+        }
+    }
+
+    /**
+     * No alignment model is installed — offer to download one. Downloads are
+     * large (~1.2GB), so this always confirms with the user first and states
+     * the size, rather than downloading silently.
+     * @returns {Promise<boolean>} whether a model was successfully downloaded
+     */
+    async offerAlignmentModelDownload() {
+        let downloadable = [];
+        try {
+            downloadable = await this.invoke('list_downloadable_alignment_models');
+        } catch (err) {
+            console.error('list_downloadable_alignment_models failed:', err);
+        }
+        if (!downloadable || downloadable.length === 0) {
+            showNotification('설치된 AI 정렬 모델이 없고, 다운로드 가능한 모델 목록도 비어있습니다.', 'error');
+            return false;
+        }
+        const [modelId, displayName] = downloadable[0];
+        const proceed = confirm(`AI 정렬 모델이 설치되어 있지 않습니다.\n\n"${displayName}"\n\n이 모델(약 1.2GB)을 다운로드할까요?`);
+        if (!proceed) return false;
+
+        const statusEl = document.getElementById('ai-align-status');
+        if (statusEl) statusEl.textContent = 'AI 정렬 모델 다운로드 중...';
+        try {
+            await this.invoke('download_alignment_model', { modelId });
+            showNotification('AI 정렬 모델 다운로드가 완료되었습니다.', 'success');
+            return true;
+        } catch (err) {
+            showNotification('모델 다운로드 실패: ' + err, 'error');
+            return false;
+        } finally {
+            if (statusEl) statusEl.textContent = '';
+        }
+    }
+
+    async cancelAiAlignment() {
+        try {
+            await this.invoke('cancel_forced_alignment');
+        } catch (err) {
+            console.error('cancel_forced_alignment failed:', err);
+        }
+    }
+
+    /**
+     * Runs AI forced alignment: matches the pasted lyrics text to the audio
+     * using an ONNX ASR model (Rust CTC/Viterbi engine, see alignment.rs).
+     * Only fills in segments that are still fully unsynced (start===0 &&
+     * end===0) — same non-destructive rule as the BPM grid tool — so it never
+     * clobbers a line the user already tapped/dragged by hand. Results are
+     * marked `approx: true` since singing-voice ASR accuracy is inherently
+     * imperfect; the user is expected to review/adjust afterward.
+     */
+    async runAiAlignment() {
+        if (this.state.duration <= 0 || !this.state.currentPath) {
+            showNotification('먼저 음원을 로드해주세요.', 'warning');
+            return;
+        }
+        // 3줄(원문/차음/번역) 모드에서는 차음(한글 발음) 줄만 정렬 대상으로 보냄 —
+        // 한국어 전용 CTC 모델은 원문(예: 일본어)을 토큰화하지 못하고, 노래는 실제로
+        // 차음에 가깝게 불리므로 오디오와 가장 잘 맞음.
+        const syncLyrics = (this.state.segments || [])
+            .map((seg) => getSyncText(seg).trim())
+            .filter((t) => t.length > 0)
+            .join('\n');
+        if (!syncLyrics) {
+            showNotification('먼저 가사를 입력해주세요.', 'warning');
+            return;
+        }
+
+        const btn = document.getElementById('ai-align-btn');
+        const cancelBtn = document.getElementById('ai-align-cancel-btn');
+        const statusEl = document.getElementById('ai-align-status');
+
+        let models = [];
+        try {
+            models = await this.invoke('get_model_list');
+        } catch (err) {
+            showNotification('AI 정렬 모델 목록을 불러오지 못했습니다: ' + err, 'error');
+            return;
+        }
+        let usableModels = (models || []).filter(m => !m.endsWith('|none'));
+        if (usableModels.length === 0) {
+            const downloaded = await this.offerAlignmentModelDownload();
+            if (!downloaded) return;
+            try {
+                models = await this.invoke('get_model_list');
+            } catch (err) {
+                showNotification('AI 정렬 모델 목록을 불러오지 못했습니다: ' + err, 'error');
+                return;
+            }
+            usableModels = (models || []).filter(m => !m.endsWith('|none'));
+            if (usableModels.length === 0) {
+                showNotification('모델 다운로드 후에도 사용 가능한 모델을 찾지 못했습니다.', 'error');
+                return;
+            }
+        }
+        const chosenModel = usableModels[0];
+
+        if (btn) btn.disabled = true;
+        if (cancelBtn) cancelBtn.style.display = 'inline-flex';
+        if (statusEl) statusEl.textContent = 'AI 정렬 준비 중...';
+
+        try {
+            const result = await this.invoke('run_forced_alignment', {
+                audioPath: this.state.currentPath,
+                lyrics: syncLyrics,
+                modelName: chosenModel,
+                language: 'ko',
+            });
+
+            const lines = (result && result.lines) || [];
+            if (lines.length === 0) {
+                showNotification('AI 정렬 결과가 비어 있습니다. 가사와 음성이 잘 맞는지 확인해주세요.', 'warning');
+                return;
+            }
+
+            const used = new Array(lines.length).fill(false);
+            let appliedCount = 0;
+            this.state.segments.forEach((seg) => {
+                if (!(seg.start === 0 && seg.end === 0)) return; // 이미 싱크된 줄은 보존
+                const text = getSyncText(seg).trim();
+                const idx = lines.findIndex((l, i) => !used[i] && (l.text || '').trim() === text);
+                if (idx === -1) return;
+                used[idx] = true;
+                const line = lines[idx];
+                seg.start = Math.max(0, line.start_ms / 1000);
+                seg.end = Math.max(seg.start + 0.05, line.end_ms / 1000);
+                seg.approx = true;
+                appliedCount++;
+            });
+
+            if (appliedCount === 0) {
+                showNotification('AI가 정렬한 줄과 일치하는 미싱크 가사를 찾지 못했습니다.', 'warning');
+                return;
+            }
+
+            this.renderLyricList();
+            this.drawWaveform();
+            this.markDirtyAndScheduleSave();
+            showNotification(`AI 자동 정렬로 ${appliedCount}줄을 배치했습니다. 노래 음성 특성상 정확하지 않을 수 있으니 점선 표시 구간을 직접 확인해주세요.`, 'success');
+        } catch (err) {
+            const msg = String(err);
+            if (msg.includes('취소')) {
+                showNotification('AI 정렬이 취소되었습니다.', 'info');
+            } else {
+                console.error('AI alignment failed:', err);
+                showNotification('AI 정렬 실패: ' + msg, 'error');
+            }
+        } finally {
+            if (btn) btn.disabled = false;
+            if (cancelBtn) cancelBtn.style.display = 'none';
+            if (statusEl) statusEl.textContent = '';
+        }
+    }
+
+    updateLyricsLinkButton(url) {
+        const btn = document.getElementById('lyrics-link-btn');
+        if (!btn) return;
+        this._lyricsLinkUrl = url || '';
+        btn.style.display = this._lyricsLinkUrl ? 'inline-flex' : 'none';
+    }
+
+    async openLyricsLink() {
+        const url = this._lyricsLinkUrl;
+        if (!url) return;
+        try {
+            if (window.__TAURI__?.opener?.openUrl) {
+                await window.__TAURI__.opener.openUrl(url);
+            } else {
+                window.open(url, '_blank', 'noopener,noreferrer');
+            }
+        } catch (err) {
+            console.error('Failed to open lyrics link:', err);
+            showNotification('링크를 여는 데 실패했습니다: ' + err, 'error');
+        }
+    }
+
     async saveLrc(silent = false) {
         const syncableSegments = (this.state.segments || []).filter(s => (s.text || '').trim().length > 0);
-        if (!this.state.currentPath || syncableSegments.length === 0) {
+        const hasMarkers = this.state.vocalStartSec != null || (this.state.interludes || []).length > 0;
+        if (!this.state.currentPath || (syncableSegments.length === 0 && !hasMarkers)) {
             if (!silent) showNotification('저장할 가사 데이터가 없습니다.', 'error');
             return;
         }
@@ -1098,12 +1824,32 @@ export class ForcedAlignmentViewer {
         try {
             this.isAutoSaving = true;
             this.updateSaveStatus('저장 중...');
-            const lrcLines = syncableSegments.map(s => {
+            // Merge lyric lines and standalone time-region markers (vocal
+            // start / interlude bounds) into one time-sorted LRC file.
+            // Triplet cues expand into 3 same-timestamp [orig]/[pron]/[tran]
+            // lines (see lrc-parser.js's parseLrc grouping logic).
+            const entries = [];
+            syncableSegments.forEach((s) => {
                 const min = Math.floor(s.start / 60).toString().padStart(2, '0');
                 const sec = (s.start % 60).toFixed(2).padStart(5, '0');
-                return `[${min}:${sec}]${s.text}`;
+                const ts = `[${min}:${sec}]`;
+                if (isTriplet(s)) {
+                    entries.push({ time: s.start, line: `${ts}[orig]${s.original || ''}` });
+                    entries.push({ time: s.start, line: `${ts}[pron]${s.pronunciation || ''}` });
+                    entries.push({ time: s.start, line: `${ts}[tran]${s.translation || ''}` });
+                } else {
+                    entries.push({ time: s.start, line: `${ts}${s.text}` });
+                }
             });
-            const content = lrcLines.join('\n');
+            if (this.state.vocalStartSec != null) {
+                entries.push({ time: this.state.vocalStartSec, line: formatMarkerLine(this.state.vocalStartSec, 'vocalstart') });
+            }
+            (this.state.interludes || []).forEach((il) => {
+                entries.push({ time: il.start, line: formatMarkerLine(il.start, 'ilstart') });
+                entries.push({ time: il.end, line: formatMarkerLine(il.end, 'ilend') });
+            });
+            entries.sort((a, b) => a.time - b.time);
+            const content = entries.map(e => e.line).join('\n');
             await this.invoke('save_lrc_file', { audioPath: this.state.currentPath, content });
 
             // Reflect lyric availability immediately without requiring track re-selection.

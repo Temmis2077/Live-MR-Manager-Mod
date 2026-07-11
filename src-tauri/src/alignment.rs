@@ -171,6 +171,105 @@ pub async fn get_separated_audio_list(handle: AppHandle) -> Result<Vec<Separated
 }
 
 #[command]
+/// Downloadable forced-alignment model registry (separate from the vocal
+/// separation models in `state.rs::MODELS`, since these carry two files —
+/// the ONNX acoustic model and its `tokens.txt` vocab — instead of one, and
+/// are hosted on a dedicated GitHub Release rather than Hugging Face.
+pub struct AlignmentModelSpec {
+    pub id: &'static str,
+    pub display_name: &'static str,
+    pub model_url: &'static str,
+    pub tokens_url: &'static str,
+}
+
+pub const ALIGNMENT_MODELS: &[AlignmentModelSpec] = &[
+    AlignmentModelSpec {
+        id: "wav2vec2-korean-lyrics",
+        display_name: "한국어 가사 정렬 모델 (실험적, 약 1.2GB)",
+        // kresnik/wav2vec2-large-xlsr-korean (Apache-2.0) exported to ONNX
+        // (single-file, weights merged) + vocab.json converted to tokens.txt.
+        model_url: "https://github.com/Temmis2077/Live-MR-Manager/releases/download/ai-align-model-v1/model.onnx",
+        tokens_url: "https://github.com/Temmis2077/Live-MR-Manager/releases/download/ai-align-model-v1/tokens.txt",
+    },
+];
+
+fn find_alignment_model_spec(model_id: &str) -> Option<&'static AlignmentModelSpec> {
+    ALIGNMENT_MODELS.iter().find(|m| m.id == model_id)
+}
+
+#[command]
+pub async fn list_downloadable_alignment_models() -> Vec<(String, String)> {
+    ALIGNMENT_MODELS
+        .iter()
+        .map(|m| (m.id.to_string(), m.display_name.to_string()))
+        .collect()
+}
+
+async fn download_file_with_progress(
+    handle: &AppHandle,
+    url: &str,
+    dest: &Path,
+    event_name: &str,
+) -> Result<(), String> {
+    use futures_util::StreamExt;
+    use std::io::Write;
+
+    let client = reqwest::Client::builder()
+        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+        .build()
+        .map_err(|e| format!("HTTP 클라이언트 생성 실패: {}", e))?;
+
+    let response = client.get(url).send().await.map_err(|e| format!("요청 실패: {}", e))?;
+    if !response.status().is_success() {
+        return Err(format!("다운로드 실패: HTTP {}", response.status()));
+    }
+
+    let total_size = response.content_length().unwrap_or(0);
+    let mut file = fs::File::create(dest).map_err(|e| format!("파일 생성 실패: {}", e))?;
+    let mut stream = response.bytes_stream();
+    let mut downloaded: u64 = 0;
+
+    while let Some(item) = stream.next().await {
+        let chunk = item.map_err(|e| e.to_string())?;
+        file.write_all(&chunk).map_err(|e| e.to_string())?;
+        downloaded += chunk.len() as u64;
+        if total_size > 0 {
+            let percentage = (downloaded as f32 / total_size as f32) * 100.0;
+            let _ = handle.emit(event_name, percentage);
+        }
+    }
+    Ok(())
+}
+
+/// Downloads a forced-alignment model (ONNX + tokens.txt) into
+/// `AppPaths.models/<model_id>/`, where `get_model_list` will pick it up.
+/// Emits `alignment-model-download-progress` (0-100, model file only — the
+/// small tokens.txt isn't worth its own progress phase) while downloading.
+#[command]
+pub async fn download_alignment_model(handle: AppHandle, model_id: String) -> Result<(), String> {
+    let spec = find_alignment_model_spec(&model_id)
+        .ok_or_else(|| format!("알 수 없는 정렬 모델: {}", model_id))?;
+
+    let paths = crate::state::AppPaths::from_handle(&handle);
+    let target_dir = paths.models.join(spec.id);
+    fs::create_dir_all(&target_dir).map_err(|e| format!("폴더 생성 실패: {}", e))?;
+
+    sys_log(&format!("[Alignment] Downloading model '{}' from {}", spec.id, spec.model_url));
+    download_file_with_progress(
+        &handle,
+        spec.model_url,
+        &target_dir.join("model.onnx"),
+        "alignment-model-download-progress",
+    ).await?;
+
+    sys_log(&format!("[Alignment] Downloading tokens for '{}' from {}", spec.id, spec.tokens_url));
+    download_file_with_progress(&handle, spec.tokens_url, &target_dir.join("tokens.txt"), "alignment-model-download-progress").await?;
+
+    sys_log(&format!("[Alignment] Model '{}' ready at {:?}", spec.id, target_dir));
+    Ok(())
+}
+
+#[command]
 pub async fn get_model_list(handle: AppHandle) -> Result<Vec<String>, String> {
     let paths = crate::state::AppPaths::from_handle(&handle);
     let mut models = Vec::new();
@@ -255,16 +354,27 @@ pub async fn run_forced_alignment(
 
     let is_whisper = model_path.to_string_lossy().contains("whisper-base");
     let processor = AudioProcessor::new();
-    
+
+    // Prefer the isolated vocal stem when this track has been AI-separated —
+    // singing-voice ASR accuracy drops sharply with instrumental bleed, and
+    // this is the same resolution `get_waveform_summary` already uses.
+    let resolved_audio_path = resolve_audio_path(&handle, &audio_path)
+        .await
+        .unwrap_or_else(|_| PathBuf::from(&audio_path));
+    sys_log(&format!(
+        "[Alignment] Resolved alignment input: {:?} (requested: {})",
+        resolved_audio_path, audio_path
+    ));
+
     let emission_probs = if is_whisper {
         sys_log("[Alignment] Engine B (Whisper) Preprocessing: Extracting Mel-spectrogram...");
-        let raw_samples = processor.load_and_preprocess(&audio_path)?;
+        let raw_samples = processor.load_and_preprocess(&resolved_audio_path)?;
         let mel_data = processor.get_mel_spectrogram(raw_samples.as_slice().unwrap());
-        
+
         sys_log(&format!("[Alignment] Engine B: Creating ONNX session for {:?}", model_path));
         let mut engine = OnnxEngine::new(&model_path)?;
         let h_clone = handle.clone();
-        
+
         sys_log("[Alignment] Engine B: Running Whisper Inference...");
         engine.run_inference(&mel_data, true, |p| {
             let _ = h_clone.emit("alignment-progress", p as i32);
@@ -275,12 +385,12 @@ pub async fn run_forced_alignment(
         })?
     } else {
         sys_log("[Alignment] Engine A (Wav2Vec2) Preprocessing: Raw audio PCM...");
-        let audio_data = processor.load_and_preprocess(&audio_path)?;
-        
+        let audio_data = processor.load_and_preprocess(&resolved_audio_path)?;
+
         sys_log(&format!("[Alignment] Engine A: Creating ONNX session for {:?}", model_path));
         let mut engine = OnnxEngine::new(&model_path)?;
         let h_clone = handle.clone();
-        
+
         sys_log("[Alignment] Engine A: Running Wav2Vec2 Inference...");
         engine.run_inference(audio_data.as_slice().unwrap(), false, |p| {
             let _ = h_clone.emit("alignment-progress", p as i32);
@@ -862,51 +972,7 @@ pub async fn save_lrc_file(handle: AppHandle, audio_path: String, content: Strin
     ));
     let lrc_path = if audio_path.starts_with("http") {
         let paths = crate::state::AppPaths::from_handle(&handle);
-        let cache_key = urlencoding::encode(&audio_path).to_string();
-        let base_dir = paths.separated.join(&cache_key);
-        sys_log(&format!(
-            "[Alignment] Saving URL LRC to cache. key={}, dir={}",
-            cache_key,
-            base_dir.to_string_lossy()
-        ));
-        if !base_dir.exists() {
-            fs::create_dir_all(&base_dir).map_err(|e| format!("LRC 저장 폴더 생성 실패: {}", e))?;
-        }
-        let primary = base_dir.join("lyric.lrc");
-        fs::write(&primary, &content).map_err(|e| format!("LRC 저장 실패: {}", e))?;
-
-        // Mirror save to common URL variants so future loads find legacy/alternate forms too.
-        for variant in youtube_url_variants(&audio_path) {
-            let mirror_key = urlencoding::encode(&variant).to_string();
-            let mirror_dir = paths.separated.join(&mirror_key);
-            if mirror_dir != base_dir {
-                if !mirror_dir.exists() {
-                    if let Err(e) = fs::create_dir_all(&mirror_dir) {
-                        sys_log(&format!(
-                            "[Alignment] Mirror dir create failed. key={}, dir={}, err={}",
-                            mirror_key,
-                            mirror_dir.to_string_lossy(),
-                            e
-                        ));
-                    }
-                }
-                if let Err(e) = fs::write(mirror_dir.join("lyric.lrc"), &content) {
-                    sys_log(&format!(
-                        "[Alignment] Mirror LRC write failed. key={}, dir={}, err={}",
-                        mirror_key,
-                        mirror_dir.to_string_lossy(),
-                        e
-                    ));
-                } else {
-                    sys_log(&format!(
-                        "[Alignment] Mirror LRC write ok. key={}, dir={}",
-                        mirror_key,
-                        mirror_dir.to_string_lossy()
-                    ));
-                }
-            }
-        }
-        primary
+        write_lrc_to_url_cache(&paths, &audio_path, &content)?
     } else {
         let audio_file = PathBuf::from(&audio_path);
         if !audio_file.exists() {
@@ -915,15 +981,103 @@ pub async fn save_lrc_file(handle: AppHandle, audio_path: String, content: Strin
         if !audio_file.is_file() {
             return Err(format!("오디오 경로가 파일이 아닙니다: {}", audio_path));
         }
-        audio_file.with_extension("lrc")
+        let lrc_path = audio_file.with_extension("lrc");
+        fs::write(&lrc_path, content).map_err(|e| format!("LRC 저장 실패: {}", e))?;
+        lrc_path
     };
 
-    if !audio_path.starts_with("http") {
-        fs::write(&lrc_path, content).map_err(|e| format!("LRC 저장 실패: {}", e))?;
-    }
     let saved_path = lrc_path.to_string_lossy().to_string();
     sys_log(&format!("[Alignment] LRC saved to {}", saved_path));
     Ok(saved_path)
+}
+
+/// Writes LRC content to the URL-keyed cache dir (`<separated>/<urlencoded url>/lyric.lrc`)
+/// and mirrors it to all `youtube_url_variants()` cache-key forms, so future
+/// lookups find it regardless of which URL form was used to reference the
+/// track. Returns the primary path written.
+fn write_lrc_to_url_cache(paths: &crate::state::AppPaths, url: &str, content: &str) -> Result<PathBuf, String> {
+    let cache_key = urlencoding::encode(url).to_string();
+    let base_dir = paths.separated.join(&cache_key);
+    sys_log(&format!(
+        "[Alignment] Saving URL LRC to cache. key={}, dir={}",
+        cache_key,
+        base_dir.to_string_lossy()
+    ));
+    if !base_dir.exists() {
+        fs::create_dir_all(&base_dir).map_err(|e| format!("LRC 저장 폴더 생성 실패: {}", e))?;
+    }
+    let primary = base_dir.join("lyric.lrc");
+    fs::write(&primary, content).map_err(|e| format!("LRC 저장 실패: {}", e))?;
+
+    // Mirror save to common URL variants so future loads find legacy/alternate forms too.
+    for variant in youtube_url_variants(url) {
+        let mirror_key = urlencoding::encode(&variant).to_string();
+        let mirror_dir = paths.separated.join(&mirror_key);
+        if mirror_dir != base_dir {
+            if !mirror_dir.exists() {
+                if let Err(e) = fs::create_dir_all(&mirror_dir) {
+                    sys_log(&format!(
+                        "[Alignment] Mirror dir create failed. key={}, dir={}, err={}",
+                        mirror_key,
+                        mirror_dir.to_string_lossy(),
+                        e
+                    ));
+                }
+            }
+            if let Err(e) = fs::write(mirror_dir.join("lyric.lrc"), content) {
+                sys_log(&format!(
+                    "[Alignment] Mirror LRC write failed. key={}, dir={}, err={}",
+                    mirror_key,
+                    mirror_dir.to_string_lossy(),
+                    e
+                ));
+            } else {
+                sys_log(&format!(
+                    "[Alignment] Mirror LRC write ok. key={}, dir={}",
+                    mirror_key,
+                    mirror_dir.to_string_lossy()
+                ));
+            }
+        }
+    }
+    Ok(primary)
+}
+
+/// Returns true if an LRC already exists for this URL under any of the same
+/// search paths `load_lrc_file` checks (URL branch only).
+fn url_lrc_exists(paths: &crate::state::AppPaths, url: &str) -> bool {
+    for key_src in youtube_url_variants(url) {
+        let cache_key = urlencoding::encode(&key_src).to_string();
+        let cache_dir = paths.separated.join(&cache_key);
+        if cache_dir.join("lyric.lrc").is_file() || cache_dir.join("vocal.lrc").is_file() {
+            return true;
+        }
+    }
+    false
+}
+
+/// Seeds a local `.lrc` from raw lyric text (e.g. pulled from Meloming) when no
+/// LRC exists yet for this URL. Each non-blank input line becomes an
+/// unsynced placeholder line (`start: 0`), matching the shape `parseLrc`
+/// already treats as "text without a timestamp". Never overwrites existing
+/// sync data — a no-op if any LRC is already found for this URL.
+pub fn seed_lrc_if_missing(paths: &crate::state::AppPaths, url: &str, lyrics_text: &str) -> Result<(), String> {
+    if url_lrc_exists(paths, url) {
+        return Ok(());
+    }
+    let content: String = lyrics_text
+        .lines()
+        .map(|l| l.trim())
+        .filter(|l| !l.is_empty())
+        .map(|l| format!("[00:00.00]{}", l))
+        .collect::<Vec<_>>()
+        .join("\n");
+    if content.is_empty() {
+        return Ok(());
+    }
+    write_lrc_to_url_cache(paths, url, &content)?;
+    sys_log(&format!("[Alignment] Seeded LRC from Meloming lyrics_text for url={}", url));
+    Ok(())
 }
 
 #[command]

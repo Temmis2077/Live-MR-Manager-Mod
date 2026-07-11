@@ -224,6 +224,20 @@ export async function selectTrack(index) {
   state.targetProgressMs = 0;
   state.currentProgressMs = 0;
 
+  // 가사 싱크 탭이 열려있는 동안은 재생곡이 바뀔 때마다 자동으로 따라가서 로드.
+  // (탭 안의 "음원 선택" 모달로 고른 트랙은 이 경로를 안 타므로 서로 충돌하지 않음 —
+  // 그건 alignment-viewer.js의 loadAudio()가 play_track을 playNow:false로 호출하는
+  // 별도 편집용 로드라, 실제 재생 시작인 여기와는 분리되어 있음.)
+  if (state.activeView === 'alignment') {
+    import('./events/navigation.js').then(({ alignmentViewer }) => {
+      if (alignmentViewer && alignmentViewer.state.currentPath !== song.path) {
+        alignmentViewer.loadAudio(song.path);
+        const nameEl = document.getElementById('selected-track-name');
+        if (nameEl) nameEl.innerText = song.title || 'Unknown Title';
+      }
+    }).catch((err) => console.error('[Player] Failed to auto-follow alignment tab:', err));
+  }
+
   // Load Lyrics for the selected track
   loadLyricsForTrack(song.path, parseDurationToMs(song.duration) / 1000).then(lyrics => {
     state.currentLyrics = lyrics;
