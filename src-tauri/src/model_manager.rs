@@ -33,19 +33,11 @@ pub struct ModelManager {
 impl ModelManager {
     pub fn spec_from_id(model_id: &str) -> Result<ModelSpec, String> {
         if let Some((id, name, url)) = crate::state::MODELS.iter().find(|(id, _, _)| *id == model_id) {
-            // 내장 Mel-Band RoFormer(deux)는 RawWaveform 엔진이라 커스텀 모델과
-            // 동일한 아키텍처 프리셋 params가 필요하다. 나머지 내장(MDX 계열)은
-            // 기존처럼 파일명 기반 감지에 맡긴다(None).
-            let params = if *id == "melband_deux" {
-                crate::custom_models::preset_by_key("melband_roformer").map(|p| p.to_params())
-            } else {
-                None
-            };
             return Ok(ModelSpec {
                 id: id.to_string(),
                 name: name.to_string(),
                 url: url.to_string(),
-                params,
+                params: None,
             });
         }
 
@@ -80,8 +72,6 @@ impl ModelManager {
             // based on observed production artifacts in this app
             "Kim_Vocal_2.onnx" => 55 * 1024 * 1024,
             "UVR-MDX-NET-Inst_HQ_3.onnx" => 55 * 1024 * 1024,
-            // conv-STFT 내장 변환본 실측 ~942MB — 다운로드 중단된 파일 감지용
-            "mel_band_roformer_deux.onnx" => 800 * 1024 * 1024,
             _ => 10 * 1024 * 1024,
         }
     }
