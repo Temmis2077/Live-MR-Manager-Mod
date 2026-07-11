@@ -69,6 +69,10 @@ export function openEditModal(song, index) {
   if (editBpm) {
     editBpm.value = song.bpm ?? "";
   }
+  const editLyricsLink = document.getElementById("edit-lyrics-link");
+  if (editLyricsLink) {
+    editLyricsLink.value = song.lyricsLink || song.lyrics_link || "";
+  }
   setMetaStarRating("edit-difficulty-stars", "edit-difficulty-select", song.difficulty);
   setMetaStarRating("edit-proficiency-stars", "edit-proficiency-select", song.proficiency);
 
