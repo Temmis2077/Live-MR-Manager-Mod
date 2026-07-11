@@ -702,15 +702,38 @@ impl Aligner {
         })
     }
 
+    /// Whether `c` falls in any Hangul Unicode block (syllables, jamo, or
+    /// compatibility jamo) — i.e. something this Korean-only acoustic model
+    /// could plausibly have a real token for.
+    fn is_hangul_char(c: char) -> bool {
+        let cp = c as u32;
+        (0xAC00..=0xD7A3).contains(&cp)   // Hangul syllables
+            || (0x1100..=0x11FF).contains(&cp) // Hangul jamo
+            || (0x3130..=0x318F).contains(&cp) // Hangul compatibility jamo
+    }
+
     pub fn tokenize(&self, text: &str) -> (Vec<usize>, Vec<(usize, usize, String)>) {
         let mut ids = Vec::new();
         let mut word_spans = Vec::new();
         let words: Vec<&str> = text.split_whitespace().collect();
-        
+
         for (wi, word) in words.iter().enumerate() {
             let start_idx = ids.len();
             let cleaned_word = word.trim_matches(|c: char| !c.is_alphanumeric());
-            
+
+            // 랩/힙합 가사에 섞인 영어 단어 등 한글이 전혀 없는 단어는 이
+            // 한국어 전용 CTC 모델이 음향적으로 표현할 방법이 없다 — 글자마다
+            // [UNK]로 매핑되는데, 이걸 그대로 강제정렬 대상에 밀어넣으면 실제
+            // 음성 신호와 무관한 프레임을 억지로 소비하며 주변 한글 단어의
+            // 정렬 결과까지 같이 어긋나게 만든다. 이런 단어는 정렬 대상에서
+            // 아예 빼고(zero-width span) 이웃한 정렬된 단어 사이 시간을
+            // 나눠 보간한다(get_word_timestamps).
+            if !cleaned_word.is_empty() && !cleaned_word.chars().any(Self::is_hangul_char) {
+                word_spans.push((start_idx, start_idx, word.to_string()));
+                if wi < words.len() - 1 { if let Some(sid) = self.space_id { ids.push(sid); } }
+                continue;
+            }
+
             if self.is_syllable_based {
                 // 음절 기반: 이미 완성형 한글이 Vocab에 있는 경우
                 for c in cleaned_word.chars() {
@@ -725,7 +748,7 @@ impl Aligner {
                     ids.push(*self.token_to_id.get(&s).unwrap_or(&self.unk_id));
                 }
             }
-            
+
             if ids.len() == start_idx { ids.push(self.unk_id); }
             word_spans.push((start_idx, ids.len(), word.to_string()));
             if wi < words.len() - 1 { if let Some(sid) = self.space_id { ids.push(sid); } }
@@ -795,8 +818,17 @@ impl Aligner {
     }
 
     pub fn get_word_timestamps(&self, path: &[usize], word_spans: &[(usize, usize, String)], frame_duration_ms: f32) -> Vec<WordTimestamp> {
-        let mut result = Vec::new();
+        // Zero-width spans (non-Hangul words skipped by `tokenize`, or a word
+        // whose acoustic states the Viterbi path never visited) have no timing
+        // of their own — filled in below by interpolating between whichever
+        // aligned words bracket them, so every word still gets a timestamp
+        // instead of silently vanishing from the result.
+        let mut result: Vec<Option<WordTimestamp>> = Vec::with_capacity(word_spans.len());
         for (token_start, token_end, word) in word_spans {
+            if token_start == token_end {
+                result.push(None);
+                continue;
+            }
             let mut first_frame = None; let mut last_frame = None;
             for (frame_idx, &token_idx) in path.iter().enumerate() {
                 if token_idx != usize::MAX && token_idx >= *token_start && token_idx < *token_end {
@@ -804,11 +836,42 @@ impl Aligner {
                     last_frame = Some(frame_idx);
                 }
             }
-            if let (Some(start), Some(end)) = (first_frame, last_frame) {
-                result.push(WordTimestamp { word: word.clone(), start_ms: (start as f32 * frame_duration_ms) as u32, end_ms: ((end + 1) as f32 * frame_duration_ms) as u32 });
-            }
+            result.push(first_frame.zip(last_frame).map(|(start, end)| WordTimestamp {
+                word: word.clone(),
+                start_ms: (start as f32 * frame_duration_ms) as u32,
+                end_ms: ((end + 1) as f32 * frame_duration_ms) as u32,
+            }));
         }
-        result
+
+        const FALLBACK_WORD_MS: u32 = 400;
+        let mut i = 0;
+        while i < result.len() {
+            if result[i].is_some() { i += 1; continue; }
+            let gap_start = i;
+            let mut gap_end = i;
+            while gap_end < result.len() && result[gap_end].is_none() { gap_end += 1; }
+            let n = (gap_end - gap_start) as u32;
+
+            let prev_end_ms = if gap_start > 0 { result[gap_start - 1].as_ref().map(|w| w.end_ms) } else { None };
+            let next_start_ms = if gap_end < result.len() { result[gap_end].as_ref().map(|w| w.start_ms) } else { None };
+
+            let (range_start, range_end) = match (prev_end_ms, next_start_ms) {
+                (Some(s), Some(e)) if e > s => (s, e),
+                (Some(s), _) => (s, s + FALLBACK_WORD_MS * n),
+                (None, Some(e)) => (e.saturating_sub(FALLBACK_WORD_MS * n), e),
+                (None, None) => (0, FALLBACK_WORD_MS * n),
+            };
+
+            let span = (range_end - range_start) / n;
+            for (k, idx) in (gap_start..gap_end).enumerate() {
+                let s = range_start + span * k as u32;
+                let e = if k as u32 + 1 == n { range_end } else { s + span };
+                result[idx] = Some(WordTimestamp { word: word_spans[idx].2.clone(), start_ms: s, end_ms: e.max(s + 1) });
+            }
+            i = gap_end;
+        }
+
+        result.into_iter().flatten().collect()
     }
 
     pub fn greedy_decode(&self, emission_probs: &Array2<f32>) -> Vec<usize> {
@@ -958,6 +1021,85 @@ impl Aligner {
             "ㅡ" => '\u{1173}', "ㅢ" => '\u{1174}', "ㅣ" => '\u{1175}',
             _ => j.chars().next().unwrap_or(' '),
         }
+    }
+}
+
+#[cfg(test)]
+mod aligner_tests {
+    use super::*;
+
+    /// Writes a minimal syllable-based tokens.txt covering just the characters
+    /// these tests need, returns its path. Caller is responsible for cleanup.
+    fn write_test_vocab(name: &str) -> PathBuf {
+        let path = std::env::temp_dir().join(format!("align_test_vocab_{}_{}.txt", name, std::process::id()));
+        let vocab = "[PAD] 0\n[UNK] 1\n  2\n나 3\n는 4\n가 5\n수 6\n다 7\n안 8\n녕 9\n";
+        fs::write(&path, vocab).unwrap();
+        path
+    }
+
+    #[test]
+    fn is_hangul_char_classifies_korean_vs_latin() {
+        assert!(Aligner::is_hangul_char('가'));
+        assert!(Aligner::is_hangul_char('\u{1100}')); // Hangul jamo block
+        assert!(Aligner::is_hangul_char('ㄱ')); // compatibility jamo
+        assert!(!Aligner::is_hangul_char('a'));
+        assert!(!Aligner::is_hangul_char('Z'));
+        assert!(!Aligner::is_hangul_char('!'));
+    }
+
+    #[test]
+    fn tokenize_skips_non_hangul_words_as_zero_width_spans() {
+        let vocab_path = write_test_vocab("skip");
+        let aligner = Aligner::new(vocab_path.to_str().unwrap()).unwrap();
+
+        let (ids, spans) = aligner.tokenize("나는 hater 다");
+        std::fs::remove_file(&vocab_path).ok();
+
+        assert_eq!(spans.len(), 3, "every word should still get a span entry");
+        // "나는" — real Hangul, non-empty width.
+        assert_ne!(spans[0].0, spans[0].1);
+        // "hater" — pure Latin, must be zero-width (excluded from forced-align targets).
+        assert_eq!(spans[1].0, spans[1].1, "English word must not consume CTC target tokens");
+        assert_eq!(spans[1].2, "hater");
+        // "다" — real Hangul again.
+        assert_ne!(spans[2].0, spans[2].1);
+
+        // No [UNK] ids should have been emitted for "hater" at all — its
+        // characters must be completely absent from the target sequence,
+        // not merely mapped to unk_id.
+        let unk_count = ids.iter().filter(|&&id| id == aligner.unk_id).count();
+        assert_eq!(unk_count, 0, "skipped word must not contribute any UNK ids");
+    }
+
+    #[test]
+    fn word_timestamps_interpolates_gaps_between_aligned_neighbors() {
+        let vocab_path = write_test_vocab("interp");
+        let aligner = Aligner::new(vocab_path.to_str().unwrap()).unwrap();
+        std::fs::remove_file(&vocab_path).ok();
+
+        // Two real words (token index ranges [0,2) and [2,4)) with a
+        // zero-width word in between (simulating a skipped English word),
+        // followed by a frame path that only ever visits the two real words.
+        let word_spans = vec![
+            (0usize, 2usize, "안녕".to_string()),
+            (2, 2, "hey".to_string()),
+            (2, 4, "나".to_string()),
+        ];
+        // 10 frames: first half assigned to token-index 0/1 range (word 0),
+        // second half to token-index 2/3 range (word 2). MAX = blank.
+        let path = vec![0, 0, 1, 1, usize::MAX, usize::MAX, 2, 2, 3, 3];
+
+        let timestamps = aligner.get_word_timestamps(&path, &word_spans, 20.0);
+
+        assert_eq!(timestamps.len(), 3, "the interpolated word must not be dropped");
+        assert_eq!(timestamps[0].word, "안녕");
+        assert_eq!(timestamps[2].word, "나");
+        let gap_word = &timestamps[1];
+        assert_eq!(gap_word.word, "hey");
+        // Interpolated word must sit chronologically between its neighbors.
+        assert!(gap_word.start_ms >= timestamps[0].end_ms);
+        assert!(gap_word.end_ms <= timestamps[2].start_ms);
+        assert!(gap_word.end_ms > gap_word.start_ms);
     }
 }
 
