@@ -16,7 +16,7 @@ vi.mock('../src/js/ui/components.js', () => ({
 
 import { invoke } from '../src/js/tauri-bridge.js';
 import { state } from '../src/js/state.js';
-import { enqueueAlignment } from '../src/js/alignment-queue.js';
+import { enqueueAlignment, isAlignmentBusy, onAlignmentItemComplete } from '../src/js/alignment-queue.js';
 
 describe('mergeAlignmentResult', () => {
   it('fills only fully-unsynced segments and marks them approx', () => {
@@ -163,5 +163,71 @@ describe('alignment queue sequential processor', () => {
     const second = enqueueAlignment(['dup-song']);
     expect(first).toBe(1);
     expect(second).toBe(0);
+  });
+
+  it('queues a second song requested while the first is still processing', async () => {
+    const doneOrder = [];
+    let releaseFirst;
+    const firstGate = new Promise((res) => { releaseFirst = res; });
+
+    invoke.mockImplementation(async (cmd, args) => {
+      switch (cmd) {
+        case 'load_lrc_file':
+          return '[00:00.00]가사 한 줄';
+        case 'get_model_list':
+          return ['모델|/dir'];
+        case 'run_forced_alignment':
+          // 첫 곡의 정렬을 게이트로 붙잡아 "진행 중" 상태를 유지
+          if (args.audioPath === 'first') await firstGate;
+          return { lines: [{ text: '가사 한 줄', start_ms: 1000, end_ms: 2000 }] };
+        case 'save_lrc_file':
+          doneOrder.push(args.audioPath);
+          return 'ok';
+        default:
+          return null;
+      }
+    });
+
+    // 첫 곡 등록 → 처리 시작될 때까지 대기
+    enqueueAlignment(['first']);
+    for (let i = 0; i < 100; i++) {
+      if (state.alignmentQueue.find((x) => x.path === 'first')?.status === 'processing') break;
+      await new Promise((r) => setTimeout(r, 5));
+    }
+    expect(isAlignmentBusy()).toBe(true);
+
+    // 진행 중에 둘째 곡 등록 → 대기열에 'queued'로 들어가야 함(드롭 아님)
+    const added = enqueueAlignment(['second']);
+    expect(added).toBe(1);
+    expect(state.alignmentQueue.find((x) => x.path === 'second').status).toBe('queued');
+
+    // 첫 곡 정렬 완료시키면 둘째가 이어서 처리됨
+    releaseFirst();
+    await flushQueue();
+    expect(doneOrder).toEqual(['first', 'second']);
+  });
+
+  it('notifies completion listeners with the alignment lines', async () => {
+    const seen = [];
+    onAlignmentItemComplete((path, lines) => seen.push({ path, count: lines.length }));
+
+    invoke.mockImplementation(async (cmd) => {
+      switch (cmd) {
+        case 'load_lrc_file':
+          return '[00:00.00]가사';
+        case 'get_model_list':
+          return ['모델|/dir'];
+        case 'run_forced_alignment':
+          return { lines: [{ text: '가사', start_ms: 500, end_ms: 1500 }] };
+        case 'save_lrc_file':
+          return 'ok';
+        default:
+          return null;
+      }
+    });
+
+    enqueueAlignment(['notify-song']);
+    await flushQueue();
+    expect(seen).toContainEqual({ path: 'notify-song', count: 1 });
   });
 });

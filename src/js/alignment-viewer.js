@@ -198,6 +198,12 @@ export class ForcedAlignmentViewer {
         get('add-interlude-btn').onclick = () => this.addInterludeAtCurrentTime();
         get('ai-align-btn').onclick = () => this.runAiAlignment();
         get('ai-align-cancel-btn').onclick = () => this.cancelAiAlignment();
+
+        // 정렬 대기열이 어떤 곡을 끝내면, 그 곡이 지금 에디터에 열려 있을 때
+        // 결과(정렬 라인)를 즉시 in-memory 반영해 approx 표시까지 살린다.
+        import('./alignment-queue.js').then(({ onAlignmentItemComplete }) => {
+            onAlignmentItemComplete((path, lines) => this.onQueueAlignmentDone(path, lines));
+        }).catch(() => {});
         get('toggle-translation-btn').onclick = () => {
             setShowTranslation(!getShowTranslation());
             this.renderLyricList();
@@ -1692,10 +1698,30 @@ export class ForcedAlignmentViewer {
     }
 
     async cancelAiAlignment() {
+        // 에디터 정렬도 대기열을 통해 실행되므로, 현재 곡의 대기열 항목을 취소.
         try {
-            await this.invoke('cancel_forced_alignment');
+            const { cancelAlignmentQueueItem } = await import('./alignment-queue.js');
+            await cancelAlignmentQueueItem(this.state.currentPath);
         } catch (err) {
-            console.error('cancel_forced_alignment failed:', err);
+            console.error('cancelAlignmentQueueItem failed:', err);
+        }
+    }
+
+    /**
+     * 정렬 대기열이 한 곡을 끝냈을 때 호출(alignment-queue.js의 완료 리스너).
+     * 그 곡이 지금 에디터에 열려 있으면 정렬 결과를 in-memory 세그먼트에 병합해
+     * approx(점선) 표시까지 그대로 반영한다. 다른 곡이면 무시(파일은 이미 저장됨).
+     */
+    onQueueAlignmentDone(path, lines) {
+        if (!path || path !== this.state.currentPath) return;
+        if (!Array.isArray(lines) || lines.length === 0) return;
+        const applied = mergeAlignmentResult(this.state.segments, lines);
+        if (applied > 0) {
+            this.renderLyricList();
+            this.drawWaveform();
+            // 대기열이 이미 LRC로 저장했으므로 여기서 다시 dirty로 만들지 않음.
+            this.isDirty = false;
+            this.updateSaveStatus('저장됨');
         }
     }
 
@@ -1726,9 +1752,10 @@ export class ForcedAlignmentViewer {
         }
 
         const btn = document.getElementById('ai-align-btn');
-        const cancelBtn = document.getElementById('ai-align-cancel-btn');
         const statusEl = document.getElementById('ai-align-status');
 
+        // 모델이 하나도 없으면 다운로드를 먼저 제안(배치 처리기는 프롬프트를 안
+        // 띄우므로 여기서 처리). 있으면 실제 모델 선택은 대기열이 알아서 한다.
         let models = [];
         try {
             models = await this.invoke('get_model_list');
@@ -1752,63 +1779,34 @@ export class ForcedAlignmentViewer {
                 return;
             }
         }
-        const chosenModel = usableModels[0];
 
+        // 대기열이 저장된 LRC를 읽어 정렬하므로, 현재 편집 중인 가사(붙여넣은
+        // 미싱크 줄 포함)를 먼저 파일로 저장한 뒤 대기열에 넣는다.
         if (btn) btn.disabled = true;
-        if (cancelBtn) cancelBtn.style.display = 'inline-flex';
-        if (statusEl) statusEl.textContent = 'AI 정렬 준비 중...';
-
-        // 에디터 단발 실행도 AI 프로세싱 탭의 정렬 대기열에 표시(진행률 포함).
-        // 배치 대기열이 처리하는 항목은 아니고 가시성 전용 — 상태 기록은 finish로.
-        let finishQueueItem = null;
+        if (statusEl) statusEl.textContent = '대기열 등록 중...';
         try {
-            const { beginExternalAlignment } = await import('./alignment-queue.js');
-            finishQueueItem = await beginExternalAlignment(this.state.currentPath);
-        } catch (err) {
-            console.error('[Alignment] queue-visibility hook failed:', err);
-        }
+            await this.flushAutoSaveIfNeeded();
+            await this.saveLrc(true);
 
-        try {
-            const result = await this.invoke('run_forced_alignment', {
-                audioPath: this.state.currentPath,
-                lyrics: syncLyrics,
-                modelName: chosenModel,
-                language: 'ko',
-            });
+            const { enqueueAlignment, isAlignmentBusy } = await import('./alignment-queue.js');
+            const wasBusy = isAlignmentBusy();
+            const added = enqueueAlignment([this.state.currentPath]);
 
-            const lines = (result && result.lines) || [];
-            if (lines.length === 0) {
-                showNotification('AI 정렬 결과가 비어 있습니다. 가사와 음성이 잘 맞는지 확인해주세요.', 'warning');
-                if (finishQueueItem) finishQueueItem('error', { error: '정렬 결과 비어 있음' });
-                return;
-            }
-
-            const appliedCount = mergeAlignmentResult(this.state.segments, lines);
-
-            if (appliedCount === 0) {
-                showNotification('AI가 정렬한 줄과 일치하는 미싱크 가사를 찾지 못했습니다.', 'warning');
-                if (finishQueueItem) finishQueueItem('error', { error: '일치하는 미싱크 가사 없음' });
-                return;
-            }
-
-            this.renderLyricList();
-            this.drawWaveform();
-            this.markDirtyAndScheduleSave();
-            if (finishQueueItem) finishQueueItem('done', { note: `${appliedCount}줄 배치됨` });
-            showNotification(`AI 자동 정렬로 ${appliedCount}줄을 배치했습니다. 노래 음성 특성상 정확하지 않을 수 있으니 점선 표시 구간을 직접 확인해주세요.`, 'success');
-        } catch (err) {
-            const msg = String(err);
-            if (msg.includes('취소')) {
-                if (finishQueueItem) finishQueueItem('cancelled');
-                showNotification('AI 정렬이 취소되었습니다.', 'info');
+            if (added > 0) {
+                showNotification(
+                    wasBusy
+                        ? '다른 정렬이 진행 중이라 대기열에 추가했습니다. AI 프로세싱 탭에서 진행 상황을 볼 수 있어요.'
+                        : 'AI 정렬을 시작했습니다. AI 프로세싱 탭에서 진행 상황을 볼 수 있어요.',
+                    'success'
+                );
             } else {
-                console.error('AI alignment failed:', err);
-                if (finishQueueItem) finishQueueItem('error', { error: msg });
-                showNotification('AI 정렬 실패: ' + msg, 'error');
+                showNotification('이 곡은 이미 정렬 대기열에 있거나 처리 중입니다.', 'info');
             }
+        } catch (err) {
+            console.error('AI alignment enqueue failed:', err);
+            showNotification('AI 정렬 대기열 등록 실패: ' + err, 'error');
         } finally {
             if (btn) btn.disabled = false;
-            if (cancelBtn) cancelBtn.style.display = 'none';
             if (statusEl) statusEl.textContent = '';
         }
     }
