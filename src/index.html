@@ -251,6 +251,20 @@
               <input type="hidden" id="lib-genre-filter" value="all">
             </div>
 
+            <div class="custom-select" id="lib-sync-dropdown">
+              <div class="select-trigger">
+                <span class="selected-text">가사 전체</span>
+                <span class="select-arrow"></span>
+              </div>
+              <div class="select-options">
+                <div class="option-item selected" data-value="all">가사 전체</div>
+                <div class="option-item" data-value="synced">싱크 완료</div>
+                <div class="option-item" data-value="unsynced">미싱크 (가사만)</div>
+                <div class="option-item" data-value="none">가사 없음</div>
+              </div>
+              <input type="hidden" id="lib-sync-filter" value="all">
+            </div>
+
             <div class="custom-select" id="lib-sort-dropdown">
               <div class="select-trigger">
                 <span class="selected-text">최근 추가순</span>
@@ -1537,12 +1551,18 @@
         <button class="close-btn" id="alignment-track-close">&times;</button>
       </header>
       <div class="modal-body">
-        <div class="search-bar" style="margin-bottom: 15px;">
+        <div class="search-bar" style="margin-bottom: 12px;">
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="11" cy="11" r="8" />
             <path d="M21 21l-4.35-4.35" />
           </svg>
           <input type="text" id="alignment-track-search" placeholder="곡 제목 또는 아티스트 검색..." autocomplete="off">
+        </div>
+        <div id="alignment-track-filter-chips" class="track-filter-chips">
+          <button type="button" class="track-filter-chip active" data-status="all">전체</button>
+          <button type="button" class="track-filter-chip" data-status="unsynced">미싱크</button>
+          <button type="button" class="track-filter-chip" data-status="synced">싱크 완료</button>
+          <button type="button" class="track-filter-chip" data-status="none">가사 없음</button>
         </div>
         <div id="alignment-track-list" class="alignment-track-list">
           <!-- Dynamically populated -->

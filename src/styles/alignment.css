@@ -785,6 +785,95 @@ canvas#waveform-canvas {
     text-overflow: ellipsis;
 }
 
+/* --- 음원 선택 모달: 상태 필터 칩 --- */
+.track-filter-chips {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+}
+.track-filter-chip {
+    padding: 5px 14px;
+    border-radius: 999px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    background: var(--align-track-item-bg);
+    color: var(--align-text-soft);
+    border: 1px solid var(--align-track-item-border);
+    transition: all 0.15s ease;
+}
+.track-filter-chip:hover {
+    border-color: var(--accent-primary);
+}
+.track-filter-chip.active {
+    background: var(--accent-primary);
+    color: #fff;
+    border-color: var(--accent-primary);
+}
+
+/* --- 음원 선택 모달: 상태별 접이식 그룹 --- */
+.track-group {
+    margin-bottom: 10px;
+}
+.track-group-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 8px 10px;
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid var(--align-track-item-border);
+    color: var(--text-main);
+    font-size: 0.82rem;
+    font-weight: 700;
+    cursor: pointer;
+    text-align: left;
+    margin-bottom: 8px;
+}
+.track-group-count {
+    margin-left: auto;
+    min-width: 20px;
+    padding: 1px 8px;
+    border-radius: 10px;
+    background: rgb(var(--accent-rgb) / 0.15);
+    color: var(--accent-primary);
+    font-size: 0.72rem;
+    text-align: center;
+}
+.track-group-chevron {
+    transition: transform 0.15s ease;
+    flex-shrink: 0;
+}
+.track-group.collapsed .track-group-chevron {
+    transform: rotate(-90deg);
+}
+.track-group.collapsed .track-group-body {
+    display: none;
+}
+.track-group-body {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+/* 트랙 항목 상태 배지 + 현재 로드된 곡 하이라이트 */
+.track-status-badge {
+    flex-shrink: 0;
+    padding: 2px 9px;
+    border-radius: 8px;
+    font-size: 0.68rem;
+    font-weight: 700;
+    color: #fff;
+}
+.track-status-badge.synced { background: rgba(16, 185, 129, 0.9); }
+.track-status-badge.unsynced { background: rgba(245, 158, 11, 0.9); }
+.track-item.current {
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 1px var(--accent-primary) inset;
+}
+
 /* Scrollbar for track list */
 .alignment-track-list::-webkit-scrollbar {
     width: 6px;

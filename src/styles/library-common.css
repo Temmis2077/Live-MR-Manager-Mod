@@ -231,3 +231,25 @@
   display: flex;
   gap: 8px;
 }
+
+/* --- 가사 싱크 상태 배지 (곡 카드 썸네일 좌상단) --- */
+.lyric-sync-badge {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  z-index: 8;
+  padding: 2px 7px;
+  border-radius: 8px;
+  font-size: 0.62rem;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: 0.02em;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+}
+.lyric-sync-badge.synced {
+  background: rgba(16, 185, 129, 0.92);
+}
+.lyric-sync-badge.unsynced {
+  background: rgba(245, 158, 11, 0.92);
+}

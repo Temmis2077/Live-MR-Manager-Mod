@@ -1039,6 +1039,21 @@ impl Aligner {
 mod aligner_tests {
     use super::*;
 
+    #[test]
+    fn lrc_sync_status_detects_real_timestamps() {
+        // 실제(0이 아닌) 타임스탬프가 하나라도 있으면 synced
+        let synced = "[00:00.00]첫 줄\n[00:12.34]둘째 줄";
+        assert_eq!(lrc_sync_status(synced), "synced");
+        // 전부 00:00.00 (Meloming 시드/미타이밍) → unsynced
+        let unsynced = "[00:00.00]첫 줄\n[00:00.00]둘째 줄";
+        assert_eq!(lrc_sync_status(unsynced), "unsynced");
+        // 타임스탬프가 아예 없음 → unsynced
+        assert_eq!(lrc_sync_status("가사만 있고 태그 없음"), "unsynced");
+        // 트리플렛 태그가 붙어도 시간만 보면 됨
+        let triplet = "[00:00.00][orig]原文\n[00:05.00][pron]발음";
+        assert_eq!(lrc_sync_status(triplet), "synced");
+    }
+
     /// Writes a minimal syllable-based tokens.txt covering just the characters
     /// these tests need, returns its path. Caller is responsible for cleanup.
     fn write_test_vocab(name: &str) -> PathBuf {
@@ -1232,37 +1247,29 @@ pub fn seed_lrc_if_missing(paths: &crate::state::AppPaths, url: &str, lyrics_tex
     Ok(())
 }
 
-#[command]
-pub async fn load_lrc_file(handle: AppHandle, audio_path: String) -> Result<String, String> {
-    let paths = crate::state::AppPaths::from_handle(&handle);
+/// Builds the ordered list of candidate LRC file paths for an audio path
+/// (URL cache variants for http:// sources, sibling/cache/legacy paths for
+/// local files). Shared by `load_lrc_file` and `read_lrc_content` so the
+/// resolution scheme stays in one place.
+fn lrc_search_paths(paths: &crate::state::AppPaths, audio_path: &str) -> Vec<PathBuf> {
     let mut search_paths = Vec::new();
-    sys_log(&format!(
-        "[Alignment] load_lrc_file requested. is_url={}, path={}",
-        audio_path.starts_with("http"),
-        audio_path
-    ));
-
-    // 1. If it's a URL, prioritize the cache folder
     if audio_path.starts_with("http") {
-        for key_src in youtube_url_variants(&audio_path) {
+        for key_src in youtube_url_variants(audio_path) {
             let cache_key = urlencoding::encode(&key_src).to_string();
             let cache_dir = paths.separated.join(&cache_key);
             search_paths.push(cache_dir.join("lyric.lrc"));
             search_paths.push(cache_dir.join("vocal.lrc"));
         }
     } else {
-        // 2. For local files, check next to original file
-        let original_file = PathBuf::from(&audio_path);
+        let original_file = PathBuf::from(audio_path);
         search_paths.push(original_file.with_extension("lrc"));
 
-        // 3. Also check if there's a cached version for this local file
-        let cache_key = urlencoding::encode(&audio_path).to_string();
+        let cache_key = urlencoding::encode(audio_path).to_string();
         let cache_dir = paths.separated.join(&cache_key);
         search_paths.push(cache_dir.join("lyric.lrc"));
         search_paths.push(cache_dir.join("vocal.lrc"));
 
-        // Local path normalization fallback for legacy entries with different slash/case.
-        let normalized = normalize_path_key(&audio_path);
+        let normalized = normalize_path_key(audio_path);
         if normalized != audio_path {
             let norm_key = urlencoding::encode(&normalized).to_string();
             let norm_cache_dir = paths.separated.join(&norm_key);
@@ -1270,14 +1277,54 @@ pub async fn load_lrc_file(handle: AppHandle, audio_path: String) -> Result<Stri
             search_paths.push(norm_cache_dir.join("vocal.lrc"));
         }
 
-        // 4. If current path is already inside a separated folder (e.g. vocal.wav)
         if let Some(parent) = original_file.parent() {
             search_paths.push(parent.join("lyric.lrc"));
             search_paths.push(parent.join("vocal.lrc"));
         }
     }
-    
-    for p in search_paths {
+    search_paths
+}
+
+/// Reads an audio path's LRC content if any candidate file exists. Synchronous
+/// and lightweight — used both by `load_lrc_file` and the library's per-song
+/// sync-status classification.
+pub fn read_lrc_content(paths: &crate::state::AppPaths, audio_path: &str) -> Option<String> {
+    for p in lrc_search_paths(paths, audio_path) {
+        if p.is_file() {
+            if let Ok(content) = fs::read_to_string(&p) {
+                return Some(content);
+            }
+        }
+    }
+    None
+}
+
+/// Classifies an LRC's sync state: `"synced"` if any line carries a real
+/// (non-zero) `[mm:ss.xx]` timestamp, else `"unsynced"` (lyrics present but
+/// all lines sit at 00:00.00, e.g. a Meloming seed or pasted-but-untimed
+/// lyrics). Callers treat missing/blank content as `"none"`.
+pub fn lrc_sync_status(content: &str) -> &'static str {
+    let re = regex::Regex::new(r"\[(\d{1,2}):(\d{2}(?:\.\d{1,3})?)\]").unwrap();
+    for cap in re.captures_iter(content) {
+        let min: f64 = cap[1].parse().unwrap_or(0.0);
+        let sec: f64 = cap[2].parse().unwrap_or(0.0);
+        if min * 60.0 + sec > 0.0 {
+            return "synced"; // 첫 non-zero 타임스탬프에서 조기 종료
+        }
+    }
+    "unsynced"
+}
+
+#[command]
+pub async fn load_lrc_file(handle: AppHandle, audio_path: String) -> Result<String, String> {
+    let paths = crate::state::AppPaths::from_handle(&handle);
+    sys_log(&format!(
+        "[Alignment] load_lrc_file requested. is_url={}, path={}",
+        audio_path.starts_with("http"),
+        audio_path
+    ));
+
+    for p in lrc_search_paths(&paths, &audio_path) {
         if p.exists() && p.is_file() {
             sys_log(&format!("[Alignment] Found LRC file at: {:?}", p));
             return fs::read_to_string(&p).map_err(|e| format!("LRC 읽기 실패: {}", e));

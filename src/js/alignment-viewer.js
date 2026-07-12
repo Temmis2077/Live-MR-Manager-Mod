@@ -3,6 +3,7 @@ import { invoke, listen } from './tauri-bridge.js';
 import { state } from './state.js';
 import { parseLrc } from './lyrics.js';
 import { parseMarkers, formatMarkerLine, isTriplet, getSyncText, getDisplayLines, getShowTranslation, setShowTranslation, mergeAlignmentResult } from './lrc-parser.js';
+import { getLyricSyncStatus } from './library-filters.js';
 
 export class ForcedAlignmentViewer {
     constructor(containerId) {
@@ -188,7 +189,25 @@ export class ForcedAlignmentViewer {
         get('alignment-track-modal').onclick = (e) => {
             if (e.target === get('alignment-track-modal')) this.closeTrackModal();
         };
-        get('alignment-track-search').oninput = (e) => this.renderTrackList(e.target.value);
+        // 검색은 디바운스(500곡에서도 부드럽게). 현재 검색어는 state에 보관.
+        this._trackSearchDebounce = null;
+        get('alignment-track-search').oninput = (e) => {
+            this._trackSearchQuery = e.target.value;
+            clearTimeout(this._trackSearchDebounce);
+            this._trackSearchDebounce = setTimeout(() => this.renderTrackList(), 150);
+        };
+        // 상태 필터 칩
+        const chipBar = get('alignment-track-filter-chips');
+        if (chipBar) {
+            chipBar.querySelectorAll('.track-filter-chip').forEach((chip) => {
+                chip.onclick = () => {
+                    chipBar.querySelectorAll('.track-filter-chip').forEach(c => c.classList.remove('active'));
+                    chip.classList.add('active');
+                    this.trackFilterStatus = chip.dataset.status || 'all';
+                    this.renderTrackList();
+                };
+            });
+        }
 
         get('play-btn').onclick = () => this.togglePlayback();
         get('sync-tap-btn').onclick = () => this.handleTap();
@@ -1061,10 +1080,12 @@ export class ForcedAlignmentViewer {
         const modal = document.getElementById('alignment-track-modal');
         if (modal) {
             modal.classList.add('active');
-            document.getElementById('alignment-track-search').value = '';
+            const searchEl = document.getElementById('alignment-track-search');
+            if (searchEl) searchEl.value = '';
+            this._trackSearchQuery = '';
             this.loadTrackList(); // 모달을 열 때마다 메인 라이브러리의 최신 목록으로 갱신
             this.renderTrackList();
-            setTimeout(() => document.getElementById('alignment-track-search').focus(), 100);
+            setTimeout(() => searchEl && searchEl.focus(), 100);
         }
     }
 
@@ -1073,46 +1094,94 @@ export class ForcedAlignmentViewer {
         if (modal) modal.classList.remove('active');
     }
 
-    renderTrackList(query = '') {
+    renderTrackList() {
         const container = document.getElementById('alignment-track-list');
         if (!container) return;
 
-        const filtered = this.tracks ? this.tracks.filter(t => {
-            const searchStr = `${t.title || ''} ${t.artist || ''}`.toLowerCase();
-            return !query || searchStr.includes(query.toLowerCase());
-        }) : [];
+        const query = (this._trackSearchQuery || '').toLowerCase().trim();
+        const chipStatus = this.trackFilterStatus || 'all';
 
-        if (filtered.length === 0) {
-            container.innerHTML = `<div style="text-align:center; padding:20px; color:#64748b;">음원이 없습니다.</div>`;
+        // 검색 + 상태 칩 필터
+        const matched = (this.tracks || []).filter(t => {
+            if (query) {
+                const s = `${t.title || ''} ${t.artist || ''}`.toLowerCase();
+                if (!s.includes(query)) return false;
+            }
+            if (chipStatus !== 'all' && getLyricSyncStatus(t) !== chipStatus) return false;
+            return true;
+        });
+
+        if (matched.length === 0) {
+            container.innerHTML = `<div style="text-align:center; padding:20px; color:#64748b;">조건에 맞는 음원이 없습니다.</div>`;
             return;
         }
 
-        container.innerHTML = filtered.map(t => {
+        // 상태별 그룹: 작업 대상인 '미싱크'를 최상단으로.
+        const groups = [
+            { key: 'unsynced', label: '미싱크 (작업 필요)', badge: '미싱크' },
+            { key: 'synced', label: '싱크 완료', badge: '싱크' },
+            { key: 'none', label: '가사 없음', badge: '' },
+        ];
+        const byStatus = { unsynced: [], synced: [], none: [] };
+        matched.forEach(t => { (byStatus[getLyricSyncStatus(t)] || byStatus.none).push(t); });
+
+        const esc = (v) => String(v || '').replace(/"/g, '&quot;');
+        const trackItemHtml = (t) => {
             const title = t.title || 'Unknown Title';
             const artist = t.artist || 'Unknown Artist';
-            const thumbnail = t.thumbnail || '';
-            const path = t.path; // 원본 파일 경로
-
-            const thumbUrl = getThumbnailUrl(thumbnail, t);
-
+            const thumbUrl = getThumbnailUrl(t.thumbnail || '', t);
+            const st = getLyricSyncStatus(t);
+            const badge = st === 'synced'
+                ? `<span class="track-status-badge synced">싱크</span>`
+                : (st === 'unsynced' ? `<span class="track-status-badge unsynced">미싱크</span>` : '');
+            const isCurrent = this.state.currentPath && t.path === this.state.currentPath;
             return `
-                <div class="track-item" data-path="${path.replace(/"/g, '&quot;')}">
+                <div class="track-item${isCurrent ? ' current' : ''}" data-path="${esc(t.path)}">
                     <div class="track-thumb">
                         ${thumbUrl ? `<img src="${thumbUrl}" alt="">` : `<div class="thumb-placeholder">♪</div>`}
                     </div>
                     <div class="track-info">
-                        <div class="track-name" title="${title.replace(/"/g, '&quot;')}">${title}</div>
-                        <div class="track-artist" title="${artist.replace(/"/g, '&quot;')}">${artist}</div>
+                        <div class="track-name" title="${esc(title)}">${title}</div>
+                        <div class="track-artist" title="${esc(artist)}">${artist}</div>
                     </div>
-                </div>
-            `;
+                    ${badge}
+                </div>`;
+        };
+
+        // 접힘 상태는 localStorage에 상태별로 보관.
+        const collapsedKey = (k) => `trackPickerCollapsed:${k}`;
+        container.innerHTML = groups.map(g => {
+            const items = byStatus[g.key];
+            if (items.length === 0) return '';
+            const collapsed = localStorage.getItem(collapsedKey(g.key)) === 'true';
+            return `
+                <section class="track-group${collapsed ? ' collapsed' : ''}" data-group="${g.key}">
+                    <button type="button" class="track-group-toggle">
+                        <span class="track-group-title">${g.label}</span>
+                        <span class="track-group-count">${items.length}</span>
+                        <svg class="track-group-chevron" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                    </button>
+                    <div class="track-group-body">${items.map(trackItemHtml).join('')}</div>
+                </section>`;
         }).join('');
 
+        // 그룹 접기/펴기
+        container.querySelectorAll('.track-group-toggle').forEach(toggle => {
+            toggle.onclick = () => {
+                const section = toggle.closest('.track-group');
+                const key = section?.dataset.group;
+                const collapsed = section.classList.toggle('collapsed');
+                if (key) localStorage.setItem(collapsedKey(key), String(collapsed));
+            };
+        });
+
+        // 트랙 선택
         container.querySelectorAll('.track-item').forEach(item => {
             item.onclick = () => {
                 const path = item.getAttribute('data-path');
                 const name = item.querySelector('.track-name').innerText;
-                document.getElementById('selected-track-name').innerText = name;
+                const nameEl = document.getElementById('selected-track-name');
+                if (nameEl) nameEl.innerText = name;
                 this.loadAudio(path);
                 this.closeTrackModal();
             };
@@ -1872,16 +1941,25 @@ export class ForcedAlignmentViewer {
             const content = entries.map(e => e.line).join('\n');
             await this.invoke('save_lrc_file', { audioPath: this.state.currentPath, content });
 
-            // Reflect lyric availability immediately without requiring track re-selection.
+            // Reflect lyric availability/sync status immediately without a reload.
+            // 저장한 세그먼트 중 실제 타임스탬프(start>0)가 하나라도 있으면 'synced'.
+            const anySynced = (this.state.segments || []).some(s => (s.start || 0) > 0);
+            const newStatus = anySynced ? 'synced' : 'unsynced';
             const targetPath = this.state.currentPath;
-            const targetSong = state.songLibrary.find(song => song.path === targetPath);
-            if (targetSong) {
-                targetSong.hasLyrics = true;
-                targetSong.has_lyrics = true;
-            }
+            const applyStatus = (song) => {
+                if (!song) return;
+                song.hasLyrics = true;
+                song.has_lyrics = true;
+                song.lyricSyncStatus = newStatus;
+                song.lyric_sync_status = newStatus;
+            };
+            applyStatus(state.songLibrary.find(song => song.path === targetPath));
             if (state.currentTrack && state.currentTrack.path === targetPath) {
-                state.currentTrack.hasLyrics = true;
-                state.currentTrack.has_lyrics = true;
+                applyStatus(state.currentTrack);
+            }
+            // 라이브러리가 보이는 상태면 배지/필터 즉시 갱신.
+            if (state.activeView === 'library') {
+                import('./ui/library.js').then(m => { if (m.renderLibrary) m.renderLibrary(); }).catch(() => {});
             }
 
             // Refresh currently loaded lyric data for drawer/overlay right away.

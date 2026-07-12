@@ -173,9 +173,12 @@ async function processOne(item) {
     const content = encodeSegmentsToLrc(segments, extractMarkerLines(lrcContent));
     await invoke('save_lrc_file', { audioPath: item.path, content });
 
-    // 라이브러리 카드의 가사 보유 표시 즉시 갱신
+    // 라이브러리 카드의 가사 보유/싱크 상태 즉시 갱신
     const song = state.songLibrary.find((s) => s.path === item.path);
-    if (song) { song.hasLyrics = true; song.has_lyrics = true; }
+    if (song) {
+        song.hasLyrics = true; song.has_lyrics = true;
+        song.lyricSyncStatus = 'synced'; song.lyric_sync_status = 'synced';
+    }
 
     item.status = 'done';
     item.note = `${appliedCount}줄 배치됨`;

@@ -189,6 +189,10 @@ export function initLibraryListeners(updateViewMode) {
   if (elements.libSortSelect) {
     elements.libSortSelect.addEventListener("change", renderLibraryDeferred);
   }
+  const libSyncFilter = document.getElementById("lib-sync-filter");
+  if (libSyncFilter) {
+    libSyncFilter.addEventListener("change", renderLibraryDeferred);
+  }
 
   if (updateViewMode) {
     updateViewMode(state.viewMode || "grid");
