@@ -56,7 +56,15 @@ async function ensureProgressListener() {
             // 백엔드 락 대기 센티널 — 이미 '대기 중' 표시라 그대로 둠
             return;
         }
+        if (p === -2) {
+            // 전처리 + 모델 로드 준비 단계 — 0%가 아니라 "준비 중"으로 표시.
+            item.phase = 'preparing';
+            notifyQueueChanged();
+            return;
+        }
         if (Number.isFinite(p)) {
+            // 실제 추론 진행률 도착 → 정렬 단계로 전환.
+            item.phase = 'aligning';
             item.percentage = Math.max(0, Math.min(100, p));
             notifyQueueChanged();
         }
@@ -176,6 +184,8 @@ async function runQueue() {
             if (!item) break;
             item.status = 'processing';
             item.percentage = 0;
+            // 새 항목 시작 — 진행률(-2/실수) 이벤트가 오기 전까지는 '준비 중'.
+            item.phase = 'preparing';
             notifyQueueChanged();
             try {
                 await processOne(item);

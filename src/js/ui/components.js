@@ -275,9 +275,14 @@ function renderAlignmentQueue() {
     const title = card.querySelector('.task-title');
     if (title) title.textContent = item.title || item.path;
 
+    // 처리 중이면서 아직 실제 추론 진행률이 안 온 준비 단계('preparing')는
+    // 0%가 아니라 "준비 중(모델 로드 중)"으로 표시 — 모델 로드에 수 초 걸릴 수 있음.
+    const isPreparing = item.status === 'processing' && item.phase === 'preparing';
+
     const status = card.querySelector('.task-status-text');
     if (status) {
       let text = statusMap[item.status] || item.status;
+      if (isPreparing) text = '준비 중 (모델 로드)';
       if (item.status === 'error' && item.error) text = `오류: ${item.error}`;
       if (item.status === 'done' && item.note) text = `완료 (${item.note})`;
       status.textContent = text;
@@ -286,13 +291,17 @@ function renderAlignmentQueue() {
 
     const percentage = card.querySelector('.task-percentage');
     if (percentage) {
-      percentage.textContent = item.status === 'processing' ? `${Math.floor(item.percentage || 0)}%` : '';
+      // 준비 중에는 퍼센트를 숨기고(0% 오해 방지), 정렬 단계에서만 %표시.
+      percentage.textContent = (item.status === 'processing' && !isPreparing)
+        ? `${Math.floor(item.percentage || 0)}%` : '';
     }
 
     const progressBar = card.querySelector('.task-progress-bar');
     if (progressBar) {
       const pct = item.status === 'done' ? 100 : (item.status === 'processing' ? Math.floor(item.percentage || 0) : 0);
       progressBar.style.width = `${pct}%`;
+      // 준비 중에는 불확정 진행 표시(자체 애니메이션)로 "멈춘 게 아님"을 알림.
+      progressBar.classList.toggle('indeterminate', isPreparing);
     }
 
     // 종결 상태(완료/오류/가사 없음/취소)에서는 "취소"가 아니라 목록 제거 액션.

@@ -384,6 +384,11 @@ pub async fn run_forced_alignment(
         resolved_audio_path, audio_path
     ));
 
+    // -2 sentinel: 오디오 전처리 + 모델 로드(ONNX 세션 생성) 준비 단계.
+    // 이 구간은 수 초 걸릴 수 있는데 진행률이 없어서, 프론트가 0%가 아니라
+    // "준비 중"으로 표시하도록 별도 신호를 보낸다. (-1은 대기열 대기)
+    let _ = handle.emit("alignment-progress", -2);
+
     let emission_probs = if is_whisper {
         sys_log("[Alignment] Engine B (Whisper) Preprocessing: Extracting Mel-spectrogram...");
         let raw_samples = processor.load_and_preprocess(&resolved_audio_path)?;
