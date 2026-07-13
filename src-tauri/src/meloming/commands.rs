@@ -223,12 +223,8 @@ pub async fn meloming_pull_songs(channel_id: Option<String>) -> Result<PullResul
 #[tauri::command]
 pub async fn meloming_get_credentials() -> Result<MelomingCredentialsStatus, String> {
     Ok(MelomingCredentialsStatus {
-        has_client_id: get_setting(KEY_CLIENT_ID)
-            .or_else(|| std::env::var("MELOMING_CLIENT_ID").ok())
-            .is_some_and(|s| !s.trim().is_empty()),
-        has_client_secret: get_setting(KEY_CLIENT_SECRET)
-            .or_else(|| std::env::var("MELOMING_CLIENT_SECRET").ok())
-            .is_some_and(|s| !s.trim().is_empty()),
+        has_client_id: oauth::resolve_client_id().is_some(),
+        has_client_secret: oauth::resolve_client_secret().is_some(),
         has_api_key: get_setting(KEY_API_KEY)
             .or_else(|| std::env::var("MELOMING_API_KEY").ok())
             .is_some_and(|s| !s.trim().is_empty()),

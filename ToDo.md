@@ -93,6 +93,7 @@
 ## 🛠️ 6. 개발 환경 및 문서 (DevEx)
 
 - [X] **README 개발 환경 가이드 보강 (v0.4.10)**: LLVM(libclang), `cargo fetch`, Windows PowerShell/`npm.cmd` 안내 반영
+- [X] **앱 버전 v0.5.1 핫픽스**: 배포본 Meloming OAuth — Client ID 임베드, Secret 없으면 Companion exchange/refresh
 - [X] **앱 버전 v0.5.0**: 멜로밍 노래책 가져오기·보내기 재개, Push Diff·메타·별점 UI, Companion OAuth refresh
 - [X] **앱 버전 v0.4.16 핫픽스**: MP3 MR ffmpeg PATH(`ffmpeg_tools`), 멜로밍 동기화 UI·백엔드 잠금 문구 정리
 - [X] **앱 버전 v0.4.15 메타데이터 정합성**: `package.json`, `Cargo.toml`, `tauri.conf.json` 버전 번호 일괄 갱신
@@ -106,7 +107,7 @@
 
 **인증 참고**: 문서의 「애플리케이션 등록」 링크는 개발자 센터 **미니앱(앱) 등록** UI로 연결됨. `GET` 읽기는 등록 없이 가능, `POST`/`PATCH`/`DELETE`는 OAuth 필요.
 
-**Companion (Vercel)**: 미니앱 iframe·OAuth Redirect·FAQ/Q&A·changelog·업데이트 manifest — 별도 Next.js 프로젝트.
+**Companion (Vercel)**: 미니앱 iframe·OAuth Redirect·FAQ/Q&A·changelog·업데이트 manifest — 별도 Next.js 프로젝트. **배포 앱 토큰 교환**: Client Secret은 Vercel env만, Client ID는 릴리스 바이너리 임베드(v0.5.1+).
 
 **실행 순서 (2026-06)**: **Phase 2A(companion·미니앱 신청)를 먼저** → 심사·OAuth 대기 중 **Phase 0·1·2B 코드** 병행 → 승인 후 Push 연동.
 
@@ -140,6 +141,7 @@
 ### Phase 2B — OAuth 쓰기 (2A 승인 후 실연동)
 
 - [X] **Tauri OAuth PKCE**: Authorization Code + refresh, 토큰 Settings 저장, deep-link + companion `/api/oauth/exchange`
+- [X] **배포 OAuth 자격 증명 (v0.5.1)**: Client ID 바이너리 임베드, Secret 없으면 Companion exchange/refresh 자동
 - [X] **Push 코드**: `POST`/`PATCH` 노래책 API (일괄 보내기)
 - [X] **Push 안정화 (v0.4.13·v0.4.14)**: 보내기 전 아티스트 Map 갱신, 유튜브 메타 보강, 아티스트 느슨 매칭, 채널별 `meloming_song_id`, PATCH 403/404 → CREATE 재시도
 - [ ] **OAuth 실연동 (간헐적 이슈)**: 멜로밍 `POST /oauth/token` 500 INTERNAL_ERROR·401 Invalid redirect_uri — **v0.4.13 UI 재개**, 서버 오류 시 재시도 안내
@@ -189,4 +191,4 @@
 
 ---
 
-💡 **참고**: 이 목록은 우선순위에 따라 유동적으로 조정될 수 있습니다. v0.4.10은 2026-06-02 릴리즈, v0.4.11·v0.4.12는 2026-06 패치 빌드, **v0.4.13**은 2026-06-27(Companion 법적 문서·멜로밍 로그인/보내기 재개), **v0.4.14**는 2026-06-27(유튜브 메타 보강·Push 안정화·설정 법적 고지), **v0.4.15**는 2026-06-27(노래책 동기화 UI 업데이트 예정·OpenAPI 대기), **v0.4.16**은 2026-07-05(MP3 MR ffmpeg PATH 핫픽스·멜로밍 동기화 안내), **v0.5.0**은 2026-07-05(노래책 가져오기·보내기 재개·Push Diff·별점 UI)입니다. 멜로밍 연동 상세는 [`docs/MELOMING_SONGBOOK_INTEGRATION.md`](docs/MELOMING_SONGBOOK_INTEGRATION.md) 및 [README](README.md) 로드맵을 참고하세요.
+💡 **참고**: 이 목록은 우선순위에 따라 유동적으로 조정될 수 있습니다. v0.4.10은 2026-06-02 릴리즈, v0.4.11·v0.4.12는 2026-06 패치 빌드, **v0.4.13**은 2026-06-27(Companion 법적 문서·멜로밍 로그인/보내기 재개), **v0.4.14**는 2026-06-27(유튜브 메타 보강·Push 안정화·설정 법적 고지), **v0.4.15**는 2026-06-27(노래책 동기화 UI 업데이트 예정·OpenAPI 대기), **v0.4.16**은 2026-07-05(MP3 MR ffmpeg PATH 핫픽스·멜로밍 동기화 안내), **v0.5.0**은 2026-07-05(노래책 가져오기·보내기 재개·Push Diff·별점 UI), **v0.5.1**은 2026-07-13(멜로밍 OAuth 배포 로그인 핫픽스)입니다. 멜로밍 연동 상세는 [`docs/MELOMING_SONGBOOK_INTEGRATION.md`](docs/MELOMING_SONGBOOK_INTEGRATION.md) 및 [README](README.md) 로드맵을 참고하세요.

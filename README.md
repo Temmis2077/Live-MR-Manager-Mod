@@ -120,6 +120,12 @@
 - **스프레드시트 가져오기/보내기**: 설정에서 라이브러리를 CSV/XLSX로 보내고 병합 가져오기(한글 헤더 지원).
 - **GitHub 업데이트 알림**: 최신 릴리즈를 주기적으로 확인해 앱 내에서 새 버전을 안내합니다.
 
+### 🆕 v0.5.1 핫픽스 (2026-07-13)
+
+- **멜로밍 OAuth 배포 로그인**: 릴리스 빌드에 `MELOMING_CLIENT_ID` 임베드. Client Secret은 Vercel Companion에만 두고, 설치본은 `/api/oauth/exchange`·`/api/oauth/refresh`로 토큰 교환·갱신.
+- **「OAuth 설정이 없습니다」**: 배포본·타 PC에서 로그인 시작이 막히던 문제를 수정.
+- **버전 메타데이터 통일**: `0.5.1`으로 일괄 갱신.
+
 ### 🆕 v0.5.0 업데이트 (2026-07-05)
 
 - **멜로밍 노래책 동기화 재개**: 설정 **가져오기** / **보내기** 분리. Pull은 로그인 없이, Push는 **멜로밍 로그인** 후 사용.
@@ -209,14 +215,14 @@
 
 - **미니앱 iframe** — 연동 안내, 다운로드
 - **OAuth Redirect** — `https://lmrm.vercel.app/oauth/callback` (웹 PKCE 로그인 또는 앱 딥링크 브릿지)
-- **OAuth 토큰 프록시** — `POST /api/oauth/exchange` (선택, `MELOMING_USE_COMPANION_EXCHANGE`)
+- **OAuth 토큰 프록시** — `POST /api/oauth/exchange`, `POST /api/oauth/refresh` (배포본 기본: Client Secret은 Vercel에만, 앱에는 Client ID만 임베드)
 - **FAQ / Q&A** — 동기화·숙련도/난이도 등
 - **`/privacy`** — 개인정보 처리방침 (앱·웹 통합)
 - **`/terms`** — 이용약관
 - **(테스트) 웹 로그인** — `/login`, `/account` (OAuth API 검증용, 추후 정리 예정)
 - **changelog·업데이트 API** — GitHub Releases(설치 파일) + companion(릴리즈 노트·manifest) (Phase 4)
 
-**현재 상태 (2026-07)**: **노래책 가져오기·보내기(v0.5.0)** 활성. **멜로밍 로그인** 후 보내기, 없는 아티스트·카테고리는 Push 시 자동 등록. **MP3 MR 저장(v0.4.16)** 은 관리형 ffmpeg로 PATH 없이도 동작. OAuth 토큰 교환 **500/401**은 멜로밍 서버 이슈 시 간헐적 발생.
+**현재 상태 (2026-07)**: **노래책 가져오기·보내기(v0.5.0)** 활성. **멜로밍 로그인(v0.5.1)** — 배포본은 Client ID 임베드 + Companion 토큰 프록시. 없는 아티스트·카테고리는 Push 시 자동 등록. **MP3 MR 저장(v0.4.16)** 은 관리형 ffmpeg로 PATH 없이도 동작. OAuth 토큰 교환 **500/401**은 멜로밍 서버 이슈 시 간헐적 발생.
 
 작업 체크리스트: [ToDo.md §7](ToDo.md). 상세 기획: [docs/MELOMING_SONGBOOK_INTEGRATION.md](docs/MELOMING_SONGBOOK_INTEGRATION.md).
 
@@ -277,6 +283,16 @@ npm run tauri dev
 - `npm`이 인식되지 않으면: 터미널을 새로 열거나 `npm.cmd` 사용
 - `npm.ps1` 실행 정책 오류 시: `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` 또는 `npm.cmd run tauri dev`
 - MR/AI 캐시 데이터: `%LOCALAPPDATA%\com.autumncolor77.live-mr-manager\`
+
+### 멜로밍 OAuth (개발·릴리스)
+
+| 환경 | Client ID | Client Secret |
+|------|-----------|---------------|
+| 로컬 개발 | `src-tauri/.env`의 `MELOMING_CLIENT_ID` (`.env.example` 참고) | 선택. 있으면 멜로밍 직접 교환, 없으면 Companion |
+| 릴리스 빌드 | GitHub Actions secret `MELOMING_CLIENT_ID` → 바이너리 임베드 | **넣지 않음** — Vercel Production env만 |
+| Companion (Vercel) | `MELOMING_CLIENT_ID` | `MELOMING_CLIENT_SECRET` (Production) |
+
+Redirect URI: `https://lmrm.vercel.app/oauth/callback`
 
 ---
 

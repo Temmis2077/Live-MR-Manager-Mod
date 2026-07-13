@@ -52,7 +52,7 @@ Vercel 프로덕션에도 `NEXT_PUBLIC_DISCORD_INVITE_URL=https://discord.gg/qfJ
 
 | 트리거 | 설명 |
 |--------|------|
-| `git push origin v0.5.0` | 태그 push 시 자동 공지 |
+| `git push origin v0.5.1` | 태그 push 시 자동 공지 |
 | Actions → **discord-release** → Run workflow | 과거 태그 수동 공지 (tag 입력) |
 
 - 본문: [`DISCORD_ANNOUNCEMENTS.md`](../DISCORD_ANNOUNCEMENTS.md)의 `## vX.Y.Z (...)` 블록 (없으면 짧은 기본 안내)
@@ -61,4 +61,4 @@ Vercel 프로덕션에도 `NEXT_PUBLIC_DISCORD_INVITE_URL=https://discord.gg/qfJ
 
 ### v0.5.0 등 이미 릴리즈한 버전
 
-Webhook 설정 후 Actions에서 **discord-release** → **Run workflow** → tag에 `v0.5.0` 입력.
+Webhook 설정 후 Actions에서 **discord-release** → **Run workflow** → tag에 `v0.5.0` 또는 `v0.5.1` 입력.

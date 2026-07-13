@@ -20,8 +20,52 @@ use super::settings::{
 
 pub const REDIRECT_URI: &str = "https://lmrm.vercel.app/oauth/callback";
 pub const COMPANION_EXCHANGE_URL: &str = "https://lmrm.vercel.app/api/oauth/exchange";
+pub const COMPANION_REFRESH_URL: &str = "https://lmrm.vercel.app/api/oauth/refresh";
 /// 개발자 센터 OAuth Client 생성 시 허용한 scope와 동일하게 맞출 것.
 pub const OAUTH_SCOPE: &str = "profile:read channels:read songbook:read songbook:write";
+
+fn embedded_client_id() -> Option<&'static str> {
+    option_env!("EMBEDDED_MELOMING_CLIENT_ID").and_then(|s| {
+        let t = s.trim();
+        if t.is_empty() {
+            None
+        } else {
+            Some(t)
+        }
+    })
+}
+
+/// Settings → 런타임 env → 빌드 임베드 순.
+pub fn resolve_client_id() -> Option<String> {
+    get_setting(KEY_CLIENT_ID)
+        .or_else(|| std::env::var("MELOMING_CLIENT_ID").ok())
+        .or_else(|| embedded_client_id().map(|s| s.to_string()))
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
+/// Settings → 런타임 env. Secret은 바이너리에 임베드하지 않음.
+pub fn resolve_client_secret() -> Option<String> {
+    get_setting(KEY_CLIENT_SECRET)
+        .or_else(|| std::env::var("MELOMING_CLIENT_SECRET").ok())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
+/// 로컬 Secret이 있으면 멜로밍 직접 교환, 없으면 Companion 프록시(배포 기본).
+/// `MELOMING_USE_COMPANION_EXCHANGE`로 강제 on/off 가능.
+pub fn use_companion_exchange() -> bool {
+    if let Ok(v) = std::env::var("MELOMING_USE_COMPANION_EXCHANGE") {
+        let t = v.trim();
+        if matches!(t, "0" | "false" | "no") {
+            return false;
+        }
+        if matches!(t, "1" | "true" | "yes") {
+            return true;
+        }
+    }
+    resolve_client_secret().is_none()
+}
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -82,11 +126,11 @@ fn random_state() -> String {
     URL_SAFE_NO_PAD.encode(bytes)
 }
 
-/// `src-tauri/.env` → Settings (UI 표시·일관성)
+/// `src-tauri/.env` / 빌드 임베드 → Settings (UI 표시·일관성)
 pub fn sync_credentials_from_env() {
-    if let Ok(id) = std::env::var("MELOMING_CLIENT_ID") {
-        if !id.trim().is_empty() && get_setting(KEY_CLIENT_ID).is_none() {
-            let _ = set_setting(KEY_CLIENT_ID, id.trim());
+    if get_setting(KEY_CLIENT_ID).is_none() {
+        if let Some(id) = resolve_client_id() {
+            let _ = set_setting(KEY_CLIENT_ID, &id);
         }
     }
     if let Ok(secret) = std::env::var("MELOMING_CLIENT_SECRET") {
@@ -101,22 +145,28 @@ pub fn sync_credentials_from_env() {
     }
 }
 
+/// authorize용 Client ID. Secret은 Companion 경로에서 불필요.
+pub fn require_client_id() -> Result<String, String> {
+    resolve_client_id().ok_or_else(|| {
+        "OAuth 설정이 없습니다. 앱을 최신 버전으로 업데이트해 주세요.".to_string()
+    })
+}
+
+/// 직접 토큰 교환용. Companion 사용 시 secret은 빈 문자열일 수 있음.
 pub fn credentials() -> Result<(String, String), String> {
-    let client_id = get_setting(KEY_CLIENT_ID)
-        .or_else(|| std::env::var("MELOMING_CLIENT_ID").ok())
-        .filter(|s| !s.trim().is_empty())
-        .ok_or_else(|| "OAuth 설정이 없습니다. 앱을 최신 버전으로 업데이트해 주세요.".to_string())?;
-    let client_secret = get_setting(KEY_CLIENT_SECRET)
-        .or_else(|| std::env::var("MELOMING_CLIENT_SECRET").ok())
-        .filter(|s| !s.trim().is_empty())
-        .ok_or_else(|| "OAuth 설정이 없습니다. 앱을 최신 버전으로 업데이트해 주세요.".to_string())?;
-    Ok((client_id.trim().to_string(), client_secret.trim().to_string()))
+    let client_id = require_client_id()?;
+    let client_secret = resolve_client_secret().unwrap_or_default();
+    if !use_companion_exchange() && client_secret.is_empty() {
+        return Err(
+            "OAuth Client Secret이 없습니다. src-tauri/.env 또는 Companion 교환을 확인해 주세요."
+                .into(),
+        );
+    }
+    Ok((client_id, client_secret))
 }
 
 pub fn oauth_status() -> OAuthStatus {
-    let has_client_id = get_setting(KEY_CLIENT_ID)
-        .or_else(|| std::env::var("MELOMING_CLIENT_ID").ok())
-        .is_some_and(|s| !s.trim().is_empty());
+    let has_client_id = resolve_client_id().is_some();
     let access = get_setting(KEY_ACCESS_TOKEN);
     let expires_at = get_setting(KEY_EXPIRES_AT).and_then(|s| s.parse().ok());
     OAuthStatus {
@@ -287,6 +337,23 @@ async fn post_token_via_companion(code: &str, verifier: &str) -> Result<TokenRes
     parse_token_response(status, body, "companion").await
 }
 
+async fn post_refresh_via_companion(refresh_token: &str) -> Result<TokenResponse, MelomingError> {
+    let res = token_http_client()
+        .post(COMPANION_REFRESH_URL)
+        .json(&serde_json::json!({
+            "refreshToken": refresh_token,
+        }))
+        .send()
+        .await
+        .map_err(|e| MelomingError::Message(format!("companion refresh: {e}")))?;
+    let status = res.status();
+    let body = res
+        .text()
+        .await
+        .map_err(|e| MelomingError::Message(e.to_string()))?;
+    parse_token_response(status, body, "companion-refresh").await
+}
+
 pub fn format_oauth_error(err: &MelomingError) -> String {
     match err {
         MelomingError::Http(500, body) if body.contains("INTERNAL_ERROR") => {
@@ -308,11 +375,6 @@ pub fn format_oauth_error(err: &MelomingError) -> String {
     }
 }
 
-fn use_companion_exchange() -> bool {
-    std::env::var("MELOMING_USE_COMPANION_EXCHANGE")
-        .is_ok_and(|v| matches!(v.trim(), "1" | "true" | "yes"))
-}
-
 async fn exchange_code_tokens(
     code: &str,
     verifier: &str,
@@ -328,11 +390,15 @@ async fn exchange_code_tokens(
         ("code_verifier", verifier.to_string()),
     ];
 
+    let via = if use_companion_exchange() {
+        "companion"
+    } else {
+        "form"
+    };
     let _ = crate::audio_player::sys_log(&format!(
-        "[Meloming OAuth] exchanging code (len={}, verifier_len={}, via={})",
+        "[Meloming OAuth] exchanging code (len={}, verifier_len={}, via={via})",
         code.trim().len(),
         verifier.len(),
-        if use_companion_exchange() { "companion" } else { "form" }
     ));
 
     // 인증 code는 1회용. 500이 나와도 서버에서 소비될 수 있으므로 같은 code로 재시도하지 않음.
@@ -387,15 +453,20 @@ async fn refresh_access_token() -> Result<String, MelomingError> {
     let refresh = get_setting(KEY_REFRESH_TOKEN).ok_or_else(|| {
         MelomingError::Message("Refresh Token이 없습니다. 다시 로그인해 주세요.".into())
     })?;
-    let (client_id, client_secret) = credentials().map_err(MelomingError::Message)?;
 
-    let token = post_token_form(&[
-        ("grant_type", "refresh_token".into()),
-        ("refresh_token", refresh),
-        ("client_id", client_id),
-        ("client_secret", client_secret),
-    ])
-    .await?;
+    let token = if use_companion_exchange() {
+        let _ = crate::audio_player::sys_log("[Meloming OAuth] refreshing via companion");
+        post_refresh_via_companion(&refresh).await?
+    } else {
+        let (client_id, client_secret) = credentials().map_err(MelomingError::Message)?;
+        post_token_form(&[
+            ("grant_type", "refresh_token".into()),
+            ("refresh_token", refresh),
+            ("client_id", client_id),
+            ("client_secret", client_secret),
+        ])
+        .await?
+    };
 
     store_tokens(
         &token.access_token,
@@ -432,10 +503,7 @@ pub async fn access_token() -> Result<String, MelomingError> {
 pub fn build_authorize_url() -> Result<(String, String), String> {
     *OAUTH_CALLBACK_DEDUP.lock() = None;
     sync_credentials_from_env();
-    let (client_id, _) = credentials()?;
-    if client_id.trim().is_empty() {
-        return Err("OAuth 설정이 없습니다. src-tauri/.env 또는 앱 빌드 설정을 확인해 주세요.".into());
-    }
+    let client_id = require_client_id()?;
 
     let verifier = random_pkce_verifier();
     let challenge = pkce_challenge(&verifier);
@@ -458,8 +526,9 @@ pub fn build_authorize_url() -> Result<(String, String), String> {
     }
     let url_string = url.to_string();
     let _ = crate::audio_player::sys_log(&format!(
-        "[Meloming OAuth] authorize ready (client_id len={})",
-        client_id.trim().len()
+        "[Meloming OAuth] authorize ready (client_id len={}, companion={})",
+        client_id.trim().len(),
+        use_companion_exchange()
     ));
     Ok((url_string, state))
 }

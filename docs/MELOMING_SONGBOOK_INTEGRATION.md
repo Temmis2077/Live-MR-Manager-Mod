@@ -32,7 +32,7 @@
 
 - HTTP·토큰: Rust `reqwest` ([`src-tauri/Cargo.toml`](../src-tauri/Cargo.toml)), Tauri command만 노출
 - `client_secret`·Refresh Token: 프론트엔드(JS)에 **노출하지 않음**
-- Companion 웹(Vercel): OAuth **브릿지**·FAQ·changelog만. 토큰 교환은 데스크톱
+- Companion 웹(Vercel): OAuth **브릿지**·FAQ·changelog + **배포본 토큰 교환/갱신 프록시** (`/api/oauth/exchange`, `/api/oauth/refresh`). Client Secret은 Vercel env만.
 
 ---
 
@@ -292,17 +292,20 @@ sequenceDiagram
 ```
 
 - Companion `/oauth/callback`: `code`·`state` 파싱 → **웹 PKCE 세션** 또는 **커스텀 스킴**으로 분기
-- **토큰 교환**: Tauri에서 `MELOMING_USE_COMPANION_EXCHANGE=true` 시 `POST https://lmrm.vercel.app/api/oauth/exchange` (Client Secret은 Vercel env)
+- **토큰 교환**: 로컬에 Client Secret이 없으면 Companion `POST /api/oauth/exchange`·`/api/oauth/refresh` 사용 (Client Secret은 Vercel env만). 로컬 `.env`에 Secret이 있으면 멜로밍 직접 교환.
+- **배포 빌드**: GitHub Actions secret `MELOMING_CLIENT_ID` → 바이너리에 임베드. Secret은 앱에 넣지 않음.
 - Redirect URI (등록·코드 공통): `https://lmrm.vercel.app/oauth/callback`
 
-### 6.7 OAuth·동기화 UI 상태 (2026-07-05, v0.5.0)
+### 6.7 OAuth·동기화 UI 상태 (2026-07-13, v0.5.1)
 
 | 단계 | 상태 |
 |------|------|
 | authorize · code · deep-link | ✅ 동작 |
-| `POST /oauth/token` | ⚠️ 간헐적 500 INTERNAL_ERROR 또는 401 Invalid redirect_uri (멜로밍 측) |
+| 배포본 Client ID 임베드 | ✅ **v0.5.1** — GitHub secret `MELOMING_CLIENT_ID` → 바이너리 |
+| Companion 토큰 교환·갱신 (Secret 없을 때) | ✅ **v0.5.1** 기본 — `/api/oauth/exchange`·`/refresh` |
+| `POST /oauth/token` (로컬 Secret 직접) | ⚠️ 간헐적 500 INTERNAL_ERROR 또는 401 Invalid redirect_uri (멜로밍 측) |
 | `POST /api/oauth/refresh` (Companion) | ✅ v0.5.0 |
-| 앱 UI — 「멜로밍 로그인」 | ✅ 활성 |
+| 앱 UI — 「멜로밍 로그인」 | ✅ 활성 (배포본 v0.5.1+) |
 | 앱 UI — 「가져오기」/「보내기」 | ✅ **v0.5.0 재개** — Pull(무로그인 가능), Push(로그인 필수) |
 | Pull · 연결 테스트 · 채널 저장 (백엔드) | ✅ `meloming_pull_songs` / `meloming_push_songs` 활성 |
 | Push — 아티스트·카테고리 자동 생성 | ✅ v0.5.0 (`create_artist` / `create_category`) |
@@ -364,12 +367,12 @@ sequenceDiagram
 
 ```json
 {
-  "version": "0.5.0",
+  "version": "0.5.1",
   "minSupportedVersion": "0.4.0",
-  "releaseUrl": "https://github.com/AutumnColor77/Live-MR-Manager/releases/tag/v0.5.0",
-  "changelogUrl": "https://lmrm.vercel.app/changelog#v0.5.0",
-  "notes": "멜로밍 노래책 가져오기·보내기 재개, Push Diff·메타 동기화, 별점 UI …",
-  "publishedAt": "2026-06-27T00:00:00Z",
+  "releaseUrl": "https://github.com/AutumnColor77/Live-MR-Manager/releases/tag/v0.5.1",
+  "changelogUrl": "https://lmrm.vercel.app/changelog#v0.5.1",
+  "notes": "멜로밍 OAuth 배포 로그인 핫픽스 — Client ID 임베드 + Companion 토큰 프록시 …",
+  "publishedAt": "2026-07-13T00:00:00Z",
   "critical": false
 }
 ```

@@ -52,6 +52,8 @@ NEXT_PUBLIC_APP_SCHEME=live-mr-manager
 NEXT_PUBLIC_DISCORD_INVITE_URL=https://discord.gg/qfJnk3VJyf
 ```
 
+배포 앱 로그인: **Client Secret은 Vercel에만** 두고, 데스크톱 릴리스는 GitHub secret `MELOMING_CLIENT_ID`만 바이너리에 임베드합니다. 앱은 Secret이 없으면 Companion `/api/oauth/exchange`·`/api/oauth/refresh`로 토큰을 교환합니다.
+
 문의 채널·Discord 서버 설정: [`docs/DISCORD_SETUP.md`](../../docs/DISCORD_SETUP.md)
 
 ## GitHub Issues
@@ -66,10 +68,11 @@ NEXT_PUBLIC_DISCORD_INVITE_URL=https://discord.gg/qfJnk3VJyf
    - **iframe URL**: `https://lmrm.vercel.app/`
    - **Redirect URI**: `https://lmrm.vercel.app/oauth/callback` (끝 `/` 없음, `https`)
 
-## OAuth 상태 (2026-06)
+## OAuth 상태 (2026-07, v0.5.1)
 
 - authorize·code·콜백 분기: 동작
-- `POST /oauth/token`: 멜로밍 서버 500/401 이슈 — **앱 로그인·보내기는 「개발 중」**
+- **배포 앱**: Client ID는 릴리스 바이너리 임베드, Client Secret은 Vercel만 → Companion `/api/oauth/exchange`·`/api/oauth/refresh`
+- `POST /oauth/token` 직접 호출: 로컬 `.env`에 Secret이 있을 때만 (개발). 멜로밍 서버 500/401은 간헐적
 - 웹 `/login`은 OAuth API 검증용 (추후 정리 예정)
 
 상세: [docs/MELOMING_SONGBOOK_INTEGRATION.md](../../docs/MELOMING_SONGBOOK_INTEGRATION.md)

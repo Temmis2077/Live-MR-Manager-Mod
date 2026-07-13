@@ -1,5 +1,21 @@
 # Release Notes
 
+## v0.5.1 (2026-07-13)
+
+멜로밍 OAuth **배포 로그인 핫픽스** — 설치본에서도 Client Secret 없이 로그인 가능.
+
+### 멜로밍 OAuth
+
+- **배포본 Client ID 임베드**: 릴리스 빌드 시 GitHub Actions secret `MELOMING_CLIENT_ID`를 바이너리에 포함합니다. 사용자 PC에 `.env`가 없어도 「멜로밍 로그인」을 시작할 수 있습니다.
+- **Secret은 Companion만**: Client Secret은 앱에 넣지 않습니다. Secret이 없으면 토큰 교환·갱신을 Vercel Companion(`POST /api/oauth/exchange`, `POST /api/oauth/refresh`)으로 자동 사용합니다.
+- **로컬 개발**: `src-tauri/.env`에 Client ID(+선택 Secret)를 두면 됩니다. Secret이 있으면 멜로밍 직접 교환, 없으면 Companion 경로.
+
+### 메타데이터
+
+- `package.json`, `Cargo.toml`, `tauri.conf.json`, UI 타이틀·매뉴얼·README·ToDo·Discord 공지를 **0.5.1**으로 통일.
+
+---
+
 ## v0.5.0 (2026-07-05)
 
 멜로밍 노래책 **가져오기·보내기 재개**, Push 안정화·메타 동기화 고도화, 곡 정보 편집 UI 개선.

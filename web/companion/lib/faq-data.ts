@@ -60,7 +60,7 @@ export const FAQ_ITEMS: FaqItem[] = [
     category: "멜로밍 노래책",
     question: "멜로밍 로그인·보내기가 실패할 때",
     answer:
-      "멜로밍 OAuth 서버에서 500 INTERNAL_ERROR 또는 401 Invalid redirect_uri가 간헐적으로 발생할 수 있습니다. 잠시 후 다시 로그인해 주세요. 지속되면 Discord 또는 GitHub Issues(멜로밍 연동 템플릿)로 문의해 주세요.",
+      "「OAuth 설정이 없습니다」가 뜨면 앱을 **최신 버전(v0.5.1+)**으로 업데이트해 주세요. 그 외에는 멜로밍 OAuth 서버에서 500 INTERNAL_ERROR 또는 401 Invalid redirect_uri가 간헐적으로 발생할 수 있습니다. 잠시 후 다시 로그인해 주세요. 지속되면 Discord 또는 GitHub Issues(멜로밍 연동 템플릿)로 문의해 주세요.",
   },
   {
     id: "push-tips",
