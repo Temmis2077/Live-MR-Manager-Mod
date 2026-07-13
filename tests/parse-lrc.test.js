@@ -1,5 +1,47 @@
 import { describe, expect, it } from 'vitest';
-import { parseLrc, parseMarkers, formatMarkerLine, isTriplet, getSyncText } from '../src/js/lrc-parser.js';
+import { parseLrc, parseMarkers, formatMarkerLine, isTriplet, getSyncText, encodeLrc } from '../src/js/lrc-parser.js';
+
+describe('encodeLrc', () => {
+  it('preserves segment order for partially-synced lyrics (no time-sorting)', () => {
+    // 위쪽 두 줄은 싱크됨, 아래 두 줄은 아직 미싱크(0초) — 저장/재로드 후에도
+    // 미싱크 줄이 위로 올라오지 않고 원래 텍스트 순서가 유지되어야 한다.
+    const segments = [
+      { text: '싱크된 첫 줄', start: 10, end: 15 },
+      { text: '싱크된 둘째 줄', start: 15, end: 0 },
+      { text: '미싱크 셋째 줄', start: 0, end: 0 },
+      { text: '미싱크 넷째 줄', start: 0, end: 0 },
+    ];
+    const content = encodeLrc(segments);
+    const roundTripped = parseLrc(content, 60);
+    expect(roundTripped.map((s) => s.text)).toEqual([
+      '싱크된 첫 줄', '싱크된 둘째 줄', '미싱크 셋째 줄', '미싱크 넷째 줄',
+    ]);
+    expect(roundTripped[0].start).toBeCloseTo(10);
+    expect(roundTripped[2].start).toBe(0);
+  });
+
+  it('appends marker lines at the end and they still parse', () => {
+    const segments = [{ text: '가사', start: 0, end: 0 }];
+    const markers = [formatMarkerLine(12.5, 'vocalstart'), formatMarkerLine(60, 'ilstart'), formatMarkerLine(75, 'ilend')];
+    const content = encodeLrc(segments, markers);
+    const parsedMarkers = parseMarkers(content);
+    expect(parsedMarkers.vocalStartSec).toBeCloseTo(12.5);
+    expect(parsedMarkers.interludes).toHaveLength(1);
+    // 마커 줄이 가사 세그먼트로 새지 않아야 함
+    expect(parseLrc(content, 90).map((s) => s.text)).toEqual(['가사']);
+  });
+
+  it('round-trips triplet cues', () => {
+    const segments = [
+      { text: '原文', original: '原文', pronunciation: '차음', translation: '번역', start: 5, end: 0 },
+    ];
+    const roundTripped = parseLrc(encodeLrc(segments), 30);
+    expect(roundTripped).toHaveLength(1);
+    expect(isTriplet(roundTripped[0])).toBe(true);
+    expect(roundTripped[0].pronunciation).toBe('차음');
+    expect(roundTripped[0].start).toBeCloseTo(5);
+  });
+});
 
 describe('parseLrc', () => {
   it('parses timestamped lines', () => {

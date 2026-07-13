@@ -12,7 +12,7 @@
  */
 import { invoke, listen } from './tauri-bridge.js';
 import { state } from './state.js';
-import { parseLrc, mergeAlignmentResult, getSyncText, isTriplet } from './lrc-parser.js';
+import { parseLrc, mergeAlignmentResult, getSyncText, encodeLrc } from './lrc-parser.js';
 
 let isRunning = false;
 let listenerReady = false;
@@ -77,28 +77,8 @@ async function resolveAlignmentModel() {
     return usable.length > 0 ? usable[0] : null;
 }
 
-/** LRC 세그먼트를 다시 LRC 텍스트로 인코딩 (에디터 saveLrc()의 가사 줄 부분과
- *  동일 포맷 — 마커는 배치 경로에서 손대지 않으므로 원본에서 그대로 보존). */
-function encodeSegmentsToLrc(segments, preservedMarkerLines) {
-    const entries = [];
-    segments.forEach((s) => {
-        const min = Math.floor(s.start / 60).toString().padStart(2, '0');
-        const sec = (s.start % 60).toFixed(2).padStart(5, '0');
-        const ts = `[${min}:${sec}]`;
-        if (isTriplet(s)) {
-            entries.push({ time: s.start, line: `${ts}[orig]${s.original || ''}` });
-            entries.push({ time: s.start, line: `${ts}[pron]${s.pronunciation || ''}` });
-            entries.push({ time: s.start, line: `${ts}[tran]${s.translation || ''}` });
-        } else if ((s.text || '').trim()) {
-            entries.push({ time: s.start, line: `${ts}${s.text}` });
-        }
-    });
-    (preservedMarkerLines || []).forEach((m) => entries.push(m));
-    entries.sort((a, b) => a.time - b.time);
-    return entries.map((e) => e.line).join('\n');
-}
-
-/** 원본 LRC에서 마커 줄([vocalstart]/[ilstart]/[ilend])만 추려 보존용으로 반환. */
+/** 원본 LRC에서 마커 줄([vocalstart]/[ilstart]/[ilend])만 추려 보존용으로 반환.
+ *  인코딩은 공용 encodeLrc(lrc-parser.js) 사용 — 세그먼트 순서 보존. */
 function extractMarkerLines(lrcContent) {
     const markerRegex = /^\[(\d{2}):(\d{2}\.\d{2,3})\]\[(vocalstart|ilstart|ilend)\]\s*$/;
     const lines = (lrcContent || '').replace(/\r\n/g, '\n').split('\n');
@@ -106,8 +86,7 @@ function extractMarkerLines(lrcContent) {
     lines.forEach((line) => {
         const m = markerRegex.exec(line.trim());
         if (m) {
-            const time = parseInt(m[1], 10) * 60 + parseFloat(m[2]);
-            out.push({ time, line: line.trim() });
+            out.push(line.trim());
         }
     });
     return out;
@@ -170,7 +149,7 @@ async function processOne(item) {
     }
 
     // 4. 저장 (마커 줄 보존)
-    const content = encodeSegmentsToLrc(segments, extractMarkerLines(lrcContent));
+    const content = encodeLrc(segments, extractMarkerLines(lrcContent));
     await invoke('save_lrc_file', { audioPath: item.path, content });
 
     // 라이브러리 카드의 가사 보유/싱크 상태 즉시 갱신

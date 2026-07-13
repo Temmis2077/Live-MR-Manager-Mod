@@ -2,7 +2,7 @@ import { showNotification, getThumbnailUrl } from './utils.js';
 import { invoke, listen } from './tauri-bridge.js';
 import { state } from './state.js';
 import { parseLrc } from './lyrics.js';
-import { parseMarkers, formatMarkerLine, isTriplet, getSyncText, getDisplayLines, getShowTranslation, setShowTranslation, mergeAlignmentResult } from './lrc-parser.js';
+import { parseMarkers, formatMarkerLine, isTriplet, getSyncText, getDisplayLines, getShowTranslation, setShowTranslation, mergeAlignmentResult, encodeLrc } from './lrc-parser.js';
 import { getLyricSyncStatus } from './library-filters.js';
 
 export class ForcedAlignmentViewer {
@@ -1913,32 +1913,19 @@ export class ForcedAlignmentViewer {
         try {
             this.isAutoSaving = true;
             this.updateSaveStatus('저장 중...');
-            // Merge lyric lines and standalone time-region markers (vocal
-            // start / interlude bounds) into one time-sorted LRC file.
-            // Triplet cues expand into 3 same-timestamp [orig]/[pron]/[tran]
-            // lines (see lrc-parser.js's parseLrc grouping logic).
-            const entries = [];
-            syncableSegments.forEach((s) => {
-                const min = Math.floor(s.start / 60).toString().padStart(2, '0');
-                const sec = (s.start % 60).toFixed(2).padStart(5, '0');
-                const ts = `[${min}:${sec}]`;
-                if (isTriplet(s)) {
-                    entries.push({ time: s.start, line: `${ts}[orig]${s.original || ''}` });
-                    entries.push({ time: s.start, line: `${ts}[pron]${s.pronunciation || ''}` });
-                    entries.push({ time: s.start, line: `${ts}[tran]${s.translation || ''}` });
-                } else {
-                    entries.push({ time: s.start, line: `${ts}${s.text}` });
-                }
-            });
+            // 가사 줄은 세그먼트 순서 그대로, 마커는 파일 끝에 시간순으로 기록
+            // (encodeLrc 참고 — 시간순 전체 정렬은 미싱크 줄(0초)을 상단으로
+            // 몰아 가사 순서를 뒤섞던 버그가 있어 폐기).
+            const markerEntries = [];
             if (this.state.vocalStartSec != null) {
-                entries.push({ time: this.state.vocalStartSec, line: formatMarkerLine(this.state.vocalStartSec, 'vocalstart') });
+                markerEntries.push({ time: this.state.vocalStartSec, line: formatMarkerLine(this.state.vocalStartSec, 'vocalstart') });
             }
             (this.state.interludes || []).forEach((il) => {
-                entries.push({ time: il.start, line: formatMarkerLine(il.start, 'ilstart') });
-                entries.push({ time: il.end, line: formatMarkerLine(il.end, 'ilend') });
+                markerEntries.push({ time: il.start, line: formatMarkerLine(il.start, 'ilstart') });
+                markerEntries.push({ time: il.end, line: formatMarkerLine(il.end, 'ilend') });
             });
-            entries.sort((a, b) => a.time - b.time);
-            const content = entries.map(e => e.line).join('\n');
+            markerEntries.sort((a, b) => a.time - b.time);
+            const content = encodeLrc(syncableSegments, markerEntries.map(e => e.line));
             await this.invoke('save_lrc_file', { audioPath: this.state.currentPath, content });
 
             // Reflect lyric availability/sync status immediately without a reload.

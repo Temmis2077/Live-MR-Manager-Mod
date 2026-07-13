@@ -175,6 +175,38 @@ export function mergeAlignmentResult(segments, lines) {
   return appliedCount;
 }
 
+/**
+ * Serializes lyric segments (+ optional standalone marker lines) to LRC text.
+ *
+ * 가사 줄은 **세그먼트 순서 그대로** 기록한다 — 시간순으로 정렬하면 미싱크
+ * 줄(전부 00:00.00)이 저장할 때마다 파일 맨 위로 몰려서, 부분 싱크된 곡의
+ * 가사 순서가 저장·재로드 시 뒤섞이는 버그가 있었음. parseLrc는 파일 순서를
+ * 세그먼트 순서로 쓰므로 원래 텍스트 순서가 그대로 보존된다.
+ * 마커 줄([vocalstart]/[ilstart]/[ilend])은 파싱이 위치와 무관하므로
+ * (parseMarkers는 전체 스캔, parseLrc는 마커 전용 줄을 무시) 파일 끝에
+ * 시간순으로 붙인다.
+ *
+ * @param segments 세그먼트 배열 ({text|original/pronunciation/translation, start})
+ * @param markerLines 마커 문자열 배열 (formatMarkerLine 결과), 시간순 정렬됨
+ */
+export function encodeLrc(segments, markerLines = []) {
+  const lines = [];
+  (segments || []).forEach((s) => {
+    const min = Math.floor(s.start / 60).toString().padStart(2, '0');
+    const sec = (s.start % 60).toFixed(2).padStart(5, '0');
+    const ts = `[${min}:${sec}]`;
+    if (isTriplet(s)) {
+      lines.push(`${ts}[orig]${s.original || ''}`);
+      lines.push(`${ts}[pron]${s.pronunciation || ''}`);
+      lines.push(`${ts}[tran]${s.translation || ''}`);
+    } else if ((s.text || '').trim()) {
+      lines.push(`${ts}${s.text}`);
+    }
+  });
+  (markerLines || []).forEach((m) => lines.push(m));
+  return lines.join('\n');
+}
+
 export function parseLrc(lrcContent, duration = 0) {
   if (!lrcContent) return [];
 
