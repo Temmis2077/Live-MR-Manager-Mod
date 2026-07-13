@@ -2,7 +2,7 @@ import { showNotification, getThumbnailUrl } from './utils.js';
 import { invoke, listen } from './tauri-bridge.js';
 import { state } from './state.js';
 import { parseLrc } from './lyrics.js';
-import { parseMarkers, formatMarkerLine, isTriplet, getSyncText, getDisplayLines, getShowTranslation, setShowTranslation, mergeAlignmentResult, encodeLrc } from './lrc-parser.js';
+import { parseMarkers, formatMarkerLine, isTriplet, getSyncText, getDisplayLines, getShowTranslation, setShowTranslation, mergeAlignmentResult, encodeLrc, suggestVocalStartFromSegments } from './lrc-parser.js';
 import { getLyricSyncStatus } from './library-filters.js';
 
 export class ForcedAlignmentViewer {
@@ -36,6 +36,9 @@ export class ForcedAlignmentViewer {
             // 파형 기반 자동감지 후보 (사용자가 수락하기 전까지 별도 표시).
             suggestedInterludes: [],
             suggestedVocalStartSec: null,
+            // 보컬 시작 제안의 출처: 'ai'(정렬 첫 줄) 또는 'waveform'(파형 진폭).
+            // AI 제안이 더 정확(MV 대사/영상 인트로 무시)해 파형 제안보다 우선.
+            suggestedVocalStartSource: null,
             interludeHoverTarget: null,
             interludeResizeTarget: null,
             // 원문/차음/번역 3줄 모드 (일본어 가사 등). 수동 토글, 기본 꺼짐.
@@ -697,6 +700,7 @@ export class ForcedAlignmentViewer {
             this.state.interludes = [];
             this.state.suggestedInterludes = [];
             this.state.suggestedVocalStartSec = null;
+            this.state.suggestedVocalStartSource = null;
             this.state.tripletMode = false;
             const tripletToggleReset = document.getElementById('triplet-mode-toggle');
             if (tripletToggleReset) tripletToggleReset.checked = false;
@@ -1334,6 +1338,7 @@ export class ForcedAlignmentViewer {
         }
         this.state.vocalStartSec = this.state.currentTime;
         this.state.suggestedVocalStartSec = null; // 수동 지정이 자동 제안을 대체
+        this.state.suggestedVocalStartSource = null;
         this.drawWaveform();
         this.markDirtyAndScheduleSave();
         showNotification(`보컬 시작 지점을 ${this.formatTime(this.state.currentTime)}로 지정했습니다.`, 'success');
@@ -1376,7 +1381,9 @@ export class ForcedAlignmentViewer {
         const threshold = peak * 0.08;
 
         // Vocal start candidate: first point sustained above threshold for ~1s.
-        if (this.state.vocalStartSec == null) {
+        // 파형(진폭) 기반 보컬 시작 후보 — AI 정렬 제안이 이미 있으면 그게 더
+        // 정확하므로 덮어쓰지 않는다(정렬 안 한 곡의 폴백 용도).
+        if (this.state.vocalStartSec == null && this.state.suggestedVocalStartSource !== 'ai') {
             const sustainBuckets = Math.max(1, Math.round(1.0 / bucketDur));
             for (let i = 0; i < amps.length - sustainBuckets; i++) {
                 let ok = true;
@@ -1385,6 +1392,7 @@ export class ForcedAlignmentViewer {
                 }
                 if (ok) {
                     this.state.suggestedVocalStartSec = i * bucketDur;
+                    this.state.suggestedVocalStartSource = 'waveform';
                     break;
                 }
             }
@@ -1431,9 +1439,12 @@ export class ForcedAlignmentViewer {
         }
 
         bar.style.display = 'inline-flex';
-        const parts = ['자동 감지:'];
+        // AI 정렬 첫 줄 기준 제안은 "노래 시작"(MV 대사/영상 인트로 제외), 파형 폴백은 "보컬 시작".
+        const isAi = this.state.suggestedVocalStartSource === 'ai';
+        const parts = [isAi ? 'AI 감지:' : '자동 감지:'];
         if (hasVocalSuggestion) {
-            parts.push(`보컬 시작 ${this.formatTime(this.state.suggestedVocalStartSec)}`);
+            const label = isAi ? '노래 시작' : '보컬 시작';
+            parts.push(`${label} ${this.formatTime(this.state.suggestedVocalStartSec)}`);
             parts.push('<button type="button" id="accept-vocal-suggestion" class="marker-suggestion-btn">적용</button>');
         }
         if (interludeCount > 0) {
@@ -1448,6 +1459,7 @@ export class ForcedAlignmentViewer {
             acceptVocal.onclick = () => {
                 this.state.vocalStartSec = this.state.suggestedVocalStartSec;
                 this.state.suggestedVocalStartSec = null;
+                this.state.suggestedVocalStartSource = null;
                 this.updateMarkerSuggestionBar();
                 this.drawWaveform();
                 this.markDirtyAndScheduleSave();
@@ -1468,6 +1480,7 @@ export class ForcedAlignmentViewer {
         if (dismiss) {
             dismiss.onclick = () => {
                 this.state.suggestedVocalStartSec = null;
+                this.state.suggestedVocalStartSource = null;
                 this.state.suggestedInterludes = [];
                 this.updateMarkerSuggestionBar();
                 this.drawWaveform();
@@ -1812,6 +1825,18 @@ export class ForcedAlignmentViewer {
             // 대기열이 이미 LRC로 저장했으므로 여기서 다시 dirty로 만들지 않음.
             this.isDirty = false;
             this.updateSaveStatus('저장됨');
+        }
+        // MV 인트로 자동 감지: 사용자가 보컬 시작을 아직 안 정했으면, 정렬된
+        // 첫 가사 줄 시각을 "노래 시작" 후보로 제안(파형 진폭보다 정확 —
+        // 대사/영상 인트로를 무시). 제안 바에서 원클릭 적용.
+        if (this.state.vocalStartSec == null) {
+            const suggested = suggestVocalStartFromSegments(this.state.segments);
+            if (suggested != null) {
+                this.state.suggestedVocalStartSec = suggested;
+                this.state.suggestedVocalStartSource = 'ai';
+                this.updateMarkerSuggestionBar();
+                this.drawWaveform();
+            }
         }
     }
 

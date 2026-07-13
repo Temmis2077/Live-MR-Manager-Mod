@@ -147,6 +147,25 @@ export function getDisplayLines(seg, scope = 'app') {
 }
 
 /**
+ * 정렬된 세그먼트로부터 "노래 시작(보컬 시작)" 후보 시각을 계산한다.
+ * MV 인트로(영상/대사) 다음에 실제 노래가 시작하는 지점 = 가장 이른 싱크
+ * 줄의 시작 시각. 약간의 리드인을 빼고(leadIn), 인트로가 유의미하게 길 때만
+ * (minSec 이상) 제안한다. 제안할 값이 없으면 null.
+ *  - `minSec`: 이보다 짧은 인트로는 굳이 마커를 만들 필요 없어 무시(기본 3s).
+ *  - `leadIn`: 첫 소리 직전 살짝 앞에서 시작하도록 빼는 여유(기본 0.3s).
+ */
+export function suggestVocalStartFromSegments(segments, { minSec = 3, leadIn = 0.3 } = {}) {
+  if (!Array.isArray(segments)) return null;
+  let earliest = Infinity;
+  for (const s of segments) {
+    const start = s && s.start;
+    if (typeof start === 'number' && start > 0 && start < earliest) earliest = start;
+  }
+  if (!Number.isFinite(earliest) || earliest < minSec) return null;
+  return Math.max(0, earliest - leadIn);
+}
+
+/**
  * Merges AI forced-alignment results into lyric segments. Non-destructive:
  * only segments that are still fully unsynced (start===0 && end===0) are
  * filled in, matched to alignment lines by sync text (차음 for triplets),

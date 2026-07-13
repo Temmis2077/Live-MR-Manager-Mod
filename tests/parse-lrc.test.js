@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseLrc, parseMarkers, formatMarkerLine, isTriplet, getSyncText, encodeLrc } from '../src/js/lrc-parser.js';
+import { parseLrc, parseMarkers, formatMarkerLine, isTriplet, getSyncText, encodeLrc, suggestVocalStartFromSegments } from '../src/js/lrc-parser.js';
 
 describe('encodeLrc', () => {
   it('preserves segment order for partially-synced lyrics (no time-sorting)', () => {
@@ -147,5 +147,39 @@ describe('parseMarkers', () => {
     const segments = parseLrc(lrc, 30);
     expect(segments).toHaveLength(1);
     expect(segments[0].text).toBe('첫 가사');
+  });
+});
+
+describe('suggestVocalStartFromSegments (MV 인트로 감지)', () => {
+  it('suggests the earliest synced start minus a lead-in', () => {
+    const segments = [
+      { text: 'a', start: 12.5, end: 14 },
+      { text: 'b', start: 16, end: 18 },
+    ];
+    expect(suggestVocalStartFromSegments(segments)).toBeCloseTo(12.2);
+  });
+
+  it('ignores unsynced (start 0) segments when finding the earliest', () => {
+    const segments = [
+      { text: 'a', start: 0, end: 0 },
+      { text: 'b', start: 20, end: 22 },
+      { text: 'c', start: 0, end: 0 },
+    ];
+    expect(suggestVocalStartFromSegments(segments)).toBeCloseTo(19.7);
+  });
+
+  it('returns null when the intro is negligible (below the minimum)', () => {
+    const segments = [{ text: 'a', start: 1.2, end: 3 }];
+    expect(suggestVocalStartFromSegments(segments)).toBeNull();
+  });
+
+  it('returns null when nothing is synced', () => {
+    const segments = [{ text: 'a', start: 0, end: 0 }];
+    expect(suggestVocalStartFromSegments(segments)).toBeNull();
+  });
+
+  it('returns null for non-array input', () => {
+    expect(suggestVocalStartFromSegments(null)).toBeNull();
+    expect(suggestVocalStartFromSegments(undefined)).toBeNull();
   });
 });
