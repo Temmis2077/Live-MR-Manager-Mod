@@ -198,6 +198,14 @@ pub const ALIGNMENT_MODELS: &[AlignmentModelSpec] = &[
         model_url: "https://github.com/Temmis2077/Live-MR-Manager/releases/download/ai-align-model-v1/model.onnx",
         tokens_url: "https://github.com/Temmis2077/Live-MR-Manager/releases/download/ai-align-model-v1/tokens.txt",
     },
+    AlignmentModelSpec {
+        id: "wav2vec2-english-lyrics",
+        display_name: "영어 가사 정렬 모델 (팝송, 약 360MB)",
+        // facebook/wav2vec2-base-960h (Apache-2.0) exported to ONNX.
+        // 라틴 char-level vocab (대문자 A–Z, |, <pad>/<unk>).
+        model_url: "https://github.com/Temmis2077/Live-MR-Manager/releases/download/align-model-en-v1/model.onnx",
+        tokens_url: "https://github.com/Temmis2077/Live-MR-Manager/releases/download/align-model-en-v1/tokens.txt",
+    },
 ];
 
 fn find_alignment_model_spec(model_id: &str) -> Option<&'static AlignmentModelSpec> {
@@ -663,6 +671,11 @@ pub struct Aligner {
     space_id: Option<usize>,
     unk_id: usize,
     is_syllable_based: bool,
+    /// vocab이 라틴 문자(대문자 A–Z) 기반인지 — 영어 wav2vec2 CTC 모델.
+    /// 이 경우 토크나이즈는 글자 단위(대문자화), 디코딩은 직결합.
+    is_latin_based: bool,
+    /// vocab에 아포스트로피(`'`)가 있는지 — 영어 축약형(don't) 유지 여부.
+    has_apostrophe: bool,
 }
 
 impl Aligner {
@@ -671,7 +684,8 @@ impl Aligner {
         let reader = BufReader::new(file);
         let mut token_to_id = HashMap::new();
         let mut has_syllables = false;
-        
+        let mut has_latin = false;
+
         for line in reader.lines() {
             let line = line.map_err(|e| e.to_string())?;
             let line = line.trim_end();
@@ -681,14 +695,16 @@ impl Aligner {
                 let id_str = &line[idx + 1..];
                 if let Ok(id) = id_str.parse::<usize>() {
                     token_to_id.insert(token.to_string(), id);
-                    
-                    // 완성형 글자(AC00-D7AF)가 포함되어 있는지 확인
-                    if !has_syllables {
-                        if let Some(c) = token.chars().next() {
-                            let cp = c as u32;
-                            if cp >= 0xAC00 && cp <= 0xD7AF {
-                                has_syllables = true;
-                            }
+
+                    if let Some(c) = token.chars().next() {
+                        let cp = c as u32;
+                        // 완성형 한글(AC00-D7AF) → 음절 기반
+                        if (0xAC00..=0xD7AF).contains(&cp) {
+                            has_syllables = true;
+                        }
+                        // 단일 라틴 대문자 토큰 → 영어 char-level 모델
+                        if token.chars().count() == 1 && c.is_ascii_uppercase() {
+                            has_latin = true;
                         }
                     }
                 }
@@ -703,24 +719,40 @@ impl Aligner {
         let unk_id = token_to_id.get("[UNK]").copied()
             .or_else(|| token_to_id.get("<unk>").copied())
             .unwrap_or(blank_id);
-            
-        Ok(Self { 
-            token_to_id, 
-            blank_id, 
-            space_id, 
-            unk_id, 
-            is_syllable_based: has_syllables 
+        // 라틴 기반은 한글 vocab이 아닐 때만(혼동 방지).
+        let is_latin_based = has_latin && !has_syllables;
+        let has_apostrophe = token_to_id.contains_key("'");
+
+        Ok(Self {
+            token_to_id,
+            blank_id,
+            space_id,
+            unk_id,
+            is_syllable_based: has_syllables,
+            is_latin_based,
+            has_apostrophe,
         })
     }
 
     /// Whether `c` falls in any Hangul Unicode block (syllables, jamo, or
-    /// compatibility jamo) — i.e. something this Korean-only acoustic model
-    /// could plausibly have a real token for.
+    /// compatibility jamo) — i.e. something a Korean acoustic model could
+    /// plausibly have a real token for.
     fn is_hangul_char(c: char) -> bool {
         let cp = c as u32;
         (0xAC00..=0xD7A3).contains(&cp)   // Hangul syllables
             || (0x1100..=0x11FF).contains(&cp) // Hangul jamo
             || (0x3130..=0x318F).contains(&cp) // Hangul compatibility jamo
+    }
+
+    /// 이 vocab(모델)이 음향적으로 표현할 수 있는 "글자"인지.
+    /// 라틴 모델 → 라틴 문자(+아포스트로피), 한글 모델 → 한글. 숫자·문장부호·
+    /// 특수기호·이모지·타 스크립트 문자는 전부 false → tokenize에서 걸러진다.
+    fn is_representable_char(&self, c: char) -> bool {
+        if self.is_latin_based {
+            c.is_ascii_alphabetic() || (self.has_apostrophe && (c == '\'' || c == '\u{2019}'))
+        } else {
+            Self::is_hangul_char(c)
+        }
     }
 
     pub fn tokenize(&self, text: &str) -> (Vec<usize>, Vec<(usize, usize, String)>) {
@@ -730,30 +762,39 @@ impl Aligner {
 
         for (wi, word) in words.iter().enumerate() {
             let start_idx = ids.len();
-            let cleaned_word = word.trim_matches(|c: char| !c.is_alphanumeric());
 
-            // 랩/힙합 가사에 섞인 영어 단어 등 한글이 전혀 없는 단어는 이
-            // 한국어 전용 CTC 모델이 음향적으로 표현할 방법이 없다 — 글자마다
-            // [UNK]로 매핑되는데, 이걸 그대로 강제정렬 대상에 밀어넣으면 실제
-            // 음성 신호와 무관한 프레임을 억지로 소비하며 주변 한글 단어의
-            // 정렬 결과까지 같이 어긋나게 만든다. 이런 단어는 정렬 대상에서
-            // 아예 빼고(zero-width span) 이웃한 정렬된 단어 사이 시간을
-            // 나눠 보간한다(get_word_timestamps).
-            if !cleaned_word.is_empty() && !cleaned_word.chars().any(Self::is_hangul_char) {
+            // 글자 이외 문자 필터: 모델이 표현할 수 있는 글자만 남긴다(양끝뿐
+            // 아니라 단어 중간의 숫자·문장부호·특수기호·타 언어 문자도 제거).
+            // 컬 아포스트로피(’)는 straight(')로 정규화해 vocab과 맞춘다.
+            let filtered: String = word
+                .chars()
+                .filter(|&c| self.is_representable_char(c))
+                .map(|c| if c == '\u{2019}' { '\'' } else { c })
+                .collect();
+
+            // 남는 글자가 없으면(순수 기호/숫자/타 언어 단어) 정렬 대상에서
+            // 제외 — zero-width span으로 두고 get_word_timestamps가 이웃 사이
+            // 시간을 나눠 보간한다. word_spans엔 원문 그대로 보존.
+            if filtered.is_empty() {
                 word_spans.push((start_idx, start_idx, word.to_string()));
                 if wi < words.len() - 1 { if let Some(sid) = self.space_id { ids.push(sid); } }
                 continue;
             }
 
-            if self.is_syllable_based {
-                // 음절 기반: 이미 완성형 한글이 Vocab에 있는 경우
-                for c in cleaned_word.chars() {
-                    let s = c.to_string();
+            if self.is_latin_based {
+                // 영어 char-level: 대문자화 후 글자마다 매핑(vocab이 대문자 A–Z).
+                for c in filtered.chars() {
+                    let s = c.to_ascii_uppercase().to_string();
                     ids.push(*self.token_to_id.get(&s).unwrap_or(&self.unk_id));
                 }
+            } else if self.is_syllable_based {
+                // 음절 기반: 완성형 한글이 vocab에 있는 경우
+                for c in filtered.chars() {
+                    ids.push(*self.token_to_id.get(&c.to_string()).unwrap_or(&self.unk_id));
+                }
             } else {
-                // 자모 기반: 이전과 동일하게 분해
-                let decomposed = cleaned_word.nfd().collect::<String>();
+                // 자모 기반: NFD 분해 후 호환 자모로 매핑
+                let decomposed = filtered.nfd().collect::<String>();
                 for c in decomposed.chars() {
                     let s = self.to_compatibility_jamo(c);
                     ids.push(*self.token_to_id.get(&s).unwrap_or(&self.unk_id));
@@ -910,9 +951,11 @@ impl Aligner {
             } 
         }
         
-        if self.is_syllable_based {
+        if self.is_syllable_based || self.is_latin_based {
+            // 음절-한글 또는 라틴(영어): 토큰을 그대로 직결합(| → 공백).
             parts.join("").replace("|", " ").trim().to_string()
         } else {
+            // 자모-한글: 분해된 자모를 음절로 조립.
             self.assemble_hangul(&parts)
         }
     }
@@ -1061,6 +1104,79 @@ mod aligner_tests {
         let vocab = "[PAD] 0\n[UNK] 1\n  2\n나 3\n는 4\n가 5\n수 6\n다 7\n안 8\n녕 9\n";
         fs::write(&path, vocab).unwrap();
         path
+    }
+
+    /// 영어 wav2vec2 char-level vocab을 모방한 tokens.txt (대문자 A–Z, |, ').
+    fn write_english_vocab(name: &str) -> PathBuf {
+        let path = std::env::temp_dir().join(format!("align_en_vocab_{}_{}.txt", name, std::process::id()));
+        let mut vocab = String::from("<pad> 0\n<s> 1\n</s> 2\n<unk> 3\n| 4\n");
+        let mut id = 5;
+        for c in 'A'..='Z' {
+            vocab.push_str(&format!("{} {}\n", c, id));
+            id += 1;
+        }
+        vocab.push_str(&format!("' {}\n", id));
+        fs::write(&path, vocab).unwrap();
+        path
+    }
+
+    #[test]
+    fn detects_latin_vocab_and_tokenizes_english() {
+        let vocab_path = write_english_vocab("detect");
+        let aligner = Aligner::new(vocab_path.to_str().unwrap()).unwrap();
+        std::fs::remove_file(&vocab_path).ok();
+
+        assert!(aligner.is_latin_based, "대문자 A–Z vocab은 라틴으로 인식돼야 함");
+        assert!(!aligner.is_syllable_based);
+        assert!(aligner.has_apostrophe);
+
+        // 소문자 입력이 대문자로 매핑되고 아포스트로피가 유지되는지
+        let (ids, spans) = aligner.tokenize("don't stop");
+        assert_eq!(spans.len(), 2);
+        // 두 단어 모두 실제 토큰을 생성(zero-width 아님)
+        assert!(spans[0].1 > spans[0].0);
+        assert!(spans[1].1 > spans[1].0);
+        // UNK가 섞이지 않아야 함(전부 vocab에 있는 글자)
+        assert!(!ids.contains(&aligner.unk_id), "표현 가능한 영어 단어에 UNK가 없어야 함");
+    }
+
+    #[test]
+    fn filters_digits_and_symbols_from_words() {
+        let vocab_path = write_english_vocab("filter");
+        let aligner = Aligner::new(vocab_path.to_str().unwrap()).unwrap();
+        std::fs::remove_file(&vocab_path).ok();
+
+        // "2", "♪…", 숫자 섞인 단어 → 글자 외 문자가 걸러짐
+        let (ids, spans) = aligner.tokenize("I have 2 cats ♪");
+        // 단어 4개: I / have / 2 / cats / ♪ → split_whitespace 기준 5개
+        assert_eq!(spans.len(), 5);
+        // "2"와 "♪"는 남는 글자가 없어 zero-width 스킵
+        let two = spans.iter().find(|s| s.2 == "2").unwrap();
+        assert_eq!(two.0, two.1, "순수 숫자 단어는 zero-width");
+        let note = spans.iter().find(|s| s.2 == "♪").unwrap();
+        assert_eq!(note.0, note.1, "순수 특수기호 단어는 zero-width");
+        // "have"/"cats"는 정상 토큰화, UNK 없음
+        assert!(!ids.contains(&aligner.unk_id));
+
+        // 단어 중간 숫자도 제거되는지: "l0ve" → "lve"(전부 vocab에 있어 UNK 없음)
+        let (ids2, spans2) = aligner.tokenize("l0ve");
+        assert!(spans2[0].1 > spans2[0].0);
+        assert!(!ids2.contains(&aligner.unk_id), "단어 중간 숫자가 제거돼 UNK가 없어야 함");
+    }
+
+    #[test]
+    fn korean_char_filter_still_works() {
+        let vocab_path = write_test_vocab("kofilter");
+        let aligner = Aligner::new(vocab_path.to_str().unwrap()).unwrap();
+        std::fs::remove_file(&vocab_path).ok();
+
+        // 한글 모드에서도 숫자·기호가 걸러지고, 순수 기호 단어는 zero-width
+        let (_ids, spans) = aligner.tokenize("나는 123 가수 !!");
+        assert_eq!(spans.len(), 4);
+        let num = spans.iter().find(|s| s.2 == "123").unwrap();
+        assert_eq!(num.0, num.1);
+        let bang = spans.iter().find(|s| s.2 == "!!").unwrap();
+        assert_eq!(bang.0, bang.1);
     }
 
     #[test]

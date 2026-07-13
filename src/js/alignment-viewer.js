@@ -165,6 +165,10 @@ export class ForcedAlignmentViewer {
                         </div>
                         <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px; flex-wrap:wrap;">
                             <button id="ai-align-btn" class="sync-reset-btn" style="background:var(--align-item-active-bg); color:var(--accent-primary); border-color:var(--align-item-active-border);" title="AI 음성인식 모델로 가사와 오디오를 자동 정렬합니다. 노래 음성 특성상 완벽하지 않을 수 있어 결과는 직접 다듬어야 합니다.">AI 자동 정렬</button>
+                            <select id="ai-align-language" title="정렬에 사용할 음성 인식 언어. 가사 언어에 맞게 선택하세요." style="font-size:0.75rem; padding:4px 6px; border-radius:6px; background:var(--align-surface-input); color:var(--align-text-soft); border:1px solid var(--align-item-border);">
+                                <option value="ko">한국어</option>
+                                <option value="en">English</option>
+                            </select>
                             <button id="ai-align-cancel-btn" class="sync-reset-btn" style="display:none;">취소</button>
                             <span id="ai-align-status" style="font-size:0.75rem; color:var(--align-text-soft);"></span>
                         </div>
@@ -217,6 +221,15 @@ export class ForcedAlignmentViewer {
         get('add-interlude-btn').onclick = () => this.addInterludeAtCurrentTime();
         get('ai-align-btn').onclick = () => this.runAiAlignment();
         get('ai-align-cancel-btn').onclick = () => this.cancelAiAlignment();
+
+        // 정렬 언어 토글 — localStorage에 저장(에디터·배치 공용).
+        import('./alignment-model.js').then(({ getAlignmentLanguage, setAlignmentLanguage }) => {
+            const sel = get('ai-align-language');
+            if (sel) {
+                sel.value = getAlignmentLanguage();
+                sel.onchange = () => setAlignmentLanguage(sel.value);
+            }
+        }).catch(() => {});
 
         // 정렬 대기열이 어떤 곡을 끝내면, 그 곡이 지금 에디터에 열려 있을 때
         // 결과(정렬 라인)를 즉시 in-memory 반영해 approx 표시까지 살린다.
@@ -1737,7 +1750,7 @@ export class ForcedAlignmentViewer {
      * the size, rather than downloading silently.
      * @returns {Promise<boolean>} whether a model was successfully downloaded
      */
-    async offerAlignmentModelDownload() {
+    async offerAlignmentModelDownload(lang = null) {
         let downloadable = [];
         try {
             downloadable = await this.invoke('list_downloadable_alignment_models');
@@ -1748,8 +1761,16 @@ export class ForcedAlignmentViewer {
             showNotification('설치된 AI 정렬 모델이 없고, 다운로드 가능한 모델 목록도 비어있습니다.', 'error');
             return false;
         }
-        const [modelId, displayName] = downloadable[0];
-        const proceed = confirm(`AI 정렬 모델이 설치되어 있지 않습니다.\n\n"${displayName}"\n\n이 모델(약 1.2GB)을 다운로드할까요?`);
+        // 선택 언어에 해당하는 다운로드 항목을 고름(없으면 첫 항목).
+        let entry = downloadable[0];
+        if (lang) {
+            const { ALIGNMENT_LANGUAGES } = await import('./alignment-model.js');
+            const wantId = ALIGNMENT_LANGUAGES[lang]?.downloadableId;
+            const matched = downloadable.find(([id]) => id === wantId);
+            if (matched) entry = matched;
+        }
+        const [modelId, displayName] = entry;
+        const proceed = confirm(`AI 정렬 모델이 설치되어 있지 않습니다.\n\n"${displayName}"\n\n이 모델을 다운로드할까요? (다운로드에 시간이 걸릴 수 있습니다)`);
         if (!proceed) return false;
 
         const statusEl = document.getElementById('ai-align-status');
@@ -1823,8 +1844,10 @@ export class ForcedAlignmentViewer {
         const btn = document.getElementById('ai-align-btn');
         const statusEl = document.getElementById('ai-align-status');
 
-        // 모델이 하나도 없으면 다운로드를 먼저 제안(배치 처리기는 프롬프트를 안
-        // 띄우므로 여기서 처리). 있으면 실제 모델 선택은 대기열이 알아서 한다.
+        // 선택한 정렬 언어의 모델이 설치돼 있는지 확인 — 없으면 그 언어 모델
+        // 다운로드를 먼저 제안(배치 처리기는 프롬프트를 안 띄우므로 여기서 처리).
+        const { getAlignmentLanguage, findModelForLanguage } = await import('./alignment-model.js');
+        const lang = getAlignmentLanguage();
         let models = [];
         try {
             models = await this.invoke('get_model_list');
@@ -1832,9 +1855,8 @@ export class ForcedAlignmentViewer {
             showNotification('AI 정렬 모델 목록을 불러오지 못했습니다: ' + err, 'error');
             return;
         }
-        let usableModels = (models || []).filter(m => !m.endsWith('|none'));
-        if (usableModels.length === 0) {
-            const downloaded = await this.offerAlignmentModelDownload();
+        if (!findModelForLanguage(models, lang)) {
+            const downloaded = await this.offerAlignmentModelDownload(lang);
             if (!downloaded) return;
             try {
                 models = await this.invoke('get_model_list');
@@ -1842,9 +1864,8 @@ export class ForcedAlignmentViewer {
                 showNotification('AI 정렬 모델 목록을 불러오지 못했습니다: ' + err, 'error');
                 return;
             }
-            usableModels = (models || []).filter(m => !m.endsWith('|none'));
-            if (usableModels.length === 0) {
-                showNotification('모델 다운로드 후에도 사용 가능한 모델을 찾지 못했습니다.', 'error');
+            if (!findModelForLanguage(models, lang)) {
+                showNotification('모델 다운로드 후에도 선택한 언어의 정렬 모델을 찾지 못했습니다.', 'error');
                 return;
             }
         }

@@ -63,8 +63,8 @@ async function ensureProgressListener() {
     });
 }
 
-/** 정렬 가능한 모델 해석 — 에디터(runAiAlignment)와 동일 규칙. 배치 중에는
- *  다운로드 프롬프트를 띄우지 않고, 모델이 없으면 null을 반환한다. */
+/** 선택한 정렬 언어(localStorage)에 해당하는 설치 모델을 반환. 배치 중에는
+ *  다운로드 프롬프트를 띄우지 않고, 그 언어 모델이 없으면 null. */
 async function resolveAlignmentModel() {
     let models = [];
     try {
@@ -73,8 +73,8 @@ async function resolveAlignmentModel() {
         console.error('[AlignQueue] get_model_list failed:', err);
         return null;
     }
-    const usable = (models || []).filter((m) => !m.endsWith('|none'));
-    return usable.length > 0 ? usable[0] : null;
+    const { getAlignmentLanguage, findModelForLanguage } = await import('./alignment-model.js');
+    return findModelForLanguage(models, getAlignmentLanguage());
 }
 
 /** 원본 LRC에서 마커 줄([vocalstart]/[ilstart]/[ilend])만 추려 보존용으로 반환.
@@ -128,7 +128,7 @@ async function processOne(item) {
     const model = await resolveAlignmentModel();
     if (!model) {
         item.status = 'error';
-        item.error = '정렬 모델이 설치되어 있지 않습니다 (가사 싱크 탭에서 먼저 다운로드하세요).';
+        item.error = '선택한 언어의 정렬 모델이 설치되어 있지 않습니다 (가사 싱크 탭에서 언어를 고르고 먼저 다운로드하세요).';
         return;
     }
 

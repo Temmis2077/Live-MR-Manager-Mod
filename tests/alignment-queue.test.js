@@ -1,6 +1,15 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { mergeAlignmentResult } from '../src/js/lrc-parser.js';
 
+// alignment-model.js(언어→모델 매핑)가 localStorage를 읽으므로 스텁 제공.
+// 기본 'ko'라, get_model_list 목은 한국어 폴더명이 포함된 경로를 돌려줘야 매칭됨.
+const lsStore = {};
+globalThis.localStorage = {
+  getItem: (k) => (k in lsStore ? lsStore[k] : null),
+  setItem: (k, v) => { lsStore[k] = String(v); },
+  removeItem: (k) => { delete lsStore[k]; },
+};
+
 // alignment-queue.js가 끌어오는 앱 전역 의존성(tauri invoke, state, UI 갱신)을
 // 전부 목으로 대체 — 순차 처리 로직만 격리해서 검증한다.
 vi.mock('../src/js/tauri-bridge.js', () => ({
@@ -100,7 +109,7 @@ describe('alignment queue sequential processor', () => {
         case 'load_lrc_file':
           return lrcByPath[args.audioPath] ?? '';
         case 'get_model_list':
-          return ['한국어 모델|/models/dir'];
+          return ['한국어 모델|/models/wav2vec2-korean-lyrics'];
         case 'run_forced_alignment': {
           log.push(`align-start:${args.audioPath}`);
           await new Promise((r) => setTimeout(r, 20));
@@ -175,7 +184,7 @@ describe('alignment queue sequential processor', () => {
         case 'load_lrc_file':
           return '[00:00.00]가사 한 줄';
         case 'get_model_list':
-          return ['모델|/dir'];
+          return ['한국어 모델|/models/wav2vec2-korean-lyrics'];
         case 'run_forced_alignment':
           // 첫 곡의 정렬을 게이트로 붙잡아 "진행 중" 상태를 유지
           if (args.audioPath === 'first') await firstGate;
@@ -216,7 +225,7 @@ describe('alignment queue sequential processor', () => {
         case 'load_lrc_file':
           return '[00:00.00]가사';
         case 'get_model_list':
-          return ['모델|/dir'];
+          return ['한국어 모델|/models/wav2vec2-korean-lyrics'];
         case 'run_forced_alignment':
           return { lines: [{ text: '가사', start_ms: 500, end_ms: 1500 }] };
         case 'save_lrc_file':
