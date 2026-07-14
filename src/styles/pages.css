@@ -677,3 +677,194 @@ html[data-theme="sky"] .task-progress-container {
 html[data-theme="dark"] .overlay-preview-wrapper::before {
   opacity: 0.14;
 }
+
+/* ── 플레이리스트 ─────────────────────────────────────────────── */
+
+/* 우클릭 "플레이리스트에 추가" 팝업 */
+.playlist-popup {
+  position: fixed;
+  z-index: 10040;
+  min-width: 200px;
+  max-width: 280px;
+  background: var(--menu-bg);
+  backdrop-filter: blur(25px);
+  border: 1px solid var(--glass-border);
+  border-radius: 10px;
+  padding: 6px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
+}
+
+.playlist-popup-title {
+  padding: 6px 10px 8px;
+  font-size: 0.65rem;
+  font-weight: 800;
+  color: var(--text-dim);
+  letter-spacing: 1px;
+  border-bottom: 1px solid var(--glass-border);
+  margin-bottom: 4px;
+}
+
+.playlist-popup-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  color: var(--text-main, #e2e8f0);
+  cursor: pointer;
+}
+
+.playlist-popup-item:hover {
+  background: rgb(var(--accent-rgb) / 0.12);
+}
+
+.playlist-popup-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.playlist-popup-count {
+  font-size: 0.7rem;
+  color: var(--text-dim);
+  flex-shrink: 0;
+}
+
+.playlist-popup-new {
+  color: var(--accent-primary);
+  border-top: 1px solid var(--glass-border);
+  border-radius: 0 0 8px 8px;
+  margin-top: 4px;
+}
+
+.playlist-popup-empty {
+  padding: 10px;
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  text-align: center;
+}
+
+.playlist-name-input {
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--glass-border);
+  background: var(--surface-2, rgba(255,255,255,0.05));
+  color: var(--text-main, #e2e8f0);
+  font-size: 0.9rem;
+}
+
+.playlist-name-input:focus {
+  outline: none;
+  border-color: var(--accent-primary);
+}
+
+/* 플레이리스트 페이지 */
+.playlist-index-header,
+.playlist-detail-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 12px 0 16px;
+}
+
+.playlist-detail-header h2 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.playlist-index-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.playlist-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 12px;
+  border: 1px solid var(--glass-border);
+  background: var(--surface-2, rgba(255,255,255,0.04));
+  cursor: pointer;
+  transition: border-color 0.15s, transform 0.15s;
+}
+
+.playlist-card:hover {
+  border-color: var(--accent-primary);
+  transform: translateY(-2px);
+}
+
+.playlist-card-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+  background: rgb(var(--accent-rgb) / 0.15);
+  color: var(--accent-primary);
+  font-size: 1.2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.playlist-card-name {
+  font-weight: 700;
+  font-size: 0.9rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.playlist-card-count {
+  font-size: 0.72rem;
+  color: var(--text-dim);
+}
+
+.playlist-track-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.playlist-track-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--glass-border);
+  background: var(--surface-2, rgba(255,255,255,0.03));
+}
+
+.playlist-track-thumb {
+  width: 36px;
+  height: 36px;
+  border-radius: 6px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.playlist-track-meta {
+  flex: 1;
+  min-width: 0;
+}
+
+.playlist-track-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.playlist-track-artist {
+  font-size: 0.72rem;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

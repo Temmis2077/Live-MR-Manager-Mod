@@ -613,6 +613,23 @@ export function showSongContextMenu(e, song, originalIndex) {
     invoke('remote_js_log', { msg: `[Menu LyricsView Init] menuLyricsView is null!` }).catch(() => {});
   }
 
+  const menuAddToPlaylist = document.getElementById("menu-add-to-playlist");
+  if (menuAddToPlaylist) {
+    menuAddToPlaylist.style.display = "block";
+    menuAddToPlaylist.onclick = async () => {
+      // 메뉴 위치 근처에 플리 선택 팝업을 띄운다 (스포티파이 스타일).
+      const rect = elements.contextMenu.getBoundingClientRect();
+      elements.contextMenu.classList.remove("active");
+      elements.contextMenu.style.display = 'none';
+      try {
+        const { openAddToPlaylistPopup } = await import('../playlists.js');
+        openAddToPlaylistPopup(song, rect.left, rect.top);
+      } catch (err) {
+        console.error("[Menu-AddToPlaylist] failed:", err);
+      }
+    };
+  }
+
   if (menuEdit) {
     invoke('remote_js_log', { msg: `[Menu Edit Init] Setting onclick handler` }).catch(() => {});
     menuEdit.onclick = async () => {

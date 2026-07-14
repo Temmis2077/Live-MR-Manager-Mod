@@ -7,6 +7,10 @@
 
 const isTauri = !!window.__TAURI__;
 
+// 브라우저(목) 모드 전용 플레이리스트 인메모리 저장소 — 실제 앱은 SQLite 사용.
+const mockPlaylists = [];
+let mockPlaylistSeq = 0;
+
 if (!isTauri) {
   console.warn("[Tauri-Bridge] window.__TAURI__ is not defined. Running in Browser/Mock mode.");
 }
@@ -20,11 +24,41 @@ export async function invoke(command, args = {}) {
   }
   
   console.log(`[Mock-Invoke] ${command}`, args);
-  
+
   // Provide mock responses for common initialization calls
   switch (command) {
     case 'load_library':
       return [];
+    // 플레이리스트 — 브라우저 모드에서 UI 흐름을 시험할 수 있게 인메모리 목 제공
+    case 'get_playlists':
+      return mockPlaylists.map((p) => ({ id: p.id, name: p.name, track_count: p.tracks.length }));
+    case 'create_playlist': {
+      const id = ++mockPlaylistSeq;
+      mockPlaylists.push({ id, name: args.name, tracks: [] });
+      return id;
+    }
+    case 'rename_playlist': {
+      const p = mockPlaylists.find((x) => x.id === args.playlistId);
+      if (p) p.name = args.name;
+      return;
+    }
+    case 'delete_playlist': {
+      const i = mockPlaylists.findIndex((x) => x.id === args.playlistId);
+      if (i !== -1) mockPlaylists.splice(i, 1);
+      return;
+    }
+    case 'add_track_to_playlist': {
+      const p = mockPlaylists.find((x) => x.id === args.playlistId);
+      if (p && !p.tracks.includes(args.path)) p.tracks.push(args.path);
+      return;
+    }
+    case 'remove_track_from_playlist': {
+      const p = mockPlaylists.find((x) => x.id === args.playlistId);
+      if (p) p.tracks = p.tracks.filter((t) => t !== args.path);
+      return;
+    }
+    case 'get_playlist_track_paths':
+      return (mockPlaylists.find((x) => x.id === args.playlistId)?.tracks || []).slice();
     case 'check_model_ready':
       return false;
     case 'get_gpu_recommendation':

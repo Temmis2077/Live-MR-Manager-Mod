@@ -98,6 +98,20 @@
         </i>
         <span>멜로밍</span>
       </div>
+      <div class="nav-item" id="nav-playlists">
+        <i>
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="8" y1="6" x2="21" y2="6"></line>
+            <line x1="8" y1="12" x2="21" y2="12"></line>
+            <line x1="8" y1="18" x2="13" y2="18"></line>
+            <path d="M17 15v5.5a1.5 1.5 0 1 0 1 .5V16l3-1v-3z" fill="currentColor" stroke="none"></path>
+            <circle cx="4" cy="6" r="1" fill="currentColor" stroke="none"></circle>
+            <circle cx="4" cy="12" r="1" fill="currentColor" stroke="none"></circle>
+            <circle cx="4" cy="18" r="1" fill="currentColor" stroke="none"></circle>
+          </svg>
+        </i>
+        <span>플레이리스트</span>
+      </div>
     </div>
 
     <div class="nav-group secondary">
@@ -1002,6 +1016,11 @@
           </div>
         </div>
 
+        <!-- 플레이리스트 페이지: 플리 목록 ↔ 선택한 플리의 곡 목록 (playlists.js가 렌더) -->
+        <div class="tab-content" id="playlists-page" style="display: none; padding: 0 30px 30px 30px;">
+          <div id="playlists-container"></div>
+        </div>
+
         <!-- Lyric Sync 모듈 섹션 -->
         <div class="tab-content" id="alignment-page" style="display: none; height: 100%;">
           <div id="alignment-viewer-root" style="height: 100%;"></div>
@@ -1194,6 +1213,7 @@
     <div class="context-menu-item" id="menu-lyrics-view">가사보기</div>
     <div class="context-menu-item" id="menu-separate">MR 분리</div>
     <div class="context-menu-item" id="menu-delete-mr">MR 삭제</div>
+    <div class="context-menu-item" id="menu-add-to-playlist">플레이리스트에 추가</div>
     <div class="context-menu-item" id="menu-edit">정보 수정</div>
     <div class="context-menu-item" id="menu-delete">삭제</div>
     <div class="context-menu-separator" id="menu-input-separator"></div>

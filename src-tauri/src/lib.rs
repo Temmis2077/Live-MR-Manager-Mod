@@ -15,6 +15,7 @@ mod metadata_fetcher;
 pub mod audio;
 pub mod onnx_engine;
 mod library;
+mod playlists;
 mod meloming;
 mod key_bpm;
 mod audio_commands;
@@ -150,7 +151,11 @@ pub fn run() {
             model_commands::add_custom_model,
             model_commands::remove_custom_model,
             library::add_category, library::delete_category,
-            library::delete_song, library::map_track_to_categories, 
+            library::delete_song, library::map_track_to_categories,
+            playlists::get_playlists, playlists::create_playlist,
+            playlists::rename_playlist, playlists::delete_playlist,
+            playlists::add_track_to_playlist, playlists::remove_track_from_playlist,
+            playlists::get_playlist_track_paths,
             system::get_app_paths, 
             system::export_backup, 
             system::import_backup,
