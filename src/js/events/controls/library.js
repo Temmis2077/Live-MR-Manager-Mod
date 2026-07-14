@@ -149,6 +149,12 @@ export function initLibraryListeners(updateViewMode) {
       if (popover) popover.classList.remove("active");
     }
 
+    // 컨트롤바 현재 곡 메뉴(⋮)도 바깥 클릭 시 닫기
+    if (!e.target.closest(".dock-more")) {
+      const morePopover = document.getElementById("dock-more-popover");
+      if (morePopover) morePopover.classList.remove("active");
+    }
+
     const card = e.target.closest(".song-card");
     const dock = e.target.closest(".control-dock");
     const modal = e.target.closest(".modal-content");
