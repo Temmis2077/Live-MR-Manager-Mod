@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { filterSongLibrary, getLyricSyncStatus, filterByPlaylist } from '../src/js/library-filters.js';
+import { filterSongLibrary, getLyricSyncStatus } from '../src/js/library-filters.js';
 
 const sampleSongs = [
   { title: 'Alpha', artist: 'A', source: 'youtube', genre: 'POP', dateAdded: 2, playCount: 1, path: 'a', lyricSyncStatus: 'synced' },
@@ -42,29 +42,5 @@ describe('getLyricSyncStatus', () => {
     expect(getLyricSyncStatus({ hasLyrics: true })).toBe('unsynced');
     expect(getLyricSyncStatus({ hasLyrics: false })).toBe('none');
     expect(getLyricSyncStatus(null)).toBe('none');
-  });
-});
-
-describe('filterByPlaylist', () => {
-  const lib = [
-    { path: 'a.mp3', title: 'A' },
-    { path: 'b.mp3', title: 'B' },
-    { path: 'c.mp3', title: 'C' },
-  ];
-
-  it('returns songs in playlist order, not library order', () => {
-    const out = filterByPlaylist(lib, ['c.mp3', 'a.mp3']);
-    expect(out.map((s) => s.title)).toEqual(['C', 'A']);
-  });
-
-  it('skips paths no longer in the library', () => {
-    const out = filterByPlaylist(lib, ['b.mp3', 'deleted.mp3']);
-    expect(out.map((s) => s.title)).toEqual(['B']);
-  });
-
-  it('handles empty/invalid inputs', () => {
-    expect(filterByPlaylist(lib, [])).toEqual([]);
-    expect(filterByPlaylist(null, ['a.mp3'])).toEqual([]);
-    expect(filterByPlaylist(lib, null)).toEqual([]);
   });
 });

@@ -33,17 +33,6 @@ export function getLyricSyncStatus(song) {
   return has ? "unsynced" : "none";
 }
 
-/**
- * 플레이리스트 경로 목록(추가 순서)에 맞춰 라이브러리 곡을 골라 반환.
- * 순서는 paths(플레이리스트 position 순)를 따르고, 라이브러리에서 삭제돼
- * 더 이상 없는 경로는 건너뛴다.
- */
-export function filterByPlaylist(library, paths) {
-  if (!Array.isArray(library) || !Array.isArray(paths)) return [];
-  const byPath = new Map(library.map((s) => [s && s.path, s]));
-  return paths.map((p) => byPath.get(p)).filter(Boolean);
-}
-
 export function filterSongLibrary(songs, {
   query = "",
   genreFilter = "all",

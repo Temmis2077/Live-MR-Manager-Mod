@@ -194,19 +194,6 @@ fn init_db(conn: &mut Connection, app_dir: &PathBuf) {
             FOREIGN KEY(track_id) REFERENCES Tracks(id) ON DELETE CASCADE,
             FOREIGN KEY(tag_id) REFERENCES Tags(id) ON DELETE CASCADE
          );
-         CREATE TABLE IF NOT EXISTS Playlists (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            created_at INTEGER
-         );
-         CREATE TABLE IF NOT EXISTS Playlist_Track_Map (
-            playlist_id INTEGER,
-            track_id INTEGER,
-            position INTEGER DEFAULT 0,
-            PRIMARY KEY(playlist_id, track_id),
-            FOREIGN KEY(playlist_id) REFERENCES Playlists(id) ON DELETE CASCADE,
-            FOREIGN KEY(track_id) REFERENCES Tracks(id) ON DELETE CASCADE
-         );
          CREATE TABLE IF NOT EXISTS Settings (
             key TEXT PRIMARY KEY,
             value TEXT

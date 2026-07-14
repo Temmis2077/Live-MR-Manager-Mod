@@ -71,11 +71,6 @@ export function switchTab(tabId) {
   if (elements.settingsPage) elements.settingsPage.style.display = tabId === "settings" ? "block" : "none";
   if (elements.tasksPage) elements.tasksPage.style.display = tabId === "tasks" ? "block" : "none";
   if (elements.overlayPage) elements.overlayPage.style.display = tabId === "overlay" ? "block" : "none";
-  const playlistsPage = document.getElementById("playlists-page");
-  if (playlistsPage) playlistsPage.style.display = tabId === "playlists" ? "block" : "none";
-  if (tabId === "playlists") {
-    import('../playlists.js').then(({ renderPlaylistsPage }) => renderPlaylistsPage());
-  }
 
   // Lyric Drawer control: Only show on music tabs
   if (elements.lyricDrawerTrigger) {
@@ -185,8 +180,7 @@ function getTabTitle(tabId) {
     settings: "설정",
     overlay: "OBS 오버레이",
     tasks: "AI 프로세싱",
-    alignment: "가사 싱크",
-    playlists: "플레이리스트"
+    alignment: "가사 싱크"
   };
   return titles[tabId] || "라이브러리";
 }
@@ -200,8 +194,7 @@ function getTabSubtitle(tabId) {
     settings: "애플리케이션 설정을 관리합니다.",
     overlay: "방송에 송출될 오버레이의 실시간 미리보기입니다.",
     tasks: "AI 작업 진행 상태를 확인합니다.",
-    alignment: "가사 싱크를 조정하고 저장합니다.",
-    playlists: "곡을 우클릭해 플레이리스트에 담고, 여기서 관리·재생합니다."
+    alignment: "가사 싱크를 조정하고 저장합니다."
   };
   return subtitles[tabId] || "";
 }

@@ -42,10 +42,10 @@ function renderPendingList() {
     } else {
         list.innerHTML = pendingSongs.map((m, i) => `
             <div class="addsong-pending-row">
-                <img class="playlist-track-thumb" src="${getThumbnailUrl(m.thumbnail) || ''}" onerror="this.style.visibility='hidden'">
-                <div class="playlist-track-meta">
-                    <div class="playlist-track-title">${esc(m.title || m.path)}</div>
-                    <div class="playlist-track-artist">${esc(m.artist || '')}</div>
+                <img class="addsong-thumb" src="${getThumbnailUrl(m.thumbnail) || ''}" onerror="this.style.visibility='hidden'">
+                <div class="addsong-meta">
+                    <div class="addsong-song-title">${esc(m.title || m.path)}</div>
+                    <div class="addsong-song-artist">${esc(m.artist || '')}</div>
                 </div>
                 <button type="button" class="marker-delete-btn" data-remove="${i}" title="목록에서 제거">×</button>
             </div>
@@ -251,7 +251,7 @@ export async function openAddSongModal(prefillLocalPaths = null) {
             <div class="addsong-section">
                 <div class="addsong-section-title">1. 소스</div>
                 <div class="addsong-source-row">
-                    <input type="text" id="addsong-yt-url" class="playlist-name-input" placeholder="YouTube URL을 입력하세요" spellcheck="false" style="flex:1;">
+                    <input type="text" id="addsong-yt-url" class="addsong-input" placeholder="YouTube URL을 입력하세요" spellcheck="false" style="flex:1;">
                     <button type="button" class="sync-reset-btn" id="addsong-yt-fetch">가져오기</button>
                     <span class="addsong-or">또는</span>
                     <button type="button" class="sync-reset-btn" id="addsong-local-pick">로컬 파일 선택…</button>
@@ -262,11 +262,11 @@ export async function openAddSongModal(prefillLocalPaths = null) {
             <div class="addsong-section">
                 <div class="addsong-section-title">2. 곡 정보 <span class="addsong-hint">(비워두면 자동 메타데이터 사용)</span></div>
                 <div class="addsong-grid">
-                    <input type="text" id="addsong-title" class="playlist-name-input" placeholder="제목">
-                    <input type="text" id="addsong-artist" class="playlist-name-input" placeholder="아티스트">
-                    <input type="text" id="addsong-genre" class="playlist-name-input" placeholder="장르" list="addsong-genre-list">
-                    <input type="text" id="addsong-category" class="playlist-name-input" placeholder="카테고리" list="addsong-category-list">
-                    <input type="text" id="addsong-tags" class="playlist-name-input" placeholder="태그 (쉼표로 구분)" style="grid-column: span 2;">
+                    <input type="text" id="addsong-title" class="addsong-input" placeholder="제목">
+                    <input type="text" id="addsong-artist" class="addsong-input" placeholder="아티스트">
+                    <input type="text" id="addsong-genre" class="addsong-input" placeholder="장르" list="addsong-genre-list">
+                    <input type="text" id="addsong-category" class="addsong-input" placeholder="카테고리" list="addsong-category-list">
+                    <input type="text" id="addsong-tags" class="addsong-input" placeholder="태그 (쉼표로 구분)" style="grid-column: span 2;">
                 </div>
                 <datalist id="addsong-genre-list"></datalist>
                 <datalist id="addsong-category-list"></datalist>
@@ -287,7 +287,7 @@ export async function openAddSongModal(prefillLocalPaths = null) {
                     <textarea id="addsong-lyrics" class="addsong-lyrics" rows="5" placeholder="가사를 붙여넣으세요 (한 줄 = 한 소절). 등록 후 AI가 자동으로 싱크 초안을 잡습니다." spellcheck="false"></textarea>
                     <div class="addsong-source-row" style="margin-top:6px;">
                         <span class="addsong-hint">정렬 언어:</span>
-                        <select id="addsong-align-lang" class="playlist-name-input" style="width:auto;">
+                        <select id="addsong-align-lang" class="addsong-input" style="width:auto;">
                             <option value="ko">한국어</option>
                             <option value="en">English</option>
                             <option value="rap">랩/혼합 (한+영)</option>

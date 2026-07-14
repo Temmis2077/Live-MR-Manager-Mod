@@ -413,12 +413,6 @@ pub async fn map_track_to_categories(track_id: i64, category_ids: Vec<i64>) -> R
 #[tauri::command]
 pub async fn delete_song(path: String) -> Result<(), String> {
     let db = DB.lock();
-    // 플레이리스트 매핑 정리 — FK CASCADE는 PRAGMA foreign_keys 활성화에
-    // 의존하므로 다른 맵 테이블과 무관하게 명시적으로 지운다.
-    db.execute(
-        "DELETE FROM Playlist_Track_Map WHERE track_id = (SELECT id FROM Tracks WHERE path = ?)",
-        params![path],
-    ).ok();
     db.execute("DELETE FROM Tracks WHERE path = ?", params![path]).map_err(|e| {
         let _ = crate::audio_player::sys_log(&format!("[Command] [Error] delete_song failed: {}", e));
         to_sqlite_err(e)
