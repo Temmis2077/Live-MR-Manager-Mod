@@ -168,9 +168,10 @@ export class ForcedAlignmentViewer {
                         </div>
                         <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px; flex-wrap:wrap;">
                             <button id="ai-align-btn" class="sync-reset-btn" style="background:var(--align-item-active-bg); color:var(--accent-primary); border-color:var(--align-item-active-border);" title="AI 음성인식 모델로 가사와 오디오를 자동 정렬합니다. 노래 음성 특성상 완벽하지 않을 수 있어 결과는 직접 다듬어야 합니다.">AI 자동 정렬</button>
-                            <select id="ai-align-language" title="정렬에 사용할 음성 인식 언어. 가사 언어에 맞게 선택하세요." style="font-size:0.75rem; padding:4px 6px; border-radius:6px; background:var(--align-surface-input); color:var(--align-text-soft); border:1px solid var(--align-item-border);">
+                            <select id="ai-align-language" title="정렬에 사용할 음성 인식 언어. 가사 언어에 맞게 선택하세요. 랩/혼합은 한국어·영어 모델을 모두 사용해 줄마다 우세 언어 결과를 채택합니다 (정렬 시간 2배)." style="font-size:0.75rem; padding:4px 6px; border-radius:6px; background:var(--align-surface-input); color:var(--align-text-soft); border:1px solid var(--align-item-border);">
                                 <option value="ko">한국어</option>
                                 <option value="en">English</option>
+                                <option value="rap">랩/혼합 (한+영)</option>
                             </select>
                             <button id="ai-align-cancel-btn" class="sync-reset-btn" style="display:none;">취소</button>
                             <span id="ai-align-status" style="font-size:0.75rem; color:var(--align-text-soft);"></span>
@@ -1871,7 +1872,8 @@ export class ForcedAlignmentViewer {
 
         // 선택한 정렬 언어의 모델이 설치돼 있는지 확인 — 없으면 그 언어 모델
         // 다운로드를 먼저 제안(배치 처리기는 프롬프트를 안 띄우므로 여기서 처리).
-        const { getAlignmentLanguage, findModelForLanguage } = await import('./alignment-model.js');
+        // 랩/혼합 모드는 한국어·영어 모델이 모두 필요해 언어별로 각각 확인한다.
+        const { getAlignmentLanguage, findModelForLanguage, requiredLanguagesFor } = await import('./alignment-model.js');
         const lang = getAlignmentLanguage();
         let models = [];
         try {
@@ -1880,8 +1882,9 @@ export class ForcedAlignmentViewer {
             showNotification('AI 정렬 모델 목록을 불러오지 못했습니다: ' + err, 'error');
             return;
         }
-        if (!findModelForLanguage(models, lang)) {
-            const downloaded = await this.offerAlignmentModelDownload(lang);
+        for (const requiredLang of requiredLanguagesFor(lang)) {
+            if (findModelForLanguage(models, requiredLang)) continue;
+            const downloaded = await this.offerAlignmentModelDownload(requiredLang);
             if (!downloaded) return;
             try {
                 models = await this.invoke('get_model_list');
@@ -1889,7 +1892,7 @@ export class ForcedAlignmentViewer {
                 showNotification('AI 정렬 모델 목록을 불러오지 못했습니다: ' + err, 'error');
                 return;
             }
-            if (!findModelForLanguage(models, lang)) {
+            if (!findModelForLanguage(models, requiredLang)) {
                 showNotification('모델 다운로드 후에도 선택한 언어의 정렬 모델을 찾지 못했습니다.', 'error');
                 return;
             }

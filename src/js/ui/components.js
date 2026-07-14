@@ -283,6 +283,8 @@ function renderAlignmentQueue() {
     if (status) {
       let text = statusMap[item.status] || item.status;
       if (isPreparing) text = '준비 중 (모델 로드)';
+      // 랩/혼합(듀얼 모델) 모드: 몇 번째 패스인지 표기 (예: "정렬 중 (1/2)")
+      if (item.status === 'processing' && !isPreparing && item.passLabel) text = `정렬 중 (${item.passLabel})`;
       if (item.status === 'error' && item.error) text = `오류: ${item.error}`;
       if (item.status === 'done' && item.note) text = `완료 (${item.note})`;
       status.textContent = text;

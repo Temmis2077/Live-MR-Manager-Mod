@@ -63,17 +63,20 @@ async function ensureProgressListener() {
             return;
         }
         if (Number.isFinite(p)) {
-            // 실제 추론 진행률 도착 → 정렬 단계로 전환.
+            // 실제 추론 진행률 도착 → 정렬 단계로 전환. 듀얼(랩/혼합) 모드는
+            // 패스마다 offset/scale을 걸어 전체 0~100%로 이어 보이게 한다.
             item.phase = 'aligning';
-            item.percentage = Math.max(0, Math.min(100, p));
+            const scaled = (item.progressOffset || 0) + p * (item.progressScale || 1);
+            item.percentage = Math.max(0, Math.min(100, scaled));
             notifyQueueChanged();
         }
     });
 }
 
-/** 선택한 정렬 언어(localStorage)에 해당하는 설치 모델을 반환. 배치 중에는
- *  다운로드 프롬프트를 띄우지 않고, 그 언어 모델이 없으면 null. */
-async function resolveAlignmentModel() {
+/** 선택한 정렬 언어(localStorage)에 필요한 설치 모델들을 언어별로 반환.
+ *  단일 언어는 1개, 랩/혼합은 ko+en 2개. 하나라도 없으면 null(배치 중에는
+ *  다운로드 프롬프트를 띄우지 않음). 반환: [{lang, model}] */
+async function resolveAlignmentModels() {
     let models = [];
     try {
         models = await invoke('get_model_list');
@@ -81,8 +84,15 @@ async function resolveAlignmentModel() {
         console.error('[AlignQueue] get_model_list failed:', err);
         return null;
     }
-    const { getAlignmentLanguage, findModelForLanguage } = await import('./alignment-model.js');
-    return findModelForLanguage(models, getAlignmentLanguage());
+    const { getAlignmentLanguage, findModelForLanguage, requiredLanguagesFor } = await import('./alignment-model.js');
+    const langs = requiredLanguagesFor(getAlignmentLanguage());
+    const resolved = [];
+    for (const lang of langs) {
+        const model = findModelForLanguage(models, lang);
+        if (!model) return null;
+        resolved.push({ lang, model });
+    }
+    return resolved;
 }
 
 /** 원본 LRC에서 마커 줄([vocalstart]/[ilstart]/[ilend])만 추려 보존용으로 반환.
@@ -133,22 +143,43 @@ async function processOne(item) {
     }
 
     // 2. 모델 확인 (없으면 이 항목만 실패 — 배치 중 다운로드 프롬프트 없음)
-    const model = await resolveAlignmentModel();
-    if (!model) {
+    //    랩/혼합 모드는 한국어+영어 모델이 둘 다 있어야 한다.
+    const modelSpecs = await resolveAlignmentModels();
+    if (!modelSpecs) {
         item.status = 'error';
-        item.error = '선택한 언어의 정렬 모델이 설치되어 있지 않습니다 (가사 싱크 탭에서 언어를 고르고 먼저 다운로드하세요).';
+        item.error = '선택한 언어의 정렬 모델이 설치되어 있지 않습니다 (가사 싱크 탭에서 언어를 고르고 먼저 다운로드하세요. 랩/혼합은 한국어·영어 모델이 모두 필요합니다).';
         return;
     }
 
     // 3. 강제정렬 실행 (백엔드 락이 에디터 단발 실행과의 동시성도 직렬화)
-    const result = await invoke('run_forced_alignment', {
-        audioPath: item.path,
-        lyrics: allTexts.join('\n'),
-        modelName: model,
-        language: 'ko',
-    });
+    //    단일 언어는 1패스, 랩/혼합은 언어별 2패스 후 줄 단위 병합.
+    const passResults = [];
+    for (let pi = 0; pi < modelSpecs.length; pi++) {
+        const { lang, model } = modelSpecs[pi];
+        // 듀얼 모드 진행률: 패스1 = 0~50%, 패스2 = 50~100%.
+        item.progressOffset = (100 / modelSpecs.length) * pi;
+        item.progressScale = 1 / modelSpecs.length;
+        item.passLabel = modelSpecs.length > 1 ? `${pi + 1}/${modelSpecs.length}` : null;
+        notifyQueueChanged();
+        const result = await invoke('run_forced_alignment', {
+            audioPath: item.path,
+            lyrics: allTexts.join('\n'),
+            modelName: model,
+            language: lang,
+        });
+        passResults.push((result && result.lines) || []);
+    }
+    item.progressOffset = 0;
+    item.progressScale = 1;
+    item.passLabel = null;
 
-    const lines = (result && result.lines) || [];
+    let lines;
+    if (passResults.length === 2) {
+        const { mergeDualAlignmentLines } = await import('./alignment-model.js');
+        lines = mergeDualAlignmentLines(passResults[0], passResults[1]);
+    } else {
+        lines = passResults[0] || [];
+    }
     const appliedCount = mergeAlignmentResult(segments, lines);
     if (appliedCount === 0) {
         item.status = 'error';
