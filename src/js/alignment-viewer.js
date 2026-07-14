@@ -29,9 +29,10 @@ export class ForcedAlignmentViewer {
             resizeTarget: null,
             hoveringTarget: null,
             selectedTarget: null,
-            // 보컬 시작 지점(초) — 그리드 배치의 기준점. null이면 자동감지/백엔드 추정값 사용.
+            // 보컬 시작 지점(초) — 진짜 목소리가 나오는 시작. 재생 시 인트로
+            // 자동 건너뛰기의 기준([vocalstart] 마커로 저장). null이면 미지정.
             vocalStartSec: null,
-            // 간주(무보컬) 구간 목록. 그리드 배치가 이 구간들을 건너뛰고 줄을 배분함.
+            // 간주(무보컬) 구간 목록. 보컬 시작 전 간주는 건너뛰기 목표 계산에 쓰임.
             interludes: [],
             // 파형 기반 자동감지 후보 (사용자가 수락하기 전까지 별도 표시).
             suggestedInterludes: [],
@@ -158,14 +159,6 @@ export class ForcedAlignmentViewer {
                                 <button id="reset-sync-btn" class="sync-reset-btn">초기화</button>
                             </div>
                         </div>
-                        <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px; flex-wrap:wrap;">
-                            <button id="bpm-grid-btn" class="sync-reset-btn" style="background:var(--align-item-active-bg); color:var(--accent-primary); border-color:var(--align-item-active-border);" title="BPM을 분석해 아직 싱크가 없는 줄들을 대략적인 박자 간격으로 배치합니다. 정확하지 않으니 이후 직접 다듬어주세요.">그리드에 맞춰 초기 배치</button>
-                            <select id="bpm-grid-beats-per-line" title="한 줄당 비트 수 (장르에 따라 조절)" style="font-size:0.75rem; padding:4px 6px; border-radius:6px; background:var(--align-surface-input); color:var(--align-text-soft); border:1px solid var(--align-item-border);">
-                                <option value="2">2비트/줄</option>
-                                <option value="4" selected>4비트/줄</option>
-                                <option value="8">8비트/줄</option>
-                            </select>
-                        </div>
                         <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px; flex-wrap:wrap;">
                             <button id="ai-align-btn" class="sync-reset-btn" style="background:var(--align-item-active-bg); color:var(--accent-primary); border-color:var(--align-item-active-border);" title="AI 음성인식 모델로 가사와 오디오를 자동 정렬합니다. 노래 음성 특성상 완벽하지 않을 수 있어 결과는 직접 다듬어야 합니다.">AI 자동 정렬</button>
                             <select id="ai-align-language" title="정렬에 사용할 음성 인식 언어. 가사 언어에 맞게 선택하세요. 랩/혼합은 한국어·영어 모델을 모두 사용해 줄마다 우세 언어 결과를 채택합니다 (정렬 시간 2배)." style="font-size:0.75rem; padding:4px 6px; border-radius:6px; background:var(--align-surface-input); color:var(--align-text-soft); border:1px solid var(--align-item-border);">
@@ -220,11 +213,15 @@ export class ForcedAlignmentViewer {
         get('play-btn').onclick = () => this.togglePlayback();
         get('sync-tap-btn').onclick = () => this.handleTap();
         get('lyrics-link-btn').onclick = () => this.openLyricsLink();
-        get('bpm-grid-btn').onclick = () => this.applyBpmGridPlacement();
         get('mark-vocal-start-btn').onclick = () => this.markVocalStart();
         get('add-interlude-btn').onclick = () => this.addInterludeAtCurrentTime();
         get('ai-align-btn').onclick = () => this.runAiAlignment();
         get('ai-align-cancel-btn').onclick = () => this.cancelAiAlignment();
+
+        // AI 정렬 진행률은 여기서 표시하지 않는다 — 대기열(AI 프로세싱 탭)이
+        // 담당. 대신 대기열 상태가 바뀔 때마다 "AI 자동 정렬" 버튼을 변환 중
+        // 표시로 전환한다(alignment-queue.js가 큐 변경 시 이벤트를 쏨).
+        window.addEventListener('alignment-queue-changed', () => this.updateAiAlignButtonState());
 
         // 정렬 언어 토글 — localStorage에 저장(에디터·배치 공용).
         import('./alignment-model.js').then(({ getAlignmentLanguage, setAlignmentLanguage }) => {
@@ -552,11 +549,6 @@ export class ForcedAlignmentViewer {
             unlisten();
             window._alignmentUnlistenStatus = null;
         }
-        if (window._alignmentUnlistenAlignProgress) {
-            const unlisten = await window._alignmentUnlistenAlignProgress;
-            unlisten();
-            window._alignmentUnlistenAlignProgress = null;
-        }
         if (window._alignmentUnlistenModelDownload) {
             const unlisten = await window._alignmentUnlistenModelDownload;
             unlisten();
@@ -586,13 +578,6 @@ export class ForcedAlignmentViewer {
             const { status } = event.payload;
             this.state.isPlaying = (status && status.toLowerCase() === 'playing');
             this.updatePlayButton();
-        });
-
-        // AI 자동 정렬 진행률 리스너
-        window._alignmentUnlistenAlignProgress = listen('alignment-progress', (event) => {
-            const percent = typeof event.payload === 'number' ? event.payload : 0;
-            const statusEl = document.getElementById('ai-align-status');
-            if (statusEl) statusEl.textContent = `AI 정렬 중... ${Math.round(percent)}%`;
         });
 
         // AI 정렬 모델 다운로드 진행률 리스너
@@ -631,6 +616,7 @@ export class ForcedAlignmentViewer {
         await this.flushAutoSaveIfNeeded();
         if (isStale()) return;
         this.state.currentPath = path;
+        this.updateAiAlignButtonState(); // 대기열에 있는 곡이면 버튼을 변환 중 표시로
         this.state.isProcessing = true;
         this.state.currentTime = 0;
         this.state.duration = 0;
@@ -1635,129 +1621,6 @@ export class ForcedAlignmentViewer {
         }
     }
 
-    /** Interludes overlapping [rangeStart, rangeEnd), clipped to that range and time-sorted. */
-    getInterludesOverlapping(rangeStart, rangeEnd) {
-        return (this.state.interludes || [])
-            .filter(il => il.end > rangeStart && il.start < rangeEnd)
-            .map(il => ({ start: Math.max(il.start, rangeStart), end: Math.min(il.end, rangeEnd) }))
-            .sort((a, b) => a.start - b.start);
-    }
-
-    /** Total non-interlude ("active"/vocal) seconds within [rangeStart, rangeEnd). */
-    activeDurationInRange(rangeStart, rangeEnd) {
-        const ils = this.getInterludesOverlapping(rangeStart, rangeEnd);
-        let total = rangeEnd - rangeStart;
-        ils.forEach(il => { total -= (il.end - il.start); });
-        return Math.max(0, total);
-    }
-
-    /** Advances cursor `t` by `delta` seconds of *active* time, jumping over any interludes in between. */
-    advanceActiveTime(t, delta, rangeEnd) {
-        let cur = t;
-        let remaining = delta;
-        for (const il of this.getInterludesOverlapping(t, rangeEnd)) {
-            if (cur >= il.end) continue;
-            const avail = Math.max(0, il.start - cur);
-            if (avail >= remaining) return cur + remaining;
-            remaining -= avail;
-            cur = il.end; // skip across the interlude
-        }
-        return cur + remaining;
-    }
-
-    async applyBpmGridPlacement() {
-        if (this.state.duration <= 0) {
-            showNotification('먼저 음원을 로드해주세요.', 'warning');
-            return;
-        }
-        const segs = this.state.segments;
-        if (!segs.length) return;
-
-        const beatsSelect = document.getElementById('bpm-grid-beats-per-line');
-        const beatsPerLine = parseInt(beatsSelect?.value || '4', 10) || 4;
-
-        const btn = document.getElementById('bpm-grid-btn');
-        if (btn) btn.disabled = true;
-        try {
-            const { bpm, firstOnsetSec } = await this.invoke('analyze_key_bpm', { path: this.state.currentPath });
-            if (!bpm || !Number.isFinite(bpm)) {
-                showNotification('BPM 분석에 실패했습니다.', 'error');
-                return;
-            }
-            // 사용자가 직접 지정한 보컬 시작 지점이 있으면 그걸 우선 사용 — 백엔드의
-            // firstOnsetSec는 반주(MR) 트랙 기준 첫 비트라 보컬 시작과 다를 수 있음.
-            const vocalAnchor = this.state.vocalStartSec != null ? this.state.vocalStartSec : (firstOnsetSec || 0);
-            const beatInterval = 60 / bpm;
-            const gridInterval = beatInterval * beatsPerLine;
-
-            let placedCount = 0;
-            let skippedForInterlude = 0;
-            let i = 0;
-            while (i < segs.length) {
-                // 이미 싱크가 있는 구간은 절대 건드리지 않음 — 완전히 미싱크(start===0 && end===0)인
-                // 연속 구간만 대상으로 함.
-                if (!(segs[i].start === 0 && segs[i].end === 0)) {
-                    i++;
-                    continue;
-                }
-                let runStart = i;
-                let runEnd = i;
-                while (runEnd + 1 < segs.length && segs[runEnd + 1].start === 0 && segs[runEnd + 1].end === 0) {
-                    runEnd++;
-                }
-                const runLength = runEnd - runStart + 1;
-
-                const prevSeg = runStart > 0 ? segs[runStart - 1] : null;
-                const nextSeg = runEnd < segs.length - 1 ? segs[runEnd + 1] : null;
-                let rangeStart = (prevSeg && prevSeg.start > 0) ? prevSeg.end : vocalAnchor;
-                const rangeEnd = (nextSeg && nextSeg.start > 0) ? nextSeg.start : this.state.duration;
-
-                // rangeStart가 간주 구간 안이면(예: 앞줄이 간주 직전에 끝난 경우) 간주 끝으로 밀어냄.
-                const startingInterlude = this.getInterludesOverlapping(rangeStart, rangeEnd)
-                    .find(il => rangeStart >= il.start && rangeStart < il.end);
-                if (startingInterlude) rangeStart = startingInterlude.end;
-
-                const activeTotal = this.activeDurationInRange(rangeStart, rangeEnd);
-
-                if (rangeEnd > rangeStart && activeTotal > 0) {
-                    // 비트 간격에 맞추되, 줄 수가 많아 구간(간주 제외 실질 구간)을 넘어서면
-                    // 그 실질 구간 안에 균등 배분으로 대체.
-                    const fitsGrid = gridInterval * runLength <= activeTotal;
-                    const interval = fitsGrid ? gridInterval : (activeTotal / runLength);
-
-                    let cursor = rangeStart;
-                    for (let k = 0; k < runLength; k++) {
-                        const seg = segs[runStart + k];
-                        seg.start = cursor;
-                        cursor = (k === runLength - 1) ? rangeEnd : this.advanceActiveTime(cursor, interval, rangeEnd);
-                        seg.end = cursor;
-                        seg.approx = true;
-                        placedCount++;
-                    }
-                } else if (rangeEnd > rangeStart) {
-                    skippedForInterlude += runLength;
-                }
-                i = runEnd + 1;
-            }
-
-            if (placedCount === 0) {
-                showNotification('배치할 미싱크 가사가 없습니다.', 'info');
-                return;
-            }
-
-            this.renderLyricList();
-            this.drawWaveform();
-            this.markDirtyAndScheduleSave();
-            const extra = skippedForInterlude > 0 ? ` (${skippedForInterlude}줄은 간주 구간에 막혀 배치하지 못했습니다)` : '';
-            showNotification(`BPM(${Math.round(bpm)}) 기준으로 ${placedCount}줄을 대략 배치했습니다.${extra} 점선으로 표시된 구간은 직접 다듬어주세요.`, 'success');
-        } catch (err) {
-            console.error('BPM grid placement failed:', err);
-            showNotification('BPM 분석 실패: ' + err, 'error');
-        } finally {
-            if (btn) btn.disabled = false;
-        }
-    }
-
     /**
      * No alignment model is installed — offer to download one. Downloads are
      * large (~1.2GB), so this always confirms with the user first and states
@@ -1809,6 +1672,24 @@ export class ForcedAlignmentViewer {
         } catch (err) {
             console.error('cancelAlignmentQueueItem failed:', err);
         }
+    }
+
+    /**
+     * 현재 곡이 정렬 대기열에 있으면(대기/처리 중) "AI 자동 정렬" 버튼을
+     * 변환 중 표시로 바꾸고 취소 버튼을 보여준다. 상세 진행률은 여기 대신
+     * AI 프로세싱 탭(대기열 카드)에서 확인.
+     */
+    updateAiAlignButtonState() {
+        const btn = document.getElementById('ai-align-btn');
+        if (!btn) return;
+        const item = (state.alignmentQueue || []).find((i) => i.path === this.state.currentPath);
+        const busy = !!item && (item.status === 'queued' || item.status === 'processing');
+        btn.disabled = busy;
+        btn.textContent = busy
+            ? (item.status === 'queued' ? '대기열 등록됨…' : '변환 중…')
+            : 'AI 자동 정렬';
+        const cancelBtn = document.getElementById('ai-align-cancel-btn');
+        if (cancelBtn) cancelBtn.style.display = busy ? '' : 'none';
     }
 
     /**
@@ -1924,7 +1805,8 @@ export class ForcedAlignmentViewer {
             console.error('AI alignment enqueue failed:', err);
             showNotification('AI 정렬 대기열 등록 실패: ' + err, 'error');
         } finally {
-            if (btn) btn.disabled = false;
+            // 등록됐으면 버튼이 '변환 중' 표시로 남고, 실패했으면 원상 복구.
+            this.updateAiAlignButtonState();
             if (statusEl) statusEl.textContent = '';
         }
     }

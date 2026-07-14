@@ -39,6 +39,9 @@ function notifyQueueChanged() {
     import('./ui/components.js').then((m) => {
         if (m.updateTaskUI) m.updateTaskUI();
     }).catch(() => {});
+    // 가사 싱크 에디터 등 큐 상태에 반응해야 하는 UI용 (예: "AI 자동 정렬"
+    // 버튼의 변환 중 표시). 직접 import 대신 이벤트로 느슨하게 연결.
+    try { window.dispatchEvent(new CustomEvent('alignment-queue-changed')); } catch (e) {}
 }
 
 function currentProcessingItem() {
