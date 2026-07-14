@@ -11,6 +11,11 @@ export function initNavigation() {
   document.querySelectorAll(".nav-item").forEach(item => {
     item.addEventListener("click", () => {
       const tabId = item.id.replace("nav-", "");
+      // "노래 추가"는 탭이 아니라 원스톱 추가 모달을 연다.
+      if (tabId === "add-song") {
+        import('../ui/add-song-modal.js').then(({ openAddSongModal }) => openAddSongModal());
+        return;
+      }
       if (tabId === "overlay") {
         switchTab("overlay");
         return;
@@ -57,9 +62,8 @@ export function switchTab(tabId) {
     i.classList.toggle("active", i.id === `nav-${tabId}`);
   });
 
-  const isMusicTab = (tabId === "library" || tabId === "youtube" || tabId === "local" || tabId === "meloming");
-  if (elements.youtubeSection) elements.youtubeSection.style.display = tabId === "youtube" ? "block" : "none";
-  if (elements.localSection) elements.localSection.style.display = "none"; // 텅 빈 섹션이므로 gap 발생을 막기 위해 항상 숨김
+  // 유튜브/내 파일 탭은 라이브러리에 합병됨 — 곡 추가는 사이드바 "노래 추가"로.
+  const isMusicTab = (tabId === "library" || tabId === "meloming");
   if (elements.libraryControls) elements.libraryControls.style.display = isMusicTab ? "flex" : "none";
   if (elements.viewControls) elements.viewControls.style.display = isMusicTab ? "flex" : "none";
   updateBroadcastTasksControlVisibility();

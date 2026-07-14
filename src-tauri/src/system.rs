@@ -37,8 +37,23 @@ fn file_dialog_in_documents() -> rfd::AsyncFileDialog {
 }
 
 #[tauri::command]
-pub fn get_app_paths(handle: AppHandle) -> crate::state::AppPaths { 
-    handle.state::<crate::state::AppPaths>().inner().clone() 
+pub fn get_app_paths(handle: AppHandle) -> crate::state::AppPaths {
+    handle.state::<crate::state::AppPaths>().inner().clone()
+}
+
+/// 노래 추가 UI의 "로컬 파일 선택" — 오디오 파일 다중 선택 대화상자.
+/// 취소하면 빈 벡터.
+#[tauri::command]
+pub async fn pick_audio_files() -> Result<Vec<String>, String> {
+    let picked = file_dialog_in_documents()
+        .add_filter("오디오 파일", &["mp3", "wav", "flac", "m4a", "aac", "ogg", "wma"])
+        .pick_files()
+        .await;
+    Ok(picked
+        .unwrap_or_default()
+        .into_iter()
+        .map(|f| f.path().to_string_lossy().to_string())
+        .collect())
 }
 
 #[tauri::command]

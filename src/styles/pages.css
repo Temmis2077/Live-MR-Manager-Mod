@@ -868,3 +868,175 @@ html[data-theme="dark"] .overlay-preview-wrapper::before {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* ── 노래 추가 원스톱 모달 ────────────────────────────────────── */
+
+.nav-add-song {
+  color: var(--accent-primary);
+}
+
+.nav-add-song:hover {
+  background: rgb(var(--accent-rgb) / 0.12);
+}
+
+.addsong-modal {
+  max-width: 640px;
+  width: 92%;
+  max-height: 86vh;
+  overflow-y: auto;
+  padding: 22px;
+}
+
+.addsong-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.addsong-header h3 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.addsong-section {
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+}
+
+.addsong-section-title {
+  font-size: 0.8rem;
+  font-weight: 800;
+  color: var(--text-dim);
+  letter-spacing: 0.5px;
+  margin-bottom: 10px;
+}
+
+.addsong-hint {
+  font-weight: 400;
+  font-size: 0.72rem;
+  color: var(--text-dim);
+}
+
+.addsong-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  color: var(--text-main, #e2e8f0);
+  font-size: 0.85rem;
+}
+
+.addsong-source-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.addsong-or {
+  font-size: 0.72rem;
+  color: var(--text-dim);
+}
+
+.addsong-pending {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 10px;
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.addsong-pending-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--glass-border);
+}
+
+.addsong-empty {
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  text-align: center;
+  padding: 8px;
+}
+
+.addsong-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.addsong-model-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.addsong-model-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--glass-border);
+  cursor: pointer;
+  font-size: 0.82rem;
+}
+
+.addsong-model-option:hover {
+  border-color: var(--accent-primary);
+}
+
+.addsong-model-option.current-default {
+  border-color: rgb(var(--accent-rgb) / 0.5);
+}
+
+.addsong-model-label {
+  font-weight: 700;
+}
+
+.addsong-model-desc {
+  font-size: 0.72rem;
+  color: var(--text-dim);
+}
+
+.addsong-lyrics {
+  width: 100%;
+  resize: vertical;
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid var(--glass-border);
+  background: var(--surface-2, rgba(255,255,255,0.05));
+  color: var(--text-main, #e2e8f0);
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+.addsong-lyrics:focus {
+  outline: none;
+  border-color: var(--accent-primary);
+}
+
+.addsong-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.addsong-primary {
+  color: var(--accent-primary);
+  border-color: rgb(var(--accent-rgb) / 0.5);
+  font-weight: 700;
+}
+
+.addsong-primary:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
