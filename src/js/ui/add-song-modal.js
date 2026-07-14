@@ -252,9 +252,9 @@ export async function openAddSongModal(prefillLocalPaths = null) {
                 <div class="addsong-section-title">1. 소스</div>
                 <div class="addsong-source-row">
                     <input type="text" id="addsong-yt-url" class="addsong-input" placeholder="YouTube URL을 입력하세요" spellcheck="false" style="flex:1;">
-                    <button type="button" class="sync-reset-btn" id="addsong-yt-fetch">가져오기</button>
+                    <button type="button" class="app-btn" id="addsong-yt-fetch">가져오기</button>
                     <span class="addsong-or">또는</span>
-                    <button type="button" class="sync-reset-btn" id="addsong-local-pick">로컬 파일 선택…</button>
+                    <button type="button" class="app-btn" id="addsong-local-pick">로컬 파일 선택…</button>
                 </div>
                 <div id="addsong-pending" class="addsong-pending"></div>
             </div>
@@ -288,7 +288,7 @@ export async function openAddSongModal(prefillLocalPaths = null) {
                     <div class="addsong-source-row" style="margin-top:6px;">
                         <span class="addsong-hint">정렬 언어:</span>
                         <select id="addsong-align-lang" class="addsong-input" style="width:auto;">
-                            <option value="ko">한국어</option>
+                            <option value="ko">한국어/일본어(차음)</option>
                             <option value="en">English</option>
                             <option value="rap">랩/혼합 (한+영)</option>
                         </select>
@@ -298,8 +298,8 @@ export async function openAddSongModal(prefillLocalPaths = null) {
             </div>
 
             <div class="addsong-footer">
-                <button type="button" class="sync-reset-btn" id="addsong-cancel">취소</button>
-                <button type="button" class="sync-reset-btn addsong-primary" id="addsong-confirm" disabled>추가</button>
+                <button type="button" class="app-btn" id="addsong-cancel">취소</button>
+                <button type="button" class="app-btn app-btn-primary" id="addsong-confirm" disabled>추가</button>
             </div>
         </div>
     `;

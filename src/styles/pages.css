@@ -846,18 +846,6 @@ html[data-theme="dark"] .overlay-preview-wrapper::before {
   gap: 8px;
   margin-top: 4px;
 }
-
-.addsong-primary {
-  color: var(--accent-primary);
-  border-color: rgb(var(--accent-rgb) / 0.5);
-  font-weight: 700;
-}
-
-.addsong-primary:disabled {
-  opacity: 0.4;
-  cursor: default;
-}
-
 .addsong-input {
   width: 100%;
   padding: 8px 10px;
