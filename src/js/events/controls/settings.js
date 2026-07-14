@@ -348,6 +348,20 @@ export function initSettingsListeners({ syncAllOverlayStylesToBackend }) {
     };
   }
 
+  // 우클릭 메뉴의 재생/가사 보기 항목 표시 여부 — 기본 숨김(false).
+  // 메뉴를 단순하게 유지하되, 원하는 사용자는 여기서 되살릴 수 있음.
+  [
+    ['toggle-ctx-menu-play', 'ctxMenuPlayEnabled'],
+    ['toggle-ctx-menu-lyrics', 'ctxMenuLyricsViewEnabled'],
+  ].forEach(([elId, storageKey]) => {
+    const toggle = document.getElementById(elId);
+    if (!toggle) return;
+    toggle.checked = localStorage.getItem(storageKey) === 'true';
+    toggle.onchange = (e) => {
+      localStorage.setItem(storageKey, String(!!e.target.checked));
+    };
+  });
+
   initMrCacheDirControls();
 }
 

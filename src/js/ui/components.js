@@ -456,9 +456,13 @@ export function showSongContextMenu(e, song, originalIndex) {
   const menuSelectAll = document.getElementById("menu-select-all");
 
   // Song context: show song actions, hide text-input actions.
-  [menuPlay, menuLyricsView, menuSeparate, menuDeleteMr, menuEdit, menuDelete].forEach((el) => {
+  [menuSeparate, menuDeleteMr, menuEdit, menuDelete].forEach((el) => {
     if (el) el.style.display = "block";
   });
+  // 재생/가사 보기는 기본 숨김 — 카드 클릭/드로어로 대체 가능해 메뉴를
+  // 단순하게 유지. 설정 > 재생에서 다시 켤 수 있음.
+  if (menuPlay) menuPlay.style.display = localStorage.getItem('ctxMenuPlayEnabled') === 'true' ? "block" : "none";
+  if (menuLyricsView) menuLyricsView.style.display = localStorage.getItem('ctxMenuLyricsViewEnabled') === 'true' ? "block" : "none";
   [inputSeparator, menuUndo, menuRedo, menuCut, menuCopy, menuPaste, menuSelectAll].forEach((el) => {
     if (el) el.style.display = "none";
   });
