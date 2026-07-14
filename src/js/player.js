@@ -340,16 +340,17 @@ export async function selectTrack(index) {
     state.isPlaying = true;
     console.log("[UI] Playback started successfully.");
 
-    // 인트로 자동 건너뛰기: 가사 싱크 탭에서 지정해둔 "보컬 시작 지점"
-    // 마커가 있으면(유튜브 뮤비형 인트로 등) 그 지점으로 자동 탐색.
+    // 인트로 자동 건너뛰기: 가사 싱크 탭에서 지정해둔 마커 기준으로 자동
+    // 탐색(유튜브 뮤비형 인트로 등). 보컬 시작 전에 간주(전주)가 마킹돼
+    // 있으면 전주가 잘리지 않게 그 간주의 시작(음악 시작)으로만 점프한다.
     // 마커가 없는 곡(대다수)은 조회 결과가 null이라 평소처럼 처음부터 재생됨.
     // 사소한 지점(3초 미만)은 건너뛸 실익이 없어 무시.
     const introSkipEnabled = localStorage.getItem('introSkipEnabled') !== 'false';
     if (introSkipEnabled) {
-      import('./lyrics.js').then(({ getVocalStartMarker }) => getVocalStartMarker(song.path)).then((vocalStartSec) => {
+      import('./lyrics.js').then(({ getIntroSkipTarget }) => getIntroSkipTarget(song.path)).then((targetSec) => {
         if (mySequence !== state.playbackSequence) return; // 트랙이 이미 바뀜
-        if (typeof vocalStartSec === 'number' && vocalStartSec > 3) {
-          seekTo(vocalStartSec * 1000);
+        if (typeof targetSec === 'number' && targetSec > 3) {
+          seekTo(targetSec * 1000);
         }
       }).catch((err) => console.error('[Player] Intro-skip marker lookup failed:', err));
     }

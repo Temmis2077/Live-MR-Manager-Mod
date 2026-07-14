@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseLrc, parseMarkers, formatMarkerLine, isTriplet, getSyncText, encodeLrc, suggestVocalStartFromSegments } from '../src/js/lrc-parser.js';
+import { parseLrc, parseMarkers, formatMarkerLine, isTriplet, getSyncText, encodeLrc, suggestVocalStartFromSegments, getIntroSkipTargetSec } from '../src/js/lrc-parser.js';
 
 describe('encodeLrc', () => {
   it('preserves segment order for partially-synced lyrics (no time-sorting)', () => {
@@ -181,5 +181,43 @@ describe('suggestVocalStartFromSegments (MV 인트로 감지)', () => {
   it('returns null for non-array input', () => {
     expect(suggestVocalStartFromSegments(null)).toBeNull();
     expect(suggestVocalStartFromSegments(undefined)).toBeNull();
+  });
+});
+
+describe('getIntroSkipTargetSec (간주/보컬시작 구분)', () => {
+  it('jumps to the pre-vocal interlude start instead of the vocal start', () => {
+    // [MV 인트로 0~20s] [전주 간주 20~45s] [보컬 45s~] — 전주가 잘리면 안 됨
+    const markers = { vocalStartSec: 45, interludes: [{ start: 20, end: 45 }] };
+    expect(getIntroSkipTargetSec(markers)).toBe(20);
+  });
+
+  it('falls back to the vocal start when no interlude precedes it', () => {
+    // 간주는 곡 중간에만 있음 — 전주 아님
+    const markers = { vocalStartSec: 30, interludes: [{ start: 90, end: 120 }] };
+    expect(getIntroSkipTargetSec(markers)).toBe(30);
+  });
+
+  it('allows a small tolerance for interludes ending just past the vocal start', () => {
+    const markers = { vocalStartSec: 45, interludes: [{ start: 20, end: 45.8 }] };
+    expect(getIntroSkipTargetSec(markers)).toBe(20);
+  });
+
+  it('ignores interludes that extend well past the vocal start', () => {
+    // 보컬 시작을 한참 지나 끝나는 구간은 전주가 아니라 겹침 오류로 취급
+    const markers = { vocalStartSec: 45, interludes: [{ start: 20, end: 80 }] };
+    expect(getIntroSkipTargetSec(markers)).toBe(45);
+  });
+
+  it('picks the earliest qualifying interlude start', () => {
+    const markers = {
+      vocalStartSec: 60,
+      interludes: [{ start: 40, end: 58 }, { start: 15, end: 35 }],
+    };
+    expect(getIntroSkipTargetSec(markers)).toBe(15);
+  });
+
+  it('returns null when there is no vocal-start marker', () => {
+    expect(getIntroSkipTargetSec({ vocalStartSec: null, interludes: [{ start: 5, end: 10 }] })).toBeNull();
+    expect(getIntroSkipTargetSec(null)).toBeNull();
   });
 });

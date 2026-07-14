@@ -166,6 +166,33 @@ export function suggestVocalStartFromSegments(segments, { minSec = 3, leadIn = 0
 }
 
 /**
+ * 인트로 자동 건너뛰기의 목표 지점을 계산한다.
+ *
+ * 보컬시작 마커는 "진짜 목소리가 나오는 시작"만 의미한다. 뮤비형 곡은
+ * [영상/대사 인트로 → 간주(전주 음악) → 보컬] 구조라서, 보컬 시작으로 바로
+ * 점프하면 전주 간주가 잘려 나간다. 그래서 보컬 시작 **이전에 끝나는 간주
+ * 구간**([ilstart]/[ilend])이 마킹돼 있으면, 건너뛰기는 그 간주의 시작
+ * 지점(= 음악이 시작하는 곳)으로만 이동한다. 그런 간주가 없으면 기존처럼
+ * 보컬 시작으로 이동. 마커 자체가 없으면 null(건너뛰기 안 함).
+ *
+ * @param markers parseMarkers 결과 ({vocalStartSec, interludes})
+ * @param toleranceSec 간주 끝이 보컬 시작을 살짝 넘어도 전주로 인정할 여유(기본 1s)
+ */
+export function getIntroSkipTargetSec(markers, toleranceSec = 1) {
+  if (!markers || typeof markers.vocalStartSec !== 'number') return null;
+  const vocalStart = markers.vocalStartSec;
+  let target = vocalStart;
+  (markers.interludes || []).forEach((il) => {
+    if (!il || typeof il.start !== 'number' || typeof il.end !== 'number') return;
+    // 보컬 시작 이전(허용 오차 내)에 끝나는 간주 = 전주. 가장 이른 시작 채택.
+    if (il.start < vocalStart && il.end <= vocalStart + toleranceSec && il.start < target) {
+      target = il.start;
+    }
+  });
+  return target;
+}
+
+/**
  * Merges AI forced-alignment results into lyric segments. Non-destructive:
  * only segments that are still fully unsynced (start===0 && end===0) are
  * filled in, matched to alignment lines by sync text (차음 for triplets),
