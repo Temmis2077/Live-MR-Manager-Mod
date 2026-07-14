@@ -64,6 +64,25 @@ describe('mergeAlignmentResult', () => {
     expect(mergeAlignmentResult(null, null)).toBe(0);
   });
 
+  it('matches lines despite punctuation the backend strips (quotes/comma/hyphen/apostrophe)', () => {
+    // 백엔드는 정렬 전 clean_lyrics로 문장부호를 공백/제거하고 따옴표도 걷어내
+    // 원본과 다른 텍스트를 돌려준다. 정규화 비교로 그래도 매칭돼야 한다.
+    const segments = [
+      { text: `Don't bend, don't break, baby, don't back down`, start: 0, end: 0 },
+      { text: `Like Frankie said, "I did it my way"`, start: 0, end: 0 },
+      { text: 'No silent prayer for the faith-departed', start: 0, end: 0 },
+    ];
+    const lines = [
+      { text: 'Don t bend don t break baby don t back down', start_ms: 1000, end_ms: 2000 },
+      { text: 'Like Frankie said  I did it my way', start_ms: 3000, end_ms: 4000 },
+      { text: 'No silent prayer for the faith departed', start_ms: 5000, end_ms: 6000 },
+    ];
+    expect(mergeAlignmentResult(segments, lines)).toBe(3);
+    expect(segments[0].start).toBeCloseTo(1);
+    expect(segments[1].start).toBeCloseTo(3);
+    expect(segments[2].start).toBeCloseTo(5);
+  });
+
   it('does not reuse one alignment line for two identical lyric lines', () => {
     const segments = [
       { text: '후렴', start: 0, end: 0 },

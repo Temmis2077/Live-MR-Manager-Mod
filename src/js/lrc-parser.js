@@ -174,15 +174,38 @@ export function suggestVocalStartFromSegments(segments, { minSec = 3, leadIn = 0
  * batch queue (alignment-queue.js) — keep both paths on this one function.
  * Returns the number of segments updated.
  */
+/**
+ * 정렬 결과 매칭용 텍스트 정규화.
+ *
+ * 백엔드(alignment.rs::clean_lyrics)는 정렬 전 가사에서 대괄호/괄호 메타
+ * ([Chorus]/(Intro))를 지우고 `?!.,-+_~` 등을 공백으로 치환하며, 토크나이저는
+ * 따옴표("")·특수기호도 걷어낸다. 그래서 백엔드가 돌려주는 줄 텍스트는 원본
+ * LRC 세그먼트 텍스트와 문장부호가 달라, 예전엔 문장부호가 든 줄(따옴표로
+ * 감싼 줄, `don't`, `baby,`, `faith-departed` 등)이 정확히 일치하지 않아
+ * 정렬이 병합되지 않았다. 양쪽을 같은 규칙으로 정규화해 비교한다:
+ * 소문자화 → 괄호 메타 제거 → 글자/숫자 외 문자를 공백으로 → 공백 정리.
+ */
+function normalizeForMatch(s) {
+  return (s || '')
+    .toLowerCase()
+    .replace(/[\[(<][^\])>]*[\])>]/g, ' ') // 대괄호/괄호/꺾쇠 메타 제거(백엔드와 동일)
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')      // 글자·숫자 외(문장부호·따옴표·기호) → 공백
+    .trim()
+    .replace(/\s+/g, ' ');
+}
+
 export function mergeAlignmentResult(segments, lines) {
   if (!Array.isArray(segments) || !Array.isArray(lines) || lines.length === 0) return 0;
   const used = new Array(lines.length).fill(false);
+  const lineKeys = lines.map((l) => normalizeForMatch(l.text));
   let appliedCount = 0;
   segments.forEach((seg) => {
     if (!(seg.start === 0 && seg.end === 0)) return; // 이미 싱크된 줄은 보존
     const text = getSyncText(seg).trim();
     if (!text) return;
-    const idx = lines.findIndex((l, i) => !used[i] && (l.text || '').trim() === text);
+    const key = normalizeForMatch(text);
+    if (!key) return;
+    const idx = lineKeys.findIndex((lk, i) => !used[i] && lk === key);
     if (idx === -1) return;
     used[idx] = true;
     const line = lines[idx];
