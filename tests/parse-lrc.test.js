@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseLrc, parseMarkers, formatMarkerLine, isTriplet, getSyncText, encodeLrc, suggestVocalStartFromSegments, getIntroSkipTargetSec } from '../src/js/lrc-parser.js';
+import { parseLrc, parseMarkers, formatMarkerLine, isTriplet, getSyncText, encodeLrc, suggestVocalStartFromSegments, getIntroSkipTargetSec, parseTimeInput, formatTimeInput } from '../src/js/lrc-parser.js';
 
 describe('encodeLrc', () => {
   it('preserves segment order for partially-synced lyrics (no time-sorting)', () => {
@@ -219,5 +219,31 @@ describe('getIntroSkipTargetSec (간주/보컬시작 구분)', () => {
   it('returns null when there is no vocal-start marker', () => {
     expect(getIntroSkipTargetSec({ vocalStartSec: null, interludes: [{ start: 5, end: 10 }] })).toBeNull();
     expect(getIntroSkipTargetSec(null)).toBeNull();
+  });
+});
+
+describe('parseTimeInput / formatTimeInput (마커 시각 편집)', () => {
+  it('parses mm:ss, mm:ss.xx, and plain seconds', () => {
+    expect(parseTimeInput('01:23')).toBeCloseTo(83);
+    expect(parseTimeInput('01:23.45')).toBeCloseTo(83.45);
+    expect(parseTimeInput('83')).toBeCloseTo(83);
+    expect(parseTimeInput('83.5')).toBeCloseTo(83.5);
+    expect(parseTimeInput(' 2:05 ')).toBeCloseTo(125);
+  });
+
+  it('rejects invalid input', () => {
+    expect(parseTimeInput('')).toBeNull();
+    expect(parseTimeInput('abc')).toBeNull();
+    expect(parseTimeInput('1:75')).toBeNull(); // 초는 60 미만
+    expect(parseTimeInput('-5')).toBeNull();
+    expect(parseTimeInput('1:2:3')).toBeNull();
+  });
+
+  it('round-trips through formatTimeInput', () => {
+    expect(formatTimeInput(83.45)).toBe('01:23.45');
+    expect(parseTimeInput(formatTimeInput(207.9))).toBeCloseTo(207.9);
+    expect(formatTimeInput(0)).toBe('00:00.00');
+    expect(formatTimeInput(null)).toBe('');
+    expect(formatTimeInput(-1)).toBe('');
   });
 });

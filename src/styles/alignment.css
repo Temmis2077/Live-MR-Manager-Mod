@@ -1015,3 +1015,98 @@ canvas#waveform-canvas {
 }
 
 
+
+/* 마커 목록 패널 — 파형 아래에 보컬 시작/간주 마커를 번호별로 나열 */
+.marker-list-panel {
+    margin-top: 8px;
+    border-top: 1px solid var(--align-item-border);
+    padding-top: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-height: 180px;
+    overflow-y: auto;
+}
+
+.marker-list-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 8px;
+    border-radius: 8px;
+    border: 1px solid var(--align-item-border);
+    background: var(--align-surface-input);
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+}
+
+.marker-list-row:hover {
+    border-color: var(--accent-primary);
+}
+
+.marker-num {
+    min-width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--align-item-active-bg);
+    color: var(--accent-primary);
+    font-size: 0.7rem;
+    font-weight: 800;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.marker-label {
+    font-size: 0.78rem;
+    color: var(--align-text-soft);
+    min-width: 56px;
+}
+
+.marker-label-vocal {
+    color: #22c55e;
+}
+
+.marker-time-input {
+    width: 74px;
+    font-family: monospace;
+    font-size: 0.78rem;
+    padding: 3px 6px;
+    border-radius: 6px;
+    border: 1px solid var(--align-item-border);
+    background: transparent;
+    color: var(--text-main, #e2e8f0);
+    text-align: center;
+}
+
+.marker-time-input:focus {
+    outline: none;
+    border-color: var(--accent-primary);
+}
+
+.marker-time-sep {
+    color: var(--align-text-soft);
+    font-size: 0.75rem;
+}
+
+.marker-row-spacer {
+    flex: 1;
+}
+
+.marker-delete-btn {
+    width: 22px;
+    height: 22px;
+    border-radius: 6px;
+    border: 1px solid var(--align-item-border);
+    background: transparent;
+    color: var(--align-text-soft);
+    font-size: 0.9rem;
+    line-height: 1;
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s;
+}
+
+.marker-delete-btn:hover {
+    color: #ef4444;
+    border-color: #ef4444;
+}

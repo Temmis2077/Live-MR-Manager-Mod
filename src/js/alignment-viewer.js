@@ -2,7 +2,7 @@ import { showNotification, getThumbnailUrl } from './utils.js';
 import { invoke, listen } from './tauri-bridge.js';
 import { state } from './state.js';
 import { parseLrc } from './lyrics.js';
-import { parseMarkers, formatMarkerLine, isTriplet, getSyncText, getDisplayLines, getShowTranslation, setShowTranslation, mergeAlignmentResult, encodeLrc, suggestVocalStartFromSegments } from './lrc-parser.js';
+import { parseMarkers, formatMarkerLine, isTriplet, getSyncText, getDisplayLines, getShowTranslation, setShowTranslation, mergeAlignmentResult, encodeLrc, suggestVocalStartFromSegments, parseTimeInput, formatTimeInput } from './lrc-parser.js';
 import { getLyricSyncStatus } from './library-filters.js';
 
 export class ForcedAlignmentViewer {
@@ -146,6 +146,9 @@ export class ForcedAlignmentViewer {
                                 <span id="marker-suggestion-bar" style="display:none; align-items:center; gap:6px; font-size:0.75rem; color:var(--align-text-soft);"></span>
                             </div>
                         </div>
+                        <!-- 마커 목록: 보컬 시작/간주를 번호별로 나열, 시각 직접 편집,
+                             행 클릭 시 파형이 해당 구간으로 이동+확대, 우측 삭제 버튼 -->
+                        <div id="marker-list-panel" class="marker-list-panel" style="display:none;"></div>
                     </div>
                 </main>
 
@@ -322,7 +325,7 @@ export class ForcedAlignmentViewer {
             const idx = this.state.interludes.findIndex(il => t >= il.start && t <= il.end);
             if (idx !== -1 && confirm('이 간주 구간을 삭제하시겠습니까?')) {
                 this.state.interludes.splice(idx, 1);
-                this.drawWaveform();
+                this.onMarkersChanged();
                 this.markDirtyAndScheduleSave();
             }
         });
@@ -432,6 +435,7 @@ export class ForcedAlignmentViewer {
             this.state.interludeResizeTarget = null;
             if (wasResizing) {
                 this.markDirtyAndScheduleSave();
+                this.renderMarkerList(); // 캔버스 드래그로 바뀐 간주 경계를 목록에도 반영
             }
         });
 
@@ -695,6 +699,7 @@ export class ForcedAlignmentViewer {
             if (inputElement) inputElement.value = '';
             this.renderLyricList();
             this.updateMarkerSuggestionBar();
+            this.renderMarkerList();
             this.isDirty = false;
             this.updateSaveStatus('저장됨');
 
@@ -747,6 +752,7 @@ export class ForcedAlignmentViewer {
                     const markers = parseMarkers(lrcContent);
                     this.state.vocalStartSec = markers.vocalStartSec;
                     this.state.interludes = markers.interludes;
+                    this.renderMarkerList();
 
                     this.renderLyricList();
                     this.isDirty = false;
@@ -1326,7 +1332,7 @@ export class ForcedAlignmentViewer {
         this.state.vocalStartSec = this.state.currentTime;
         this.state.suggestedVocalStartSec = null; // 수동 지정이 자동 제안을 대체
         this.state.suggestedVocalStartSource = null;
-        this.drawWaveform();
+        this.onMarkersChanged();
         this.markDirtyAndScheduleSave();
         showNotification(`보컬 시작 지점을 ${this.formatTime(this.state.currentTime)}로 지정했습니다.`, 'success');
     }
@@ -1344,9 +1350,9 @@ export class ForcedAlignmentViewer {
 
         this.state.interludes.push({ start, end });
         this.state.interludes.sort((a, b) => a.start - b.start);
-        this.drawWaveform();
+        this.onMarkersChanged();
         this.markDirtyAndScheduleSave();
-        showNotification('간주 구간을 추가했습니다. 파형에서 경계를 드래그해 조정하고, 더블클릭하면 삭제됩니다.', 'info');
+        showNotification('간주 구간을 추가했습니다. 파형에서 경계를 드래그하거나 아래 마커 목록에서 시각을 직접 수정하세요.', 'info');
     }
 
     /**
@@ -1413,6 +1419,121 @@ export class ForcedAlignmentViewer {
         this.updateMarkerSuggestionBar();
     }
 
+    /** 마커가 바뀐 모든 지점에서 호출 — 파형과 마커 목록을 함께 갱신. */
+    onMarkersChanged() {
+        this.drawWaveform();
+        this.renderMarkerList();
+    }
+
+    /**
+     * 파형 아래 마커 목록 렌더. 행 = 번호 배지 + 라벨 + 시각 입력(간주는
+     * 시작/끝 2개) + 우측 삭제 버튼. 행 클릭(입력/버튼 제외)은 파형을 그
+     * 마커로 이동+확대. 마커가 하나도 없으면 패널 숨김.
+     */
+    renderMarkerList() {
+        const panel = document.getElementById('marker-list-panel');
+        if (!panel) return;
+
+        const rows = [];
+        if (this.state.vocalStartSec != null) {
+            rows.push({ kind: 'vocal', label: '보컬 시작', start: this.state.vocalStartSec, end: null, idx: -1 });
+        }
+        this.state.interludes.forEach((il, idx) => {
+            rows.push({ kind: 'interlude', label: '간주', start: il.start, end: il.end, idx });
+        });
+
+        if (rows.length === 0) {
+            panel.style.display = 'none';
+            panel.innerHTML = '';
+            return;
+        }
+
+        panel.style.display = 'block';
+        panel.innerHTML = rows.map((row, i) => `
+            <div class="marker-list-row" data-kind="${row.kind}" data-idx="${row.idx}" title="클릭하면 파형이 이 마커 위치로 이동합니다">
+                <span class="marker-num">${i + 1}</span>
+                <span class="marker-label${row.kind === 'vocal' ? ' marker-label-vocal' : ''}">${row.label}</span>
+                <input type="text" class="marker-time-input" data-field="start" value="${formatTimeInput(row.start)}" spellcheck="false" title="시작 (mm:ss.xx 또는 초)">
+                ${row.end != null ? `<span class="marker-time-sep">~</span>
+                <input type="text" class="marker-time-input" data-field="end" value="${formatTimeInput(row.end)}" spellcheck="false" title="끝 (mm:ss.xx 또는 초)">` : ''}
+                <span class="marker-row-spacer"></span>
+                <button type="button" class="marker-delete-btn" title="이 마커 삭제">×</button>
+            </div>
+        `).join('');
+
+        panel.querySelectorAll('.marker-list-row').forEach((rowEl) => {
+            const kind = rowEl.dataset.kind;
+            const idx = parseInt(rowEl.dataset.idx, 10);
+            const getMarker = () => kind === 'vocal'
+                ? { start: this.state.vocalStartSec, end: null }
+                : this.state.interludes[idx];
+
+            // 행 클릭 → 파형 이동+확대 (입력/버튼 클릭은 제외)
+            rowEl.addEventListener('click', (e) => {
+                if (e.target.closest('input, button')) return;
+                const m = getMarker();
+                if (m) this.panToMarker(m.start, m.end);
+            });
+
+            // 시각 편집
+            rowEl.querySelectorAll('.marker-time-input').forEach((input) => {
+                input.addEventListener('change', () => {
+                    const parsed = parseTimeInput(input.value);
+                    const m = getMarker();
+                    if (parsed == null || !m) {
+                        // 무효 입력 — 현재 값으로 복원
+                        input.value = formatTimeInput(input.dataset.field === 'end' ? m?.end : m?.start);
+                        return;
+                    }
+                    const sec = Math.max(0, Math.min(parsed, this.state.duration || parsed));
+                    if (kind === 'vocal') {
+                        this.state.vocalStartSec = sec;
+                    } else if (input.dataset.field === 'start') {
+                        m.start = Math.min(sec, m.end - 0.1); // 시작은 끝보다 앞이어야
+                    } else {
+                        m.end = Math.max(sec, m.start + 0.1);
+                    }
+                    if (kind === 'interlude') this.state.interludes.sort((a, b) => a.start - b.start);
+                    this.markDirtyAndScheduleSave();
+                    this.onMarkersChanged();
+                });
+                input.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') input.blur();
+                    e.stopPropagation(); // 캔버스 키보드 넛지와 충돌 방지
+                });
+            });
+
+            // 삭제
+            rowEl.querySelector('.marker-delete-btn').addEventListener('click', () => {
+                if (kind === 'vocal') {
+                    this.state.vocalStartSec = null;
+                } else {
+                    this.state.interludes.splice(idx, 1);
+                }
+                this.markDirtyAndScheduleSave();
+                this.onMarkersChanged();
+            });
+        });
+    }
+
+    /**
+     * 파형 뷰포트를 마커 위치로 이동. 간주는 구간이 화면의 ~50%를 차지하게
+     * 확대하고, 점 마커(보컬 시작)는 앞뒤 5초가 보이게 잡는다.
+     * handleZoom과 동일한 클램프(줌 1~200, scrollTime 0~duration-visible).
+     */
+    panToMarker(startSec, endSec = null) {
+        const duration = this.state.duration;
+        if (!duration || typeof startSec !== 'number') return;
+        const span = (endSec != null && endSec > startSec) ? (endSec - startSec) : 10;
+        const visibleDuration = Math.min(duration, Math.max(span * 2, 2));
+        this.state.zoomLevel = Math.max(1, Math.min(200, duration / visibleDuration));
+        const center = (endSec != null && endSec > startSec) ? (startSec + endSec) / 2 : startSec;
+        const visible = duration / this.state.zoomLevel;
+        this.state.scrollTime = Math.max(0, Math.min(center - visible / 2, duration - visible));
+        this.updateScrollbar();
+        this.drawWaveform();
+    }
+
     updateMarkerSuggestionBar() {
         const bar = document.getElementById('marker-suggestion-bar');
         if (!bar) return;
@@ -1448,7 +1569,7 @@ export class ForcedAlignmentViewer {
                 this.state.suggestedVocalStartSec = null;
                 this.state.suggestedVocalStartSource = null;
                 this.updateMarkerSuggestionBar();
-                this.drawWaveform();
+                this.onMarkersChanged();
                 this.markDirtyAndScheduleSave();
             };
         }
@@ -1459,7 +1580,7 @@ export class ForcedAlignmentViewer {
                 this.state.interludes.sort((a, b) => a.start - b.start);
                 this.state.suggestedInterludes = [];
                 this.updateMarkerSuggestionBar();
-                this.drawWaveform();
+                this.onMarkersChanged();
                 this.markDirtyAndScheduleSave();
             };
         }

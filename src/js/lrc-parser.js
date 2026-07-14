@@ -61,6 +61,32 @@ export function formatMarkerLine(sec, tag) {
   return `[${min}:${s}][${tag}]`;
 }
 
+/**
+ * 마커 시간 입력 파싱 — 사용자가 마커 목록에서 직접 시각을 고칠 때 사용.
+ * `mm:ss`, `mm:ss.xx`, 초 단독("83", "83.5") 모두 허용. 무효 입력은 null.
+ */
+export function parseTimeInput(str) {
+  const t = (str || '').trim();
+  if (!t) return null;
+  const colon = /^(\d{1,3}):(\d{1,2}(?:\.\d{1,3})?)$/.exec(t);
+  if (colon) {
+    const sec = Number(colon[2]);
+    if (sec >= 60) return null;
+    return Number(colon[1]) * 60 + sec;
+  }
+  const plain = /^\d+(?:\.\d{1,3})?$/.exec(t);
+  if (plain) return Number(t);
+  return null;
+}
+
+/** 마커 시간 표시 포맷 — `mm:ss.xx` (parseTimeInput과 라운드트립). */
+export function formatTimeInput(sec) {
+  if (typeof sec !== 'number' || !Number.isFinite(sec) || sec < 0) return '';
+  const min = Math.floor(sec / 60).toString().padStart(2, '0');
+  const s = (sec % 60).toFixed(2).padStart(5, '0');
+  return `${min}:${s}`;
+}
+
 function normalizeLyricText(text = '') {
   return text
     .replace(/[\u200B-\u200D\uFEFF]/g, '')
