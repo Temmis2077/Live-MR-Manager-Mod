@@ -130,19 +130,23 @@ export class ForcedAlignmentViewer {
                         </div>
                         <div class="sync-controls-panel">
                             <div class="sync-bottom-row">
-                                <button id="play-btn" class="sync-ctrl-btn circle-btn" title="재생/일시정지">
+                                <button id="play-btn" class="sync-ctrl-btn circle-btn" title="재생/일시정지 (Space)">
                                     <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
                                 </button>
                                 <button id="sync-tap-btn" class="sync-ctrl-btn tap-btn">
-                                    <span class="tap-label">싱크 맞추기 (Space)</span>
+                                    <span class="tap-label">싱크 맞추기 (Enter)</span>
                                 </button>
                                 <div class="time-container">
                                     <span id="time-display" style="font-family:monospace; color:#94a3b8; font-size:0.85rem;">00:00 / 00:00</span>
                                 </div>
                             </div>
                             <div class="sync-bottom-row" style="margin-top:8px; flex-wrap:wrap; gap:8px;">
-                                <button id="mark-vocal-start-btn" class="sync-reset-btn" title="현재 재생 위치를 보컬이 시작되는 지점으로 지정합니다.">보컬 시작 지점 지정</button>
-                                <button id="add-interlude-btn" class="sync-reset-btn" title="현재 재생 위치 근처에 간주(무보컬) 구간을 추가합니다. 경계를 드래그해 조정하세요.">간주 구간 추가</button>
+                                <button id="mark-vocal-start-btn" class="sync-reset-btn" title="현재 재생 위치를 보컬이 시작되는 지점으로 지정합니다. (단축키 V)">보컬 시작 지점 지정 (V)</button>
+                                <button id="add-interlude-btn" class="sync-reset-btn" title="현재 재생 위치 근처에 간주(무보컬) 구간을 추가합니다. 경계를 드래그해 조정하세요. (단축키 M)">간주 구간 추가 (M)</button>
+                                <label class="follow-playhead-toggle" title="재생 중 타임바(재생 위치 선)가 화면 밖으로 나가면 파형이 자동으로 따라 이동합니다.">
+                                    <input type="checkbox" id="follow-playhead-check">
+                                    <span>타임바 따라가기</span>
+                                </label>
                                 <span id="marker-suggestion-bar" style="display:none; align-items:center; gap:6px; font-size:0.75rem; color:var(--align-text-soft);"></span>
                             </div>
                         </div>
@@ -221,6 +225,18 @@ export class ForcedAlignmentViewer {
         get('ai-align-btn').onclick = () => this.runAiAlignment();
         get('ai-align-cancel-btn').onclick = () => this.cancelAiAlignment();
 
+        // 타임바 따라가기 토글 — 재생 위치 선이 화면 밖으로 나가면 파형이
+        // 자동으로 따라 이동(확대 상태에서 유용). localStorage에 저장.
+        const followCheck = get('follow-playhead-check');
+        if (followCheck) {
+            followCheck.checked = localStorage.getItem('alignFollowPlayhead') === 'true';
+            this.followPlayhead = followCheck.checked;
+            followCheck.onchange = () => {
+                this.followPlayhead = followCheck.checked;
+                localStorage.setItem('alignFollowPlayhead', String(followCheck.checked));
+            };
+        }
+
         // AI 정렬 진행률은 여기서 표시하지 않는다 — 대기열(AI 프로세싱 탭)이
         // 담당. 대신 대기열 상태가 바뀔 때마다 "AI 자동 정렬" 버튼을 변환 중
         // 표시로 전환한다(alignment-queue.js가 큐 변경 시 이벤트를 쏨).
@@ -289,11 +305,14 @@ export class ForcedAlignmentViewer {
 
         this.canvas.addEventListener('mousedown', (e) => {
             if (e.button === 0) {
+                // 파형 클릭은 탐색만 — 일시정지 중이었다면 재생을 시작하지
+                // 않는다(resume:false). 마커/경계 지점을 찍기 위한 클릭이 매번
+                // 재생으로 이어지던 문제 방지.
                 if (this.state.interludeHoverTarget) {
                     this.state.isResizingInterlude = true;
                     this.state.interludeResizeTarget = this.state.interludeHoverTarget;
                     const il = this.state.interludes[this.state.interludeHoverTarget.index];
-                    this.seekTo(this.state.interludeHoverTarget.type === 'start' ? il.start : il.end);
+                    this.seekTo(this.state.interludeHoverTarget.type === 'start' ? il.start : il.end, { resume: false });
                 } else if (this.state.hoveringTarget) {
                     this.state.isResizing = true;
                     this.state.resizeTarget = this.state.hoveringTarget;
@@ -301,13 +320,13 @@ export class ForcedAlignmentViewer {
 
                     const seg = this.state.segments[this.state.selectedTarget.index];
                     const targetTime = this.state.selectedTarget.type === 'start' ? seg.start : seg.end;
-                    this.seekTo(targetTime);
+                    this.seekTo(targetTime, { resume: false });
                 } else {
                     if (this.state.duration <= 0) return;
                     const rect = this.canvas.getBoundingClientRect();
                     const x = e.clientX - rect.left;
                     const targetTime = this.xToTime(x);
-                    this.seekTo(targetTime);
+                    this.seekTo(targetTime, { resume: false });
                     this.state.selectedTarget = null;
                 }
                 this.drawWaveform();
@@ -479,10 +498,24 @@ export class ForcedAlignmentViewer {
                         this.markDirtyAndScheduleSave();
                     }
                 }
-            } else if (e.code === 'Space') {
-                // Global spacebar tap
-                e.preventDefault();
-                this.handleTap();
+            } else if (state.activeView === 'alignment') {
+                // 가사 싱크 탭 전용 단축키. Space가 재생/정지와 싱크 맞추기를
+                // 겸해서 헷갈리던 것을 분리: Space=재생/정지, Enter=싱크 맞추기.
+                if (e.code === 'Space') {
+                    e.preventDefault();
+                    this.togglePlayback();
+                } else if (e.code === 'Enter') {
+                    e.preventDefault();
+                    this.handleTap();
+                } else if (e.code === 'KeyV') {
+                    // 현재 재생 위치에 보컬 시작 지점 지정
+                    e.preventDefault();
+                    this.markVocalStart();
+                } else if (e.code === 'KeyM') {
+                    // 현재 재생 위치 근처에 간주 마커 추가
+                    e.preventDefault();
+                    this.addInterludeAtCurrentTime();
+                }
             }
         });
 
@@ -572,6 +605,17 @@ export class ForcedAlignmentViewer {
                 this.state.duration = durationMs / 1000;
             }
             this.state.currentTime = positionMs / 1000;
+
+            // 타임바 따라가기: 재생 위치가 보이는 구간을 벗어나면 뷰포트를
+            // 자동 이동(위치 선이 화면 30% 지점에 오게). 확대 중일 때만 의미.
+            if (this.followPlayhead && this.state.isPlaying && this.state.zoomLevel > 1 && this.state.duration > 0) {
+                const visible = this.state.duration / this.state.zoomLevel;
+                const t = this.state.currentTime;
+                if (t < this.state.scrollTime || t > this.state.scrollTime + visible * 0.9) {
+                    this.state.scrollTime = Math.max(0, Math.min(t - visible * 0.3, this.state.duration - visible));
+                    this.updateScrollbar();
+                }
+            }
 
             this.updateTimeDisplay();
             this.drawWaveform();
@@ -822,9 +866,15 @@ export class ForcedAlignmentViewer {
         this.drawWaveform();
     }
 
-    async seekTo(time) {
+    /**
+     * @param resume 백엔드 seek_to는 항상 재생을 재개하므로, 마커를 찍으려고
+     *   파형을 클릭할 때(resume=false)는 원래 일시정지 상태였다면 탐색 후
+     *   즉시 다시 멈춘다 — 클릭할 때마다 재생돼서 지점 잡기가 어려웠던 문제.
+     */
+    async seekTo(time, { resume = true } = {}) {
         if (!this.state.currentPath || this.state.duration <= 0) return;
 
+        const wasPlaying = this.state.isPlaying;
         this.state.currentTime = Math.max(0, Math.min(this.state.duration, time));
         this.updateTimeDisplay();
 
@@ -836,6 +886,9 @@ export class ForcedAlignmentViewer {
             await this.invoke('seek_to', {
                 positionMs: Math.floor(this.state.currentTime * 1000)
             });
+            if (!resume && !wasPlaying) {
+                await this.invoke('toggle_playback');
+            }
         } catch (err) {
             console.error("[Alignment] seekTo error:", err);
         } finally {

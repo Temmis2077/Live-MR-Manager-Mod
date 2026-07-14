@@ -244,12 +244,16 @@ html[data-theme="sky"] {
 }
 
 .lyric-sidebar .card-header h3 {
-    flex: 1;
-    min-width: 0;
+    /* 제목이 옆 버튼들에 밀려 몇 글자만 남던 문제 — 제목은 항상 온전히
+       보이게 하고, 공간이 모자라면 버튼 묶음이 아랫줄로 내려간다. */
+    flex: 0 0 auto;
     font-size: 1.02rem;
     white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+}
+
+.lyric-sidebar .card-header {
+    flex-wrap: wrap;
+    row-gap: 6px;
 }
 
 .lyric-sidebar .card-header > div {
@@ -1109,4 +1113,21 @@ canvas#waveform-canvas {
 .marker-delete-btn:hover {
     color: #ef4444;
     border-color: #ef4444;
+}
+
+/* 타임바 따라가기 토글 (재생 위치 자동 추적) */
+.follow-playhead-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.75rem;
+    color: var(--align-text-soft);
+    cursor: pointer;
+    user-select: none;
+    margin-left: auto;
+}
+
+.follow-playhead-toggle input {
+    accent-color: var(--accent-primary);
+    cursor: pointer;
 }

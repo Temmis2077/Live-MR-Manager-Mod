@@ -109,8 +109,10 @@ export function switchTab(tabId) {
       if (alignmentViewer) {
         alignmentViewer.resize();
 
-        // Auto-load currently playing track from library if viewer is empty
-        if (!alignmentViewer.state.currentPath && state.currentTrack) {
+        // 재생 중인 곡을 항상 따라간다 — 라이브러리에서 곡을 재생한 뒤 탭에
+        // 들어와도 그 곡이 로드되게(이전에는 뷰어가 비어있을 때만 1회 로드라
+        // 다른 곡이 남아 있었음). 재생곡이 없으면 기존 로드 상태 유지.
+        if (state.currentTrack && alignmentViewer.state.currentPath !== state.currentTrack.path) {
           alignmentViewer.loadAudio(state.currentTrack.path);
           // Sync UI display name immediately
           const nameEl = document.getElementById('selected-track-name');
