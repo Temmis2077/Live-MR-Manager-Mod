@@ -176,7 +176,7 @@ export class ForcedAlignmentViewer {
                             <span id="ai-align-status" style="font-size:0.75rem; color:var(--align-text-soft);"></span>
                         </div>
                         <div style="font-size:0.72rem; color:var(--align-text-soft); opacity:0.85; margin-bottom:12px;">
-                            ※ 이 모델은 사람 목소리 기준으로 학습됐습니다. 보컬로이드 등 합성 음성 곡은 정렬이 잘 안 맞을 수 있어요 — 가능하면 사람이 부른 커버 버전으로 시도해보세요.
+                            ※ 이 모델은 사람 목소리 기준으로 학습됐습니다. 보컬로이드 등 합성 음성 곡은 정렬이 잘 안 맞을 수 있어요 — 인식이 안된다면 사람이 부른 커버 버전으로 시도해보세요.
                         </div>
                         <div id="lyric-lines-container" class="lyric-lines-list">
                             <div style="color:#475569; text-align:center; padding-top:40px;">정렬을 시작하세요.</div>
