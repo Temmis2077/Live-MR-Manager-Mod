@@ -197,6 +197,12 @@ export function updateLyrics(segments) {
     container.scrollTop = 0;
     state.currentLyricIndex = -1;
 
+    // 가사 뷰 페이지(/lyrics-view, OBS 독)용 전체 가사 목록 푸시.
+    // 인앱 표시 설정('app' 스코프)을 따라 원문/차음/번역 노출을 결정.
+    invoke('update_overlay_lyrics_full', {
+        lines: (segments || []).map((seg) => displayText(seg, 'app')),
+    }).catch(() => {});
+
     if (!segments || segments.length === 0) {
         lastOverlayCurrent = null;
         lastOverlayNext = null;
@@ -254,7 +260,7 @@ function syncLyricsWithTime(currentTime) {
     const lyrics = state.currentLyrics;
     if (!lyrics || lyrics.length === 0) {
         // [추가] 가사가 없는 곡이라면 오버레이의 가사 영역을 확실히 비움
-        invoke('update_overlay_lyrics', { current: "", next: "" }).catch(err => console.error(err));
+        invoke('update_overlay_lyrics', { current: "", next: "", index: -1 }).catch(err => console.error(err));
         return;
     }
 
@@ -275,7 +281,8 @@ function syncLyricsWithTime(currentTime) {
     // At song start, index can stay -1 for a while but first line still needs to appear in "next".
     const overlayPayloadChanged = current !== lastOverlayCurrent || next !== lastOverlayNext;
     if (overlayPayloadChanged) {
-        invoke('update_overlay_lyrics', { current, next }).catch(err => console.error(err));
+        // index는 가사 뷰 페이지(/lyrics-view)의 현재 줄 하이라이트용
+        invoke('update_overlay_lyrics', { current, next, index: playingIndex }).catch(err => console.error(err));
         lastOverlayCurrent = current;
         lastOverlayNext = next;
     }

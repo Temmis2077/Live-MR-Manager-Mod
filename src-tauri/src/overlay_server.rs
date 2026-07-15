@@ -57,6 +57,17 @@ pub struct OverlayState {
     pub lyrics_style: OverlayStyle,
 
     pub is_force_visible: bool,
+
+    /// 가사 뷰 페이지(/lyrics-view, OBS 독용 전체 가사 화면)를 위한 상태.
+    /// 곡의 전체 가사 줄 목록과 현재 부르는 줄 인덱스(-1 = 아직 시작 전).
+    #[serde(default)]
+    pub lyrics_lines: Vec<String>,
+    #[serde(default = "default_lyric_index")]
+    pub lyric_index: i32,
+}
+
+fn default_lyric_index() -> i32 {
+    -1
 }
 
 impl Default for OverlayState {
@@ -75,6 +86,8 @@ impl Default for OverlayState {
                 ..OverlayStyle::default()
             },
             is_force_visible: false,
+            lyrics_lines: Vec::new(),
+            lyric_index: -1,
         }
     }
 }
@@ -93,6 +106,7 @@ pub fn init(handle: tauri::AppHandle) {
 
 static OVERLAY_INFO_HTML: &str = include_str!("../../src/overlay-info.html");
 static OVERLAY_LYRICS_HTML: &str = include_str!("../../src/overlay-lyrics.html");
+static LYRICS_VIEW_HTML: &str = include_str!("../../src/lyrics-view.html");
 static OVERLAY_SHARED_JS: &str = include_str!("../../src/js/overlay/shared.js");
 static APP_ICON: &[u8] = include_bytes!("../../src/assets/images/app-icon.png");
 
@@ -118,6 +132,18 @@ fn resolve_overlay_lyrics_html() -> String {
         }
     }
     OVERLAY_LYRICS_HTML.to_string()
+}
+
+fn resolve_lyrics_view_html() -> String {
+    #[cfg(debug_assertions)]
+    {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../src/lyrics-view.html");
+        if let Ok(content) = std::fs::read_to_string(&path) {
+            return content;
+        }
+    }
+    LYRICS_VIEW_HTML.to_string()
 }
 
 fn resolve_overlay_shared_js() -> String {
@@ -212,6 +238,26 @@ pub async fn start_overlay_server() {
                         let _ = stream.write_all(response.as_bytes()).await;
                         let _ = stream.flush().await;
                         println!("[Overlay] Served shared.js to {}", addr);
+                    } else if request.starts_with("GET /lyrics-view") {
+                        // 가사 뷰 — 퍼포머 본인이 보는 전체 가사 페이지(OBS 커스텀
+                        // 독/브라우저용). 아래 `/lyrics` 프리픽스 분기보다 먼저
+                        // 매칭해야 하므로 이 순서를 유지할 것.
+                        let html = resolve_lyrics_view_html();
+                        use tokio::io::AsyncWriteExt;
+                        let response = format!(
+                            "HTTP/1.1 200 OK\r\n\
+                            Content-Type: text/html; charset=utf-8\r\n\
+                            Content-Length: {}\r\n\
+                            Access-Control-Allow-Origin: *\r\n\
+                            Cache-Control: no-cache, no-store, must-revalidate\r\n\
+                            Connection: close\r\n\r\n\
+                            {}",
+                            html.len(),
+                            html
+                        );
+                        let _ = stream.write_all(response.as_bytes()).await;
+                        let _ = stream.flush().await;
+                        println!("[Overlay] HTTP Page served to {} (Path: /lyrics-view)", addr);
                     } else if request.starts_with("GET /lyrics")
                         || request.starts_with("GET /overlay-lyrics")
                     {
@@ -404,10 +450,24 @@ pub async fn update_overlay_style(target: String, scale: f32, font: String, colo
 
 
 #[tauri::command]
-pub async fn update_overlay_lyrics(current: String, next: String) {
+pub async fn update_overlay_lyrics(current: String, next: String, index: Option<i32>) {
     let mut state = CURRENT_STATE.lock().await.clone();
     state.current_lyric = current;
     state.next_lyric = next;
+    if let Some(i) = index {
+        state.lyric_index = i;
+    }
+    broadcast_overlay_state(state).await;
+}
+
+/// 곡이 바뀌거나 가사가 로드될 때 전체 가사 줄 목록을 교체한다 —
+/// 가사 뷰 페이지(/lyrics-view)가 전체 목록을 렌더하고 lyric_index로
+/// 현재 줄을 하이라이트하는 데 사용.
+#[tauri::command]
+pub async fn update_overlay_lyrics_full(lines: Vec<String>) {
+    let mut state = CURRENT_STATE.lock().await.clone();
+    state.lyrics_lines = lines;
+    state.lyric_index = -1;
     broadcast_overlay_state(state).await;
 }
  

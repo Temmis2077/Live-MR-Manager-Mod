@@ -148,8 +148,11 @@ export function initOverlayListeners() {
     const host = (useLan && cachedLanAddress) ? cachedLanAddress : 'localhost';
     const infoUrl = `http://${host}:14202/overlay-info`;
     const lyricsUrl = `http://${host}:14202/overlay-lyrics`;
+    const lyricsViewUrl = `http://${host}:14202/lyrics-view`;
     if (overlayUrlDisplay) overlayUrlDisplay.textContent = infoUrl;
     if (lyricsOverlayUrlDisplay) lyricsOverlayUrlDisplay.textContent = lyricsUrl;
+    const lyricsViewUrlDisplay = document.getElementById('lyrics-view-url-display');
+    if (lyricsViewUrlDisplay) lyricsViewUrlDisplay.textContent = lyricsViewUrl;
     if (overlayLanStatus) {
       if (useLan && !cachedLanAddress) {
         overlayLanStatus.textContent = '이 PC의 네트워크 주소를 찾을 수 없습니다. localhost 주소가 표시됩니다.';
@@ -176,6 +179,7 @@ export function initOverlayListeners() {
     };
     setupCopyBtn('btn-copy-overlay-url', infoUrl);
     setupCopyBtn('btn-copy-lyrics-overlay-url', lyricsUrl);
+    setupCopyBtn('btn-copy-lyrics-view-url', lyricsViewUrl);
 
     if (!overlayIframe.src.includes('preview=true')) {
       const mode = activeTab && activeTab.dataset.previewMode === 'lyrics' ? 'lyrics' : 'info';
