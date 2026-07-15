@@ -41,6 +41,36 @@ pub fn get_app_paths(handle: AppHandle) -> crate::state::AppPaths {
     handle.state::<crate::state::AppPaths>().inner().clone()
 }
 
+/// 가사 호버창을 연다 — 번들된 lyrics-view.html을 `?hover=1`로 띄운 별도 창.
+/// 항상 위 + 투명 배경(페이지에서 알파 조절) + 크기 조절 + 헤더 드래그 이동.
+/// 이미 열려 있으면 새로 만들지 않고 앞으로 가져온다.
+#[tauri::command]
+pub async fn open_lyrics_window(app: AppHandle) -> Result<(), String> {
+    if let Some(win) = app.get_webview_window("lyrics-hover") {
+        let _ = win.show();
+        let _ = win.unminimize();
+        let _ = win.set_focus();
+        return Ok(());
+    }
+
+    tauri::WebviewWindowBuilder::new(
+        &app,
+        "lyrics-hover",
+        tauri::WebviewUrl::App("lyrics-view.html?hover=1".into()),
+    )
+    .title("가사 뷰")
+    .inner_size(420.0, 620.0)
+    .min_inner_size(260.0, 220.0)
+    .resizable(true)
+    .decorations(false)
+    .transparent(true)
+    .always_on_top(true)
+    .build()
+    .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
 /// 노래 추가 UI의 "로컬 파일 선택" — 오디오 파일 다중 선택 대화상자.
 /// 취소하면 빈 벡터.
 #[tauri::command]

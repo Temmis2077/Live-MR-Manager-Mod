@@ -204,8 +204,24 @@ function initDockMoreMenu() {
   const itemEdit = document.getElementById("dock-menu-edit");
   const itemSeparate = document.getElementById("dock-menu-separate");
   const itemLyricSync = document.getElementById("dock-menu-lyric-sync");
+  const itemLyricsWindow = document.getElementById("dock-menu-lyrics-window");
 
   const closeMenu = () => popover.classList.remove("active");
+
+  if (itemLyricsWindow) {
+    // 가사 호버창 — 곡과 무관하게 열 수 있다(재생 중인 곡을 자동으로 따라감).
+    itemLyricsWindow.onclick = async () => {
+      closeMenu();
+      const { invoke } = await import('../../tauri-bridge.js');
+      try {
+        await invoke('open_lyrics_window');
+      } catch (err) {
+        console.error('[LyricsWindow] open failed:', err);
+        const { showNotification } = await import('../../utils.js');
+        showNotification('가사 창을 열지 못했습니다: ' + err, 'error');
+      }
+    };
+  }
 
   btn.onclick = (e) => {
     e.stopPropagation();

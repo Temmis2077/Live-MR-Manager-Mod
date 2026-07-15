@@ -153,6 +153,7 @@ pub fn run() {
             library::delete_song, library::map_track_to_categories,
             system::get_app_paths,
             system::pick_audio_files,
+            system::open_lyrics_window,
             system::export_backup, 
             system::import_backup,
             system::export_library_spreadsheet,
