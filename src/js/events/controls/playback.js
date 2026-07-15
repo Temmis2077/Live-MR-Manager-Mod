@@ -130,6 +130,8 @@ export function initPlaybackListeners() {
     };
   }
 
+  initDockMoreMenu();
+
   if (elements.vocalBalance) {
     elements.vocalBalance.oninput = (e) => {
       const val = e.target.value;
@@ -184,6 +186,84 @@ export function initPlaybackListeners() {
         elements.tempoSlider.dispatchEvent(new Event("input"));
       }
       import('../../utils.js').then(m => m.showNotification("오디오 설정이 초기화되었습니다.", "info"));
+    };
+  }
+}
+
+/**
+ * 컨트롤바 ⋮ 버튼 → 현재 곡 빠른 작업 메뉴(숨김 팝오버).
+ * 곡 정보 수정 / MR 분리 / 가사 싱크 열기를 재생 중인 곡에 바로 실행한다.
+ * 재생 중인 곡이 없으면 안내만 하고 메뉴를 열지 않는다.
+ */
+function initDockMoreMenu() {
+  const btn = document.getElementById("dock-more-btn");
+  const popover = document.getElementById("dock-more-popover");
+  if (!btn || !popover) return;
+
+  const titleEl = document.getElementById("dock-more-title");
+  const itemEdit = document.getElementById("dock-menu-edit");
+  const itemSeparate = document.getElementById("dock-menu-separate");
+  const itemLyricSync = document.getElementById("dock-menu-lyric-sync");
+
+  const closeMenu = () => popover.classList.remove("active");
+
+  btn.onclick = (e) => {
+    e.stopPropagation();
+    if (popover.classList.contains("active")) {
+      closeMenu();
+      return;
+    }
+    const song = state.currentTrack;
+    if (!song) {
+      import('../../utils.js').then(m => m.showNotification("재생 중인 곡이 없습니다.", "info"));
+      return;
+    }
+    // 열 때마다 현재 곡 기준으로 항목 상태 갱신
+    if (titleEl) titleEl.textContent = song.title || "현재 곡";
+    if (itemSeparate) {
+      const inLib = state.songLibrary.find((s) => s.path === song.path) || song;
+      const isSeparated = !!(inLib.isSeparated || inLib.is_separated);
+      const isManualMr = !!(inLib.isMr || inLib.is_mr);
+      const busy = !!state.activeTasks[song.path];
+      itemSeparate.classList.toggle("disabled", isSeparated || isManualMr || busy);
+      itemSeparate.textContent = busy ? "분리 진행 중…" : (isSeparated ? "MR 분리됨" : "MR 분리");
+    }
+    popover.classList.add("active");
+  };
+
+  if (itemEdit) {
+    itemEdit.onclick = async () => {
+      closeMenu();
+      const song = state.currentTrack;
+      if (!song) return;
+      const idx = state.songLibrary.findIndex((s) => s.path === song.path);
+      if (idx === -1) {
+        import('../../utils.js').then(m => m.showNotification("라이브러리에서 곡을 찾을 수 없습니다.", "error"));
+        return;
+      }
+      const { openEditModal } = await import('../../ui/modals.js');
+      openEditModal(state.songLibrary[idx], idx);
+    };
+  }
+
+  if (itemSeparate) {
+    itemSeparate.onclick = async () => {
+      closeMenu();
+      const song = state.currentTrack;
+      if (!song) return;
+      // 컨텍스트 메뉴와 동일: 속도/품질(모델) 선택 모달을 먼저 띄운다.
+      const { openSeparationModeModal } = await import('../../separation-mode-modal.js');
+      openSeparationModeModal(state.songLibrary.find((s) => s.path === song.path) || song);
+    };
+  }
+
+  if (itemLyricSync) {
+    itemLyricSync.onclick = async () => {
+      closeMenu();
+      const song = state.currentTrack;
+      if (!song) return;
+      const { openAlignmentForTrack } = await import('../navigation.js');
+      openAlignmentForTrack(song.path);
     };
   }
 }

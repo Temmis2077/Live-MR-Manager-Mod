@@ -89,6 +89,7 @@ export const elements = {
   tasksPage: null,
   overlayPage: null,
   activeTasksList: null,
+  alignmentTasksList: null,
   taskBadge: null,
   btnExportBackup: null,
   btnImportBackup: null,
@@ -188,7 +189,8 @@ export function initDomReferences() {
   elements.settingsPage = document.getElementById("settings-page");
   elements.tasksPage = document.getElementById("tasks-page");
   elements.overlayPage = document.getElementById("overlay-tab");
-  elements.activeTasksList = document.getElementById("active-tasks-list");
+  elements.activeTasksList = document.getElementById("separation-tasks-list");
+  elements.alignmentTasksList = document.getElementById("alignment-tasks-list");
   elements.taskBadge = document.getElementById("task-badge");
   elements.btnExportBackup = document.getElementById("btn-export-backup");
   elements.btnImportBackup = document.getElementById("btn-import-backup");

@@ -194,6 +194,13 @@ export async function setupBackendListeners() {
         showNotification(formatSeparationFailure(status), "error");
       }
 
+      // 노래 추가에서 "분리 후 정렬"로 미뤄둔 곡이면 이제 정렬 대기열에 등록
+      // (완료뿐 아니라 오류/취소로 끝나도 — 가사는 저장돼 있고 원본으로도
+      // 정렬은 가능하므로 요청을 버리지 않는다).
+      import('../alignment-queue.js')
+        .then((m) => m.onSeparationTerminated(path, pathMatches))
+        .catch(() => {});
+
       // Refresh library badges for all termination states (finished, cancelled, error)
       renderLibrary();
     } else {
@@ -236,36 +243,17 @@ export async function setupBackendListeners() {
     }
   });
 
-  // File Drag & Drop support
+  // File Drag & Drop support — 즉시 추가 대신 "노래 추가" 원스톱 모달을
+  // 파일이 미리 채워진 상태로 연다(곡 정보/MR 분리/가사 정렬까지 한 번에).
   await listen("tauri://drag-drop", async (event) => {
     const paths = event.payload.paths;
-    if (paths && paths.length > 0) {
-      const { getAudioMetadata, saveLibrary } = await import('../audio.js');
-      const { renderLibrary } = await import('../ui/library.js');
-
-      let addedCount = 0;
-      for (const path of paths) {
-        const ext = path.split('.').pop().toLowerCase();
-        if (["mp3", "wav", "flac", "m4a", "aac", "ogg", "wma"].includes(ext)) {
-          try {
-            const metadata = await getAudioMetadata(path);
-            metadata.source = "local";
-            state.songLibrary.push(metadata);
-            addedCount++;
-          } catch (err) {
-            console.error("Drop add failed for:", path, err);
-          }
-        }
-      }
-
-      if (addedCount > 0) {
-        await saveLibrary(state.songLibrary);
-        showNotification(`${addedCount}개의 파일이 추가되었습니다.`, "success");
-        const { refreshFilterDropdowns } = await import('../ui/core.js');
-        await refreshFilterDropdowns();
-        renderLibrary();
-      }
-    }
+    if (!paths || paths.length === 0) return;
+    const audioPaths = paths.filter((path) =>
+      ["mp3", "wav", "flac", "m4a", "aac", "ogg", "wma"].includes(path.split('.').pop().toLowerCase())
+    );
+    if (audioPaths.length === 0) return;
+    const { openAddSongModal } = await import('../ui/add-song-modal.js');
+    openAddSongModal(audioPaths);
   });
 
   // Recover active separation queue after frontend reload (F5).

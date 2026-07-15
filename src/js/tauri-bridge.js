@@ -20,7 +20,7 @@ export async function invoke(command, args = {}) {
   }
   
   console.log(`[Mock-Invoke] ${command}`, args);
-  
+
   // Provide mock responses for common initialization calls
   switch (command) {
     case 'load_library':

@@ -21,7 +21,9 @@ export function openEditModal(song, index) {
   const genreDropdown = document.getElementById("edit-genre-dropdown");
   
   if (genreSelect && genreCustom && genreDropdown) {
-    const defaultGenres = ["pop", "ballad", "dance", "rock", "jpop", "kpop", "etc"];
+    // index.html의 #edit-genre-dropdown 옵션 목록과 동기화할 것 —
+    // 노래 추가 모달(add-song-modal.js COMMON_GENRES)도 같은 값 규약을 쓴다.
+    const defaultGenres = ["kpop", "pop", "ballad", "dance", "hiphop", "rnb", "rock", "indie", "trot", "jpop", "anime", "vocaloid", "ost", "edm", "jazz", "classical", "folk", "ccm", "etc"];
     const songGenre = (song.genre || "").toLowerCase();
     
     if (defaultGenres.includes(songGenre)) {
@@ -68,6 +70,32 @@ export function openEditModal(song, index) {
   }
   if (editBpm) {
     editBpm.value = song.bpm ?? "";
+  }
+  const editLyricsLink = document.getElementById("edit-lyrics-link");
+  if (editLyricsLink) {
+    editLyricsLink.value = song.lyricsLink || song.lyrics_link || "";
+  }
+
+  // MR 분리 기록 (읽기 전용) — 분리 완료 시 캐시에 자동 저장된 모델/일시 표시.
+  // 비동기 조회라 일단 숨겼다가 기록이 있으면 채워서 노출.
+  const sepGroup = document.getElementById("edit-separation-info-group");
+  const sepInfoEl = document.getElementById("edit-separation-info");
+  if (sepGroup && sepInfoEl) {
+    sepGroup.style.display = "none";
+    sepInfoEl.textContent = "";
+    const modalPath = song.path;
+    import("../model-api.js").then(({ getSeparationInfo }) => getSeparationInfo(modalPath)).then((info) => {
+      // 조회가 돌아왔을 때 모달이 다른 곡으로 바뀌었으면 무시
+      const currentTitle = document.getElementById("edit-title");
+      if (!info || !currentTitle) return;
+      if (state.editingSongIndex === null || state.songLibrary[state.editingSongIndex]?.path !== modalPath) return;
+      const when = info.completedAt
+        ? new Date(info.completedAt * 1000).toLocaleString("ko-KR", { dateStyle: "medium", timeStyle: "short" })
+        : "";
+      const provider = info.provider ? ` · ${info.provider}` : "";
+      sepInfoEl.textContent = `${info.modelName || info.modelId || "알 수 없는 모델"}${provider}${when ? ` · ${when}` : ""}`;
+      sepGroup.style.display = "";
+    }).catch(() => {});
   }
   setMetaStarRating("edit-difficulty-stars", "edit-difficulty-select", song.difficulty);
   setMetaStarRating("edit-proficiency-stars", "edit-proficiency-select", song.proficiency);

@@ -24,6 +24,14 @@ pub static CACHED_STATE: Mutex<Option<CachedAlignmentState>> = Mutex::new(None);
 
 pub static CANCEL_ALIGNMENT: AtomicBool = AtomicBool::new(false);
 
+/// Serializes forced-alignment runs (same single-permit pattern as
+/// `separation::AI_QUEUE_LOCK`). `CACHED_STATE` and `CANCEL_ALIGNMENT` are
+/// single-slot globals — holding this lock across the whole run guarantees
+/// at most one alignment owns them at any time, so batch-queued requests and
+/// the interactive editor button can never corrupt each other's state.
+pub static ALIGNMENT_QUEUE_LOCK: once_cell::sync::Lazy<tokio::sync::Mutex<()>> =
+    once_cell::sync::Lazy::new(|| tokio::sync::Mutex::new(()));
+
 fn clean_lyrics(text: &str) -> String {
     // 괄호 안의 메타데이터 제거 (e.g. [Chorus], (Intro))
     let re_brackets = Regex::new(r"\[.*?\]|\(.*?\)|<.*?>").unwrap();
@@ -170,6 +178,112 @@ pub async fn get_separated_audio_list(handle: AppHandle) -> Result<Vec<Separated
     Ok(tracks)
 }
 
+/// Downloadable forced-alignment model registry (separate from the vocal
+/// separation models in `state.rs::MODELS`, since these carry two files —
+/// the ONNX acoustic model and its `tokens.txt` vocab — instead of one, and
+/// are hosted on a dedicated GitHub Release rather than Hugging Face.
+pub struct AlignmentModelSpec {
+    pub id: &'static str,
+    pub display_name: &'static str,
+    pub model_url: &'static str,
+    pub tokens_url: &'static str,
+}
+
+pub const ALIGNMENT_MODELS: &[AlignmentModelSpec] = &[
+    AlignmentModelSpec {
+        id: "wav2vec2-korean-lyrics",
+        display_name: "한국어 가사 정렬 모델 (실험적, 약 1.2GB)",
+        // kresnik/wav2vec2-large-xlsr-korean (Apache-2.0) exported to ONNX
+        // (single-file, weights merged) + vocab.json converted to tokens.txt.
+        model_url: "https://github.com/Temmis2077/Live-MR-Manager/releases/download/ai-align-model-v1/model.onnx",
+        tokens_url: "https://github.com/Temmis2077/Live-MR-Manager/releases/download/ai-align-model-v1/tokens.txt",
+    },
+    AlignmentModelSpec {
+        id: "wav2vec2-english-lyrics",
+        display_name: "영어 가사 정렬 모델 (팝송, 약 360MB)",
+        // facebook/wav2vec2-base-960h (Apache-2.0) exported to ONNX.
+        // 라틴 char-level vocab (대문자 A–Z, |, <pad>/<unk>).
+        model_url: "https://github.com/Temmis2077/Live-MR-Manager/releases/download/align-model-en-v1/model.onnx",
+        tokens_url: "https://github.com/Temmis2077/Live-MR-Manager/releases/download/align-model-en-v1/tokens.txt",
+    },
+];
+
+fn find_alignment_model_spec(model_id: &str) -> Option<&'static AlignmentModelSpec> {
+    ALIGNMENT_MODELS.iter().find(|m| m.id == model_id)
+}
+
+#[command]
+pub async fn list_downloadable_alignment_models() -> Vec<(String, String)> {
+    ALIGNMENT_MODELS
+        .iter()
+        .map(|m| (m.id.to_string(), m.display_name.to_string()))
+        .collect()
+}
+
+async fn download_file_with_progress(
+    handle: &AppHandle,
+    url: &str,
+    dest: &Path,
+    event_name: &str,
+) -> Result<(), String> {
+    use futures_util::StreamExt;
+    use std::io::Write;
+
+    let client = reqwest::Client::builder()
+        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+        .build()
+        .map_err(|e| format!("HTTP 클라이언트 생성 실패: {}", e))?;
+
+    let response = client.get(url).send().await.map_err(|e| format!("요청 실패: {}", e))?;
+    if !response.status().is_success() {
+        return Err(format!("다운로드 실패: HTTP {}", response.status()));
+    }
+
+    let total_size = response.content_length().unwrap_or(0);
+    let mut file = fs::File::create(dest).map_err(|e| format!("파일 생성 실패: {}", e))?;
+    let mut stream = response.bytes_stream();
+    let mut downloaded: u64 = 0;
+
+    while let Some(item) = stream.next().await {
+        let chunk = item.map_err(|e| e.to_string())?;
+        file.write_all(&chunk).map_err(|e| e.to_string())?;
+        downloaded += chunk.len() as u64;
+        if total_size > 0 {
+            let percentage = (downloaded as f32 / total_size as f32) * 100.0;
+            let _ = handle.emit(event_name, percentage);
+        }
+    }
+    Ok(())
+}
+
+/// Downloads a forced-alignment model (ONNX + tokens.txt) into
+/// `AppPaths.models/<model_id>/`, where `get_model_list` will pick it up.
+/// Emits `alignment-model-download-progress` (0-100, model file only — the
+/// small tokens.txt isn't worth its own progress phase) while downloading.
+#[command]
+pub async fn download_alignment_model(handle: AppHandle, model_id: String) -> Result<(), String> {
+    let spec = find_alignment_model_spec(&model_id)
+        .ok_or_else(|| format!("알 수 없는 정렬 모델: {}", model_id))?;
+
+    let paths = crate::state::AppPaths::from_handle(&handle);
+    let target_dir = paths.models.join(spec.id);
+    fs::create_dir_all(&target_dir).map_err(|e| format!("폴더 생성 실패: {}", e))?;
+
+    sys_log(&format!("[Alignment] Downloading model '{}' from {}", spec.id, spec.model_url));
+    download_file_with_progress(
+        &handle,
+        spec.model_url,
+        &target_dir.join("model.onnx"),
+        "alignment-model-download-progress",
+    ).await?;
+
+    sys_log(&format!("[Alignment] Downloading tokens for '{}' from {}", spec.id, spec.tokens_url));
+    download_file_with_progress(&handle, spec.tokens_url, &target_dir.join("tokens.txt"), "alignment-model-download-progress").await?;
+
+    sys_log(&format!("[Alignment] Model '{}' ready at {:?}", spec.id, target_dir));
+    Ok(())
+}
+
 #[command]
 pub async fn get_model_list(handle: AppHandle) -> Result<Vec<String>, String> {
     let paths = crate::state::AppPaths::from_handle(&handle);
@@ -235,6 +349,9 @@ pub async fn run_forced_alignment(
     rep_penalty: Option<f32>,
     _use_vad: Option<bool>
 ) -> Result<AlignmentResult, String> {
+    // -1 sentinel: waiting for a previous alignment to finish (queued).
+    let _ = handle.emit("alignment-progress", -1);
+    let _permit = ALIGNMENT_QUEUE_LOCK.lock().await;
     CANCEL_ALIGNMENT.store(false, Ordering::SeqCst);
     sys_log(&format!("[Alignment] Starting new CTC alignment path: {}", audio_path));
 
@@ -255,16 +372,32 @@ pub async fn run_forced_alignment(
 
     let is_whisper = model_path.to_string_lossy().contains("whisper-base");
     let processor = AudioProcessor::new();
-    
+
+    // Prefer the isolated vocal stem when this track has been AI-separated —
+    // singing-voice ASR accuracy drops sharply with instrumental bleed, and
+    // this is the same resolution `get_waveform_summary` already uses.
+    let resolved_audio_path = resolve_audio_path(&handle, &audio_path)
+        .await
+        .unwrap_or_else(|_| PathBuf::from(&audio_path));
+    sys_log(&format!(
+        "[Alignment] Resolved alignment input: {:?} (requested: {})",
+        resolved_audio_path, audio_path
+    ));
+
+    // -2 sentinel: 오디오 전처리 + 모델 로드(ONNX 세션 생성) 준비 단계.
+    // 이 구간은 수 초 걸릴 수 있는데 진행률이 없어서, 프론트가 0%가 아니라
+    // "준비 중"으로 표시하도록 별도 신호를 보낸다. (-1은 대기열 대기)
+    let _ = handle.emit("alignment-progress", -2);
+
     let emission_probs = if is_whisper {
         sys_log("[Alignment] Engine B (Whisper) Preprocessing: Extracting Mel-spectrogram...");
-        let raw_samples = processor.load_and_preprocess(&audio_path)?;
+        let raw_samples = processor.load_and_preprocess(&resolved_audio_path)?;
         let mel_data = processor.get_mel_spectrogram(raw_samples.as_slice().unwrap());
-        
+
         sys_log(&format!("[Alignment] Engine B: Creating ONNX session for {:?}", model_path));
         let mut engine = OnnxEngine::new(&model_path)?;
         let h_clone = handle.clone();
-        
+
         sys_log("[Alignment] Engine B: Running Whisper Inference...");
         engine.run_inference(&mel_data, true, |p| {
             let _ = h_clone.emit("alignment-progress", p as i32);
@@ -275,12 +408,12 @@ pub async fn run_forced_alignment(
         })?
     } else {
         sys_log("[Alignment] Engine A (Wav2Vec2) Preprocessing: Raw audio PCM...");
-        let audio_data = processor.load_and_preprocess(&audio_path)?;
-        
+        let audio_data = processor.load_and_preprocess(&resolved_audio_path)?;
+
         sys_log(&format!("[Alignment] Engine A: Creating ONNX session for {:?}", model_path));
         let mut engine = OnnxEngine::new(&model_path)?;
         let h_clone = handle.clone();
-        
+
         sys_log("[Alignment] Engine A: Running Wav2Vec2 Inference...");
         engine.run_inference(audio_data.as_slice().unwrap(), false, |p| {
             let _ = h_clone.emit("alignment-progress", p as i32);
@@ -543,6 +676,11 @@ pub struct Aligner {
     space_id: Option<usize>,
     unk_id: usize,
     is_syllable_based: bool,
+    /// vocab이 라틴 문자(대문자 A–Z) 기반인지 — 영어 wav2vec2 CTC 모델.
+    /// 이 경우 토크나이즈는 글자 단위(대문자화), 디코딩은 직결합.
+    is_latin_based: bool,
+    /// vocab에 아포스트로피(`'`)가 있는지 — 영어 축약형(don't) 유지 여부.
+    has_apostrophe: bool,
 }
 
 impl Aligner {
@@ -551,7 +689,8 @@ impl Aligner {
         let reader = BufReader::new(file);
         let mut token_to_id = HashMap::new();
         let mut has_syllables = false;
-        
+        let mut has_latin = false;
+
         for line in reader.lines() {
             let line = line.map_err(|e| e.to_string())?;
             let line = line.trim_end();
@@ -561,14 +700,16 @@ impl Aligner {
                 let id_str = &line[idx + 1..];
                 if let Ok(id) = id_str.parse::<usize>() {
                     token_to_id.insert(token.to_string(), id);
-                    
-                    // 완성형 글자(AC00-D7AF)가 포함되어 있는지 확인
-                    if !has_syllables {
-                        if let Some(c) = token.chars().next() {
-                            let cp = c as u32;
-                            if cp >= 0xAC00 && cp <= 0xD7AF {
-                                has_syllables = true;
-                            }
+
+                    if let Some(c) = token.chars().next() {
+                        let cp = c as u32;
+                        // 완성형 한글(AC00-D7AF) → 음절 기반
+                        if (0xAC00..=0xD7AF).contains(&cp) {
+                            has_syllables = true;
+                        }
+                        // 단일 라틴 대문자 토큰 → 영어 char-level 모델
+                        if token.chars().count() == 1 && c.is_ascii_uppercase() {
+                            has_latin = true;
                         }
                     }
                 }
@@ -583,40 +724,88 @@ impl Aligner {
         let unk_id = token_to_id.get("[UNK]").copied()
             .or_else(|| token_to_id.get("<unk>").copied())
             .unwrap_or(blank_id);
-            
-        Ok(Self { 
-            token_to_id, 
-            blank_id, 
-            space_id, 
-            unk_id, 
-            is_syllable_based: has_syllables 
+        // 라틴 기반은 한글 vocab이 아닐 때만(혼동 방지).
+        let is_latin_based = has_latin && !has_syllables;
+        let has_apostrophe = token_to_id.contains_key("'");
+
+        Ok(Self {
+            token_to_id,
+            blank_id,
+            space_id,
+            unk_id,
+            is_syllable_based: has_syllables,
+            is_latin_based,
+            has_apostrophe,
         })
+    }
+
+    /// Whether `c` falls in any Hangul Unicode block (syllables, jamo, or
+    /// compatibility jamo) — i.e. something a Korean acoustic model could
+    /// plausibly have a real token for.
+    fn is_hangul_char(c: char) -> bool {
+        let cp = c as u32;
+        (0xAC00..=0xD7A3).contains(&cp)   // Hangul syllables
+            || (0x1100..=0x11FF).contains(&cp) // Hangul jamo
+            || (0x3130..=0x318F).contains(&cp) // Hangul compatibility jamo
+    }
+
+    /// 이 vocab(모델)이 음향적으로 표현할 수 있는 "글자"인지.
+    /// 라틴 모델 → 라틴 문자(+아포스트로피), 한글 모델 → 한글. 숫자·문장부호·
+    /// 특수기호·이모지·타 스크립트 문자는 전부 false → tokenize에서 걸러진다.
+    fn is_representable_char(&self, c: char) -> bool {
+        if self.is_latin_based {
+            c.is_ascii_alphabetic() || (self.has_apostrophe && (c == '\'' || c == '\u{2019}'))
+        } else {
+            Self::is_hangul_char(c)
+        }
     }
 
     pub fn tokenize(&self, text: &str) -> (Vec<usize>, Vec<(usize, usize, String)>) {
         let mut ids = Vec::new();
         let mut word_spans = Vec::new();
         let words: Vec<&str> = text.split_whitespace().collect();
-        
+
         for (wi, word) in words.iter().enumerate() {
             let start_idx = ids.len();
-            let cleaned_word = word.trim_matches(|c: char| !c.is_alphanumeric());
-            
-            if self.is_syllable_based {
-                // 음절 기반: 이미 완성형 한글이 Vocab에 있는 경우
-                for c in cleaned_word.chars() {
-                    let s = c.to_string();
+
+            // 글자 이외 문자 필터: 모델이 표현할 수 있는 글자만 남긴다(양끝뿐
+            // 아니라 단어 중간의 숫자·문장부호·특수기호·타 언어 문자도 제거).
+            // 컬 아포스트로피(’)는 straight(')로 정규화해 vocab과 맞춘다.
+            let filtered: String = word
+                .chars()
+                .filter(|&c| self.is_representable_char(c))
+                .map(|c| if c == '\u{2019}' { '\'' } else { c })
+                .collect();
+
+            // 남는 글자가 없으면(순수 기호/숫자/타 언어 단어) 정렬 대상에서
+            // 제외 — zero-width span으로 두고 get_word_timestamps가 이웃 사이
+            // 시간을 나눠 보간한다. word_spans엔 원문 그대로 보존.
+            if filtered.is_empty() {
+                word_spans.push((start_idx, start_idx, word.to_string()));
+                if wi < words.len() - 1 { if let Some(sid) = self.space_id { ids.push(sid); } }
+                continue;
+            }
+
+            if self.is_latin_based {
+                // 영어 char-level: 대문자화 후 글자마다 매핑(vocab이 대문자 A–Z).
+                for c in filtered.chars() {
+                    let s = c.to_ascii_uppercase().to_string();
                     ids.push(*self.token_to_id.get(&s).unwrap_or(&self.unk_id));
                 }
+            } else if self.is_syllable_based {
+                // 음절 기반: 완성형 한글이 vocab에 있는 경우
+                for c in filtered.chars() {
+                    ids.push(*self.token_to_id.get(&c.to_string()).unwrap_or(&self.unk_id));
+                }
             } else {
-                // 자모 기반: 이전과 동일하게 분해
-                let decomposed = cleaned_word.nfd().collect::<String>();
+                // 자모 기반: NFD 분해 후 호환 자모로 매핑
+                let decomposed = filtered.nfd().collect::<String>();
                 for c in decomposed.chars() {
                     let s = self.to_compatibility_jamo(c);
                     ids.push(*self.token_to_id.get(&s).unwrap_or(&self.unk_id));
                 }
             }
-            
+
             if ids.len() == start_idx { ids.push(self.unk_id); }
             word_spans.push((start_idx, ids.len(), word.to_string()));
             if wi < words.len() - 1 { if let Some(sid) = self.space_id { ids.push(sid); } }
@@ -686,8 +875,17 @@ impl Aligner {
     }
 
     pub fn get_word_timestamps(&self, path: &[usize], word_spans: &[(usize, usize, String)], frame_duration_ms: f32) -> Vec<WordTimestamp> {
-        let mut result = Vec::new();
+        // Zero-width spans (non-Hangul words skipped by `tokenize`, or a word
+        // whose acoustic states the Viterbi path never visited) have no timing
+        // of their own — filled in below by interpolating between whichever
+        // aligned words bracket them, so every word still gets a timestamp
+        // instead of silently vanishing from the result.
+        let mut result: Vec<Option<WordTimestamp>> = Vec::with_capacity(word_spans.len());
         for (token_start, token_end, word) in word_spans {
+            if token_start == token_end {
+                result.push(None);
+                continue;
+            }
             let mut first_frame = None; let mut last_frame = None;
             for (frame_idx, &token_idx) in path.iter().enumerate() {
                 if token_idx != usize::MAX && token_idx >= *token_start && token_idx < *token_end {
@@ -695,11 +893,42 @@ impl Aligner {
                     last_frame = Some(frame_idx);
                 }
             }
-            if let (Some(start), Some(end)) = (first_frame, last_frame) {
-                result.push(WordTimestamp { word: word.clone(), start_ms: (start as f32 * frame_duration_ms) as u32, end_ms: ((end + 1) as f32 * frame_duration_ms) as u32 });
-            }
+            result.push(first_frame.zip(last_frame).map(|(start, end)| WordTimestamp {
+                word: word.clone(),
+                start_ms: (start as f32 * frame_duration_ms) as u32,
+                end_ms: ((end + 1) as f32 * frame_duration_ms) as u32,
+            }));
         }
-        result
+
+        const FALLBACK_WORD_MS: u32 = 400;
+        let mut i = 0;
+        while i < result.len() {
+            if result[i].is_some() { i += 1; continue; }
+            let gap_start = i;
+            let mut gap_end = i;
+            while gap_end < result.len() && result[gap_end].is_none() { gap_end += 1; }
+            let n = (gap_end - gap_start) as u32;
+
+            let prev_end_ms = if gap_start > 0 { result[gap_start - 1].as_ref().map(|w| w.end_ms) } else { None };
+            let next_start_ms = if gap_end < result.len() { result[gap_end].as_ref().map(|w| w.start_ms) } else { None };
+
+            let (range_start, range_end) = match (prev_end_ms, next_start_ms) {
+                (Some(s), Some(e)) if e > s => (s, e),
+                (Some(s), _) => (s, s + FALLBACK_WORD_MS * n),
+                (None, Some(e)) => (e.saturating_sub(FALLBACK_WORD_MS * n), e),
+                (None, None) => (0, FALLBACK_WORD_MS * n),
+            };
+
+            let span = (range_end - range_start) / n;
+            for (k, idx) in (gap_start..gap_end).enumerate() {
+                let s = range_start + span * k as u32;
+                let e = if k as u32 + 1 == n { range_end } else { s + span };
+                result[idx] = Some(WordTimestamp { word: word_spans[idx].2.clone(), start_ms: s, end_ms: e.max(s + 1) });
+            }
+            i = gap_end;
+        }
+
+        result.into_iter().flatten().collect()
     }
 
     pub fn greedy_decode(&self, emission_probs: &Array2<f32>) -> Vec<usize> {
@@ -727,9 +956,11 @@ impl Aligner {
             } 
         }
         
-        if self.is_syllable_based {
+        if self.is_syllable_based || self.is_latin_based {
+            // 음절-한글 또는 라틴(영어): 토큰을 그대로 직결합(| → 공백).
             parts.join("").replace("|", " ").trim().to_string()
         } else {
+            // 자모-한글: 분해된 자모를 음절로 조립.
             self.assemble_hangul(&parts)
         }
     }
@@ -852,6 +1083,173 @@ impl Aligner {
     }
 }
 
+#[cfg(test)]
+mod aligner_tests {
+    use super::*;
+
+    #[test]
+    fn lrc_sync_status_detects_real_timestamps() {
+        // 실제(0이 아닌) 타임스탬프가 하나라도 있으면 synced
+        let synced = "[00:00.00]첫 줄\n[00:12.34]둘째 줄";
+        assert_eq!(lrc_sync_status(synced), "synced");
+        // 전부 00:00.00 (Meloming 시드/미타이밍) → unsynced
+        let unsynced = "[00:00.00]첫 줄\n[00:00.00]둘째 줄";
+        assert_eq!(lrc_sync_status(unsynced), "unsynced");
+        // 타임스탬프가 아예 없음 → unsynced
+        assert_eq!(lrc_sync_status("가사만 있고 태그 없음"), "unsynced");
+        // 트리플렛 태그가 붙어도 시간만 보면 됨
+        let triplet = "[00:00.00][orig]原文\n[00:05.00][pron]발음";
+        assert_eq!(lrc_sync_status(triplet), "synced");
+    }
+
+    /// Writes a minimal syllable-based tokens.txt covering just the characters
+    /// these tests need, returns its path. Caller is responsible for cleanup.
+    fn write_test_vocab(name: &str) -> PathBuf {
+        let path = std::env::temp_dir().join(format!("align_test_vocab_{}_{}.txt", name, std::process::id()));
+        let vocab = "[PAD] 0\n[UNK] 1\n  2\n나 3\n는 4\n가 5\n수 6\n다 7\n안 8\n녕 9\n";
+        fs::write(&path, vocab).unwrap();
+        path
+    }
+
+    /// 영어 wav2vec2 char-level vocab을 모방한 tokens.txt (대문자 A–Z, |, ').
+    fn write_english_vocab(name: &str) -> PathBuf {
+        let path = std::env::temp_dir().join(format!("align_en_vocab_{}_{}.txt", name, std::process::id()));
+        let mut vocab = String::from("<pad> 0\n<s> 1\n</s> 2\n<unk> 3\n| 4\n");
+        let mut id = 5;
+        for c in 'A'..='Z' {
+            vocab.push_str(&format!("{} {}\n", c, id));
+            id += 1;
+        }
+        vocab.push_str(&format!("' {}\n", id));
+        fs::write(&path, vocab).unwrap();
+        path
+    }
+
+    #[test]
+    fn detects_latin_vocab_and_tokenizes_english() {
+        let vocab_path = write_english_vocab("detect");
+        let aligner = Aligner::new(vocab_path.to_str().unwrap()).unwrap();
+        std::fs::remove_file(&vocab_path).ok();
+
+        assert!(aligner.is_latin_based, "대문자 A–Z vocab은 라틴으로 인식돼야 함");
+        assert!(!aligner.is_syllable_based);
+        assert!(aligner.has_apostrophe);
+
+        // 소문자 입력이 대문자로 매핑되고 아포스트로피가 유지되는지
+        let (ids, spans) = aligner.tokenize("don't stop");
+        assert_eq!(spans.len(), 2);
+        // 두 단어 모두 실제 토큰을 생성(zero-width 아님)
+        assert!(spans[0].1 > spans[0].0);
+        assert!(spans[1].1 > spans[1].0);
+        // UNK가 섞이지 않아야 함(전부 vocab에 있는 글자)
+        assert!(!ids.contains(&aligner.unk_id), "표현 가능한 영어 단어에 UNK가 없어야 함");
+    }
+
+    #[test]
+    fn filters_digits_and_symbols_from_words() {
+        let vocab_path = write_english_vocab("filter");
+        let aligner = Aligner::new(vocab_path.to_str().unwrap()).unwrap();
+        std::fs::remove_file(&vocab_path).ok();
+
+        // "2", "♪…", 숫자 섞인 단어 → 글자 외 문자가 걸러짐
+        let (ids, spans) = aligner.tokenize("I have 2 cats ♪");
+        // 단어 4개: I / have / 2 / cats / ♪ → split_whitespace 기준 5개
+        assert_eq!(spans.len(), 5);
+        // "2"와 "♪"는 남는 글자가 없어 zero-width 스킵
+        let two = spans.iter().find(|s| s.2 == "2").unwrap();
+        assert_eq!(two.0, two.1, "순수 숫자 단어는 zero-width");
+        let note = spans.iter().find(|s| s.2 == "♪").unwrap();
+        assert_eq!(note.0, note.1, "순수 특수기호 단어는 zero-width");
+        // "have"/"cats"는 정상 토큰화, UNK 없음
+        assert!(!ids.contains(&aligner.unk_id));
+
+        // 단어 중간 숫자도 제거되는지: "l0ve" → "lve"(전부 vocab에 있어 UNK 없음)
+        let (ids2, spans2) = aligner.tokenize("l0ve");
+        assert!(spans2[0].1 > spans2[0].0);
+        assert!(!ids2.contains(&aligner.unk_id), "단어 중간 숫자가 제거돼 UNK가 없어야 함");
+    }
+
+    #[test]
+    fn korean_char_filter_still_works() {
+        let vocab_path = write_test_vocab("kofilter");
+        let aligner = Aligner::new(vocab_path.to_str().unwrap()).unwrap();
+        std::fs::remove_file(&vocab_path).ok();
+
+        // 한글 모드에서도 숫자·기호가 걸러지고, 순수 기호 단어는 zero-width
+        let (_ids, spans) = aligner.tokenize("나는 123 가수 !!");
+        assert_eq!(spans.len(), 4);
+        let num = spans.iter().find(|s| s.2 == "123").unwrap();
+        assert_eq!(num.0, num.1);
+        let bang = spans.iter().find(|s| s.2 == "!!").unwrap();
+        assert_eq!(bang.0, bang.1);
+    }
+
+    #[test]
+    fn is_hangul_char_classifies_korean_vs_latin() {
+        assert!(Aligner::is_hangul_char('가'));
+        assert!(Aligner::is_hangul_char('\u{1100}')); // Hangul jamo block
+        assert!(Aligner::is_hangul_char('ㄱ')); // compatibility jamo
+        assert!(!Aligner::is_hangul_char('a'));
+        assert!(!Aligner::is_hangul_char('Z'));
+        assert!(!Aligner::is_hangul_char('!'));
+    }
+
+    #[test]
+    fn tokenize_skips_non_hangul_words_as_zero_width_spans() {
+        let vocab_path = write_test_vocab("skip");
+        let aligner = Aligner::new(vocab_path.to_str().unwrap()).unwrap();
+
+        let (ids, spans) = aligner.tokenize("나는 hater 다");
+        std::fs::remove_file(&vocab_path).ok();
+
+        assert_eq!(spans.len(), 3, "every word should still get a span entry");
+        // "나는" — real Hangul, non-empty width.
+        assert_ne!(spans[0].0, spans[0].1);
+        // "hater" — pure Latin, must be zero-width (excluded from forced-align targets).
+        assert_eq!(spans[1].0, spans[1].1, "English word must not consume CTC target tokens");
+        assert_eq!(spans[1].2, "hater");
+        // "다" — real Hangul again.
+        assert_ne!(spans[2].0, spans[2].1);
+
+        // No [UNK] ids should have been emitted for "hater" at all — its
+        // characters must be completely absent from the target sequence,
+        // not merely mapped to unk_id.
+        let unk_count = ids.iter().filter(|&&id| id == aligner.unk_id).count();
+        assert_eq!(unk_count, 0, "skipped word must not contribute any UNK ids");
+    }
+
+    #[test]
+    fn word_timestamps_interpolates_gaps_between_aligned_neighbors() {
+        let vocab_path = write_test_vocab("interp");
+        let aligner = Aligner::new(vocab_path.to_str().unwrap()).unwrap();
+        std::fs::remove_file(&vocab_path).ok();
+
+        // Two real words (token index ranges [0,2) and [2,4)) with a
+        // zero-width word in between (simulating a skipped English word),
+        // followed by a frame path that only ever visits the two real words.
+        let word_spans = vec![
+            (0usize, 2usize, "안녕".to_string()),
+            (2, 2, "hey".to_string()),
+            (2, 4, "나".to_string()),
+        ];
+        // 10 frames: first half assigned to token-index 0/1 range (word 0),
+        // second half to token-index 2/3 range (word 2). MAX = blank.
+        let path = vec![0, 0, 1, 1, usize::MAX, usize::MAX, 2, 2, 3, 3];
+
+        let timestamps = aligner.get_word_timestamps(&path, &word_spans, 20.0);
+
+        assert_eq!(timestamps.len(), 3, "the interpolated word must not be dropped");
+        assert_eq!(timestamps[0].word, "안녕");
+        assert_eq!(timestamps[2].word, "나");
+        let gap_word = &timestamps[1];
+        assert_eq!(gap_word.word, "hey");
+        // Interpolated word must sit chronologically between its neighbors.
+        assert!(gap_word.start_ms >= timestamps[0].end_ms);
+        assert!(gap_word.end_ms <= timestamps[2].start_ms);
+        assert!(gap_word.end_ms > gap_word.start_ms);
+    }
+}
+
 #[command]
 pub async fn save_lrc_file(handle: AppHandle, audio_path: String, content: String) -> Result<String, String> {
     sys_log(&format!(
@@ -862,51 +1260,7 @@ pub async fn save_lrc_file(handle: AppHandle, audio_path: String, content: Strin
     ));
     let lrc_path = if audio_path.starts_with("http") {
         let paths = crate::state::AppPaths::from_handle(&handle);
-        let cache_key = urlencoding::encode(&audio_path).to_string();
-        let base_dir = paths.separated.join(&cache_key);
-        sys_log(&format!(
-            "[Alignment] Saving URL LRC to cache. key={}, dir={}",
-            cache_key,
-            base_dir.to_string_lossy()
-        ));
-        if !base_dir.exists() {
-            fs::create_dir_all(&base_dir).map_err(|e| format!("LRC 저장 폴더 생성 실패: {}", e))?;
-        }
-        let primary = base_dir.join("lyric.lrc");
-        fs::write(&primary, &content).map_err(|e| format!("LRC 저장 실패: {}", e))?;
-
-        // Mirror save to common URL variants so future loads find legacy/alternate forms too.
-        for variant in youtube_url_variants(&audio_path) {
-            let mirror_key = urlencoding::encode(&variant).to_string();
-            let mirror_dir = paths.separated.join(&mirror_key);
-            if mirror_dir != base_dir {
-                if !mirror_dir.exists() {
-                    if let Err(e) = fs::create_dir_all(&mirror_dir) {
-                        sys_log(&format!(
-                            "[Alignment] Mirror dir create failed. key={}, dir={}, err={}",
-                            mirror_key,
-                            mirror_dir.to_string_lossy(),
-                            e
-                        ));
-                    }
-                }
-                if let Err(e) = fs::write(mirror_dir.join("lyric.lrc"), &content) {
-                    sys_log(&format!(
-                        "[Alignment] Mirror LRC write failed. key={}, dir={}, err={}",
-                        mirror_key,
-                        mirror_dir.to_string_lossy(),
-                        e
-                    ));
-                } else {
-                    sys_log(&format!(
-                        "[Alignment] Mirror LRC write ok. key={}, dir={}",
-                        mirror_key,
-                        mirror_dir.to_string_lossy()
-                    ));
-                }
-            }
-        }
-        primary
+        write_lrc_to_url_cache(&paths, &audio_path, &content)?
     } else {
         let audio_file = PathBuf::from(&audio_path);
         if !audio_file.exists() {
@@ -915,48 +1269,128 @@ pub async fn save_lrc_file(handle: AppHandle, audio_path: String, content: Strin
         if !audio_file.is_file() {
             return Err(format!("오디오 경로가 파일이 아닙니다: {}", audio_path));
         }
-        audio_file.with_extension("lrc")
+        let lrc_path = audio_file.with_extension("lrc");
+        fs::write(&lrc_path, content).map_err(|e| format!("LRC 저장 실패: {}", e))?;
+        lrc_path
     };
 
-    if !audio_path.starts_with("http") {
-        fs::write(&lrc_path, content).map_err(|e| format!("LRC 저장 실패: {}", e))?;
-    }
     let saved_path = lrc_path.to_string_lossy().to_string();
     sys_log(&format!("[Alignment] LRC saved to {}", saved_path));
     Ok(saved_path)
 }
 
-#[command]
-pub async fn load_lrc_file(handle: AppHandle, audio_path: String) -> Result<String, String> {
-    let paths = crate::state::AppPaths::from_handle(&handle);
-    let mut search_paths = Vec::new();
+/// Writes LRC content to the URL-keyed cache dir (`<separated>/<urlencoded url>/lyric.lrc`)
+/// and mirrors it to all `youtube_url_variants()` cache-key forms, so future
+/// lookups find it regardless of which URL form was used to reference the
+/// track. Returns the primary path written.
+fn write_lrc_to_url_cache(paths: &crate::state::AppPaths, url: &str, content: &str) -> Result<PathBuf, String> {
+    let cache_key = urlencoding::encode(url).to_string();
+    let base_dir = paths.separated.join(&cache_key);
     sys_log(&format!(
-        "[Alignment] load_lrc_file requested. is_url={}, path={}",
-        audio_path.starts_with("http"),
-        audio_path
+        "[Alignment] Saving URL LRC to cache. key={}, dir={}",
+        cache_key,
+        base_dir.to_string_lossy()
     ));
+    if !base_dir.exists() {
+        fs::create_dir_all(&base_dir).map_err(|e| format!("LRC 저장 폴더 생성 실패: {}", e))?;
+    }
+    let primary = base_dir.join("lyric.lrc");
+    fs::write(&primary, content).map_err(|e| format!("LRC 저장 실패: {}", e))?;
 
-    // 1. If it's a URL, prioritize the cache folder
+    // Mirror save to common URL variants so future loads find legacy/alternate forms too.
+    for variant in youtube_url_variants(url) {
+        let mirror_key = urlencoding::encode(&variant).to_string();
+        let mirror_dir = paths.separated.join(&mirror_key);
+        if mirror_dir != base_dir {
+            if !mirror_dir.exists() {
+                if let Err(e) = fs::create_dir_all(&mirror_dir) {
+                    sys_log(&format!(
+                        "[Alignment] Mirror dir create failed. key={}, dir={}, err={}",
+                        mirror_key,
+                        mirror_dir.to_string_lossy(),
+                        e
+                    ));
+                }
+            }
+            if let Err(e) = fs::write(mirror_dir.join("lyric.lrc"), content) {
+                sys_log(&format!(
+                    "[Alignment] Mirror LRC write failed. key={}, dir={}, err={}",
+                    mirror_key,
+                    mirror_dir.to_string_lossy(),
+                    e
+                ));
+            } else {
+                sys_log(&format!(
+                    "[Alignment] Mirror LRC write ok. key={}, dir={}",
+                    mirror_key,
+                    mirror_dir.to_string_lossy()
+                ));
+            }
+        }
+    }
+    Ok(primary)
+}
+
+/// Returns true if an LRC already exists for this URL under any of the same
+/// search paths `load_lrc_file` checks (URL branch only).
+fn url_lrc_exists(paths: &crate::state::AppPaths, url: &str) -> bool {
+    for key_src in youtube_url_variants(url) {
+        let cache_key = urlencoding::encode(&key_src).to_string();
+        let cache_dir = paths.separated.join(&cache_key);
+        if cache_dir.join("lyric.lrc").is_file() || cache_dir.join("vocal.lrc").is_file() {
+            return true;
+        }
+    }
+    false
+}
+
+/// Seeds a local `.lrc` from raw lyric text (e.g. pulled from Meloming) when no
+/// LRC exists yet for this URL. Each non-blank input line becomes an
+/// unsynced placeholder line (`start: 0`), matching the shape `parseLrc`
+/// already treats as "text without a timestamp". Never overwrites existing
+/// sync data — a no-op if any LRC is already found for this URL.
+pub fn seed_lrc_if_missing(paths: &crate::state::AppPaths, url: &str, lyrics_text: &str) -> Result<(), String> {
+    if url_lrc_exists(paths, url) {
+        return Ok(());
+    }
+    let content: String = lyrics_text
+        .lines()
+        .map(|l| l.trim())
+        .filter(|l| !l.is_empty())
+        .map(|l| format!("[00:00.00]{}", l))
+        .collect::<Vec<_>>()
+        .join("\n");
+    if content.is_empty() {
+        return Ok(());
+    }
+    write_lrc_to_url_cache(paths, url, &content)?;
+    sys_log(&format!("[Alignment] Seeded LRC from Meloming lyrics_text for url={}", url));
+    Ok(())
+}
+
+/// Builds the ordered list of candidate LRC file paths for an audio path
+/// (URL cache variants for http:// sources, sibling/cache/legacy paths for
+/// local files). Shared by `load_lrc_file` and `read_lrc_content` so the
+/// resolution scheme stays in one place.
+fn lrc_search_paths(paths: &crate::state::AppPaths, audio_path: &str) -> Vec<PathBuf> {
+    let mut search_paths = Vec::new();
     if audio_path.starts_with("http") {
-        for key_src in youtube_url_variants(&audio_path) {
+        for key_src in youtube_url_variants(audio_path) {
             let cache_key = urlencoding::encode(&key_src).to_string();
             let cache_dir = paths.separated.join(&cache_key);
             search_paths.push(cache_dir.join("lyric.lrc"));
             search_paths.push(cache_dir.join("vocal.lrc"));
         }
     } else {
-        // 2. For local files, check next to original file
-        let original_file = PathBuf::from(&audio_path);
+        let original_file = PathBuf::from(audio_path);
         search_paths.push(original_file.with_extension("lrc"));
 
-        // 3. Also check if there's a cached version for this local file
-        let cache_key = urlencoding::encode(&audio_path).to_string();
+        let cache_key = urlencoding::encode(audio_path).to_string();
         let cache_dir = paths.separated.join(&cache_key);
         search_paths.push(cache_dir.join("lyric.lrc"));
         search_paths.push(cache_dir.join("vocal.lrc"));
 
-        // Local path normalization fallback for legacy entries with different slash/case.
-        let normalized = normalize_path_key(&audio_path);
+        let normalized = normalize_path_key(audio_path);
         if normalized != audio_path {
             let norm_key = urlencoding::encode(&normalized).to_string();
             let norm_cache_dir = paths.separated.join(&norm_key);
@@ -964,14 +1398,54 @@ pub async fn load_lrc_file(handle: AppHandle, audio_path: String) -> Result<Stri
             search_paths.push(norm_cache_dir.join("vocal.lrc"));
         }
 
-        // 4. If current path is already inside a separated folder (e.g. vocal.wav)
         if let Some(parent) = original_file.parent() {
             search_paths.push(parent.join("lyric.lrc"));
             search_paths.push(parent.join("vocal.lrc"));
         }
     }
-    
-    for p in search_paths {
+    search_paths
+}
+
+/// Reads an audio path's LRC content if any candidate file exists. Synchronous
+/// and lightweight — used both by `load_lrc_file` and the library's per-song
+/// sync-status classification.
+pub fn read_lrc_content(paths: &crate::state::AppPaths, audio_path: &str) -> Option<String> {
+    for p in lrc_search_paths(paths, audio_path) {
+        if p.is_file() {
+            if let Ok(content) = fs::read_to_string(&p) {
+                return Some(content);
+            }
+        }
+    }
+    None
+}
+
+/// Classifies an LRC's sync state: `"synced"` if any line carries a real
+/// (non-zero) `[mm:ss.xx]` timestamp, else `"unsynced"` (lyrics present but
+/// all lines sit at 00:00.00, e.g. a Meloming seed or pasted-but-untimed
+/// lyrics). Callers treat missing/blank content as `"none"`.
+pub fn lrc_sync_status(content: &str) -> &'static str {
+    let re = regex::Regex::new(r"\[(\d{1,2}):(\d{2}(?:\.\d{1,3})?)\]").unwrap();
+    for cap in re.captures_iter(content) {
+        let min: f64 = cap[1].parse().unwrap_or(0.0);
+        let sec: f64 = cap[2].parse().unwrap_or(0.0);
+        if min * 60.0 + sec > 0.0 {
+            return "synced"; // 첫 non-zero 타임스탬프에서 조기 종료
+        }
+    }
+    "unsynced"
+}
+
+#[command]
+pub async fn load_lrc_file(handle: AppHandle, audio_path: String) -> Result<String, String> {
+    let paths = crate::state::AppPaths::from_handle(&handle);
+    sys_log(&format!(
+        "[Alignment] load_lrc_file requested. is_url={}, path={}",
+        audio_path.starts_with("http"),
+        audio_path
+    ));
+
+    for p in lrc_search_paths(&paths, &audio_path) {
         if p.exists() && p.is_file() {
             sys_log(&format!("[Alignment] Found LRC file at: {:?}", p));
             return fs::read_to_string(&p).map_err(|e| format!("LRC 읽기 실패: {}", e));

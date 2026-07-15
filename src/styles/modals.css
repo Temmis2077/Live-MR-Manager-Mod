@@ -855,3 +855,57 @@
   box-shadow: 0 0 15px rgb(var(--accent-rgb) / 0.15) !important;
   outline: none !important;
 }
+/* --- MR 분리 방식(속도/품질) 선택 모달 --- */
+.separation-mode-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  padding: 14px 16px;
+  background: var(--surface-1);
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  color: var(--text-main);
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.separation-mode-card:hover {
+  background: var(--surface-2);
+  border-color: rgb(var(--accent-rgb) / 0.5);
+}
+
+.separation-mode-card.current-default {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 12px rgb(var(--accent-rgb) / 0.15);
+}
+
+.separation-mode-card.current-default::after {
+  content: "현재 기본값";
+  align-self: flex-start;
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--accent-primary);
+  background: rgb(var(--accent-rgb) / 0.12);
+  padding: 2px 8px;
+  border-radius: 8px;
+}
+
+.separation-mode-card-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.separation-mode-model {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-left: 6px;
+}
+
+.separation-mode-card-desc {
+  font-size: 0.76rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
