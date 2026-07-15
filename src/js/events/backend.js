@@ -105,7 +105,9 @@ export async function setupBackendListeners() {
         title: state.currentTrack?.title || "",
         artist: state.currentTrack?.artist || "",
         thumbnail: state.currentTrack?.thumbnail || "",
-        isPlaying: true
+        isPlaying: true,
+        songKey: state.currentTrack?.songKey || state.currentTrack?.song_key || "",
+        bpm: Number(state.currentTrack?.bpm) || 0
       }).catch(() => {});
       const { updateProgressBar } = await import('../player.js');
       if (!state.rafId) {
@@ -147,7 +149,9 @@ export async function setupBackendListeners() {
         title: state.currentTrack?.title || "",
         artist: state.currentTrack?.artist || "",
         thumbnail: state.currentTrack?.thumbnail || "",
-        isPlaying: false
+        isPlaying: false,
+        songKey: state.currentTrack?.songKey || state.currentTrack?.song_key || "",
+        bpm: Number(state.currentTrack?.bpm) || 0
       }).catch(err => console.error("Overlay sync failed:", err));
     }
 
@@ -183,6 +187,22 @@ export async function setupBackendListeners() {
           song.isMr = true;
           song.is_mr = true;
         });
+
+        // 분리 완료 후 키/BPM 자동 분석 — 분석은 분리된 반주(inst)를 쓰므로
+        // 이 시점이 가장 정확. 이미 값이 있으면 건드리지 않는다.
+        const analyzed = state.songLibrary.find((song) => pathMatches(song.path, path));
+        if (analyzed && !(analyzed.songKey || analyzed.song_key) && !analyzed.bpm) {
+          invoke('analyze_key_bpm', { path: analyzed.path }).then(async (res) => {
+            if (!res) return;
+            if (res.key) { analyzed.songKey = res.key; analyzed.song_key = res.key; }
+            if (res.bpm != null && Number.isFinite(res.bpm)) analyzed.bpm = Math.round(res.bpm);
+            if (res.key || res.bpm) {
+              const { saveLibrary } = await import('../audio.js');
+              await saveLibrary(state.songLibrary);
+              renderLibrary();
+            }
+          }).catch((err) => console.warn('[KeyBpm] auto analyze failed:', err));
+        }
         if (state.currentTrack && pathMatches(state.currentTrack.path, path)) {
           state.currentTrack.isSeparated = true;
           state.currentTrack.is_separated = true;

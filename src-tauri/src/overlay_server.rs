@@ -64,6 +64,11 @@ pub struct OverlayState {
     pub lyrics_lines: Vec<String>,
     #[serde(default = "default_lyric_index")]
     pub lyric_index: i32,
+    /// 곡 메타데이터의 키/BPM — 가사 뷰 헤더 표시용(없으면 빈 값/0).
+    #[serde(default)]
+    pub song_key: String,
+    #[serde(default)]
+    pub bpm: f64,
 }
 
 fn default_lyric_index() -> i32 {
@@ -88,6 +93,8 @@ impl Default for OverlayState {
             is_force_visible: false,
             lyrics_lines: Vec::new(),
             lyric_index: -1,
+            song_key: String::new(),
+            bpm: 0.0,
         }
     }
 }
@@ -402,12 +409,15 @@ pub async fn broadcast_overlay_state(mut state: OverlayState) {
 
 
 #[tauri::command]
-pub async fn update_overlay_state(title: String, artist: String, thumbnail: String, is_playing: bool) {
+pub async fn update_overlay_state(title: String, artist: String, thumbnail: String, is_playing: bool, song_key: Option<String>, bpm: Option<f64>) {
     let mut state = CURRENT_STATE.lock().await.clone();
     state.title = title;
     state.artist = artist;
     state.thumbnail = thumbnail;
     state.is_playing = is_playing;
+    // 가사 뷰(/lyrics-view) 헤더 표시용 — 메타데이터에 있으면 함께 전송.
+    state.song_key = song_key.unwrap_or_default();
+    state.bpm = bpm.unwrap_or(0.0);
     broadcast_overlay_state(state).await;
 }
 

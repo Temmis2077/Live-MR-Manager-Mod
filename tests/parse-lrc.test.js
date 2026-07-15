@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseLrc, parseMarkers, formatMarkerLine, isTriplet, getSyncText, encodeLrc, suggestVocalStartFromSegments, getIntroSkipTargetSec, parseTimeInput, formatTimeInput } from '../src/js/lrc-parser.js';
+import { parseLrc, parseMarkers, formatMarkerLine, isTriplet, getSyncText, encodeLrc, suggestVocalStartFromSegments, getIntroSkipTargetSec, parseTimeInput, formatTimeInput, groupTripletLines, isHangulDominant } from '../src/js/lrc-parser.js';
 
 describe('encodeLrc', () => {
   it('preserves segment order for partially-synced lyrics (no time-sorting)', () => {
@@ -245,5 +245,41 @@ describe('parseTimeInput / formatTimeInput (마커 시각 편집)', () => {
     expect(formatTimeInput(0)).toBe('00:00.00');
     expect(formatTimeInput(null)).toBe('');
     expect(formatTimeInput(-1)).toBe('');
+  });
+});
+
+describe('groupTripletLines (3줄 모드 스크립트 인식 그룹핑)', () => {
+  it('groups JP original + KR pron + KR translation', () => {
+    const cues = groupTripletLines(['忘れられぬものだけが', '와스레라레누 모노 다케가', '잊지 못하는 것만이']);
+    expect(cues).toHaveLength(1);
+    expect(cues[0].original).toBe('忘れられぬものだけが');
+    expect(cues[0].pronunciation).toBe('와스레라레누 모노 다케가');
+    expect(cues[0].translation).toBe('잊지 못하는 것만이');
+  });
+
+  it('does not shift when an English one-line section is mixed in', () => {
+    const cues = groupTripletLines([
+      '忘れられぬ', '와스레라레누', '잊지 못하는',
+      "I'm still standing here",
+      '二行目', '니교메', '두번째 줄',
+    ]);
+    expect(cues).toHaveLength(3);
+    expect(cues[1].text).toBe("I'm still standing here");
+    expect(cues[1].original).toBeUndefined(); // 일반 줄 — 싱크는 text 기준
+    expect(cues[2].original).toBe('二行目');
+    expect(cues[2].pronunciation).toBe('니교메');
+  });
+
+  it('supports 2-line groups (no translation)', () => {
+    const cues = groupTripletLines(['歌詞', '카시']);
+    expect(cues[0].pronunciation).toBe('카시');
+    expect(cues[0].translation).toBe('');
+  });
+
+  it('isHangulDominant distinguishes scripts', () => {
+    expect(isHangulDominant('와스레라레누 모노')).toBe(true);
+    expect(isHangulDominant('忘れられぬ')).toBe(false);
+    expect(isHangulDominant('English line')).toBe(false);
+    expect(isHangulDominant('')).toBe(false);
   });
 });

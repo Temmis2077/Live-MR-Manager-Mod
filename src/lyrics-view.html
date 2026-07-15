@@ -67,6 +67,16 @@
       flex-shrink: 0;
     }
     .fs-btn:hover { border-color: var(--accent); }
+    .meta-chip {
+      flex-shrink: 0;
+      padding: 3px 9px;
+      border-radius: 999px;
+      background: rgba(59, 130, 246, 0.15);
+      color: var(--accent);
+      font-size: 0.72rem;
+      font-weight: 800;
+      white-space: nowrap;
+    }
 
     #lyrics {
       flex: 1;
@@ -105,6 +115,9 @@
       <div id="song-title">재생 중인 곡 없음</div>
       <div id="song-artist"></div>
     </div>
+    <!-- 곡 정보에 키/BPM이 등록돼 있으면 표시 -->
+    <span class="meta-chip" id="chip-key" style="display:none;"></span>
+    <span class="meta-chip" id="chip-bpm" style="display:none;"></span>
     <div class="spacer"></div>
     <button type="button" class="fs-btn" id="fs-minus" title="글자 작게">−</button>
     <button type="button" class="fs-btn" id="fs-plus" title="글자 크게">＋</button>
@@ -163,6 +176,16 @@
     OverlayShared.connectWS((data) => {
       titleEl.textContent = data.title || '재생 중인 곡 없음';
       artistEl.textContent = data.artist || '';
+
+      // 키/BPM — 곡 정보에 등록돼 있을 때만 표시
+      const key = (data.song_key || data.songKey || '').trim();
+      const bpm = Number(data.bpm) || 0;
+      const chipKey = document.getElementById('chip-key');
+      const chipBpm = document.getElementById('chip-bpm');
+      chipKey.style.display = key ? '' : 'none';
+      if (key) chipKey.textContent = `KEY ${key}`;
+      chipBpm.style.display = bpm > 0 ? '' : 'none';
+      if (bpm > 0) chipBpm.textContent = `${Math.round(bpm)} BPM`;
 
       const lines = data.lyrics_lines || data.lyricsLines || [];
       const key = lines.join('');

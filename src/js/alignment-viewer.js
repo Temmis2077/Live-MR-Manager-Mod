@@ -2,7 +2,7 @@ import { showNotification, getThumbnailUrl } from './utils.js';
 import { invoke, listen } from './tauri-bridge.js';
 import { state } from './state.js';
 import { parseLrc } from './lyrics.js';
-import { parseMarkers, formatMarkerLine, isTriplet, getSyncText, getDisplayLines, getShowTranslation, setShowTranslation, mergeAlignmentResult, encodeLrc, suggestVocalStartFromSegments, parseTimeInput, formatTimeInput } from './lrc-parser.js';
+import { parseMarkers, formatMarkerLine, isTriplet, getSyncText, getDisplayLines, getShowTranslation, setShowTranslation, mergeAlignmentResult, encodeLrc, suggestVocalStartFromSegments, parseTimeInput, formatTimeInput, groupTripletLines } from './lrc-parser.js';
 import { getLyricSyncStatus } from './library-filters.js';
 
 export class ForcedAlignmentViewer {
@@ -1291,21 +1291,12 @@ export class ForcedAlignmentViewer {
             .map((line) => line.trim())
             .filter((line) => line.length > 0);
 
-        // 3줄 모드: 원문/차음/번역이 3줄 1세트로 반복되는 가사를 하나의 큐로 묶음.
-        // 3의 배수가 아니면 마지막 불완전 세트는 있는 줄만 채우고 관대하게 처리.
+        // 3줄 모드: 원문/차음/번역을 하나의 큐로 묶음 — 스크립트 인식 그룹핑
+        // (groupTripletLines). 고정 3줄 묶음은 영어 소절(원문 1줄뿐)이 섞이면
+        // 이후 그룹이 전부 밀렸음.
         let newCues;
         if (this.state.tripletMode) {
-            newCues = [];
-            for (let i = 0; i < newLines.length; i += 3) {
-                const original = newLines[i] || '';
-                if (!original) continue;
-                newCues.push({
-                    text: original,
-                    original,
-                    pronunciation: newLines[i + 1] || '',
-                    translation: newLines[i + 2] || '',
-                });
-            }
+            newCues = groupTripletLines(newLines);
         } else {
             newCues = newLines.map((text) => ({ text }));
         }

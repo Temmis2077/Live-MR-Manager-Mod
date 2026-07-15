@@ -42,6 +42,10 @@
   font-size: 0.75rem;
   font-weight: 700;
   text-align: center;
+  /* 자릿수가 늘어도(예: 12, 99+) 셰브론을 밀거나 줄바꿈되지 않게 */
+  flex-shrink: 0;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
 .section-chevron {
