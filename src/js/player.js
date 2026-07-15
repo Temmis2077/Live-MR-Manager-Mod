@@ -130,7 +130,9 @@ export async function stopPlayback() {
       title: "",
       artist: "",
       thumbnail: "",
-      isPlaying: false
+      isPlaying: false,
+      songKey: state.currentTrack?.songKey || state.currentTrack?.song_key || "",
+      bpm: Number(state.currentTrack?.bpm) || 0
     });
   } catch (error) {
     console.error("Stop playback failed:", error);
@@ -161,7 +163,9 @@ export async function handlePlaybackToggle() {
           title: state.currentTrack.title,
           artist: state.currentTrack.artist,
           thumbnail: state.currentTrack.thumbnail,
-          isPlaying: true
+          isPlaying: true,
+          songKey: state.currentTrack?.songKey || state.currentTrack?.song_key || "",
+          bpm: Number(state.currentTrack?.bpm) || 0
         });
       }
       if (!state.rafId) {
@@ -174,7 +178,9 @@ export async function handlePlaybackToggle() {
         title: state.currentTrack?.title || "",
         artist: state.currentTrack?.artist || "",
         thumbnail: state.currentTrack?.thumbnail || "",
-        isPlaying: false
+        isPlaying: false,
+        songKey: state.currentTrack?.songKey || state.currentTrack?.song_key || "",
+        bpm: Number(state.currentTrack?.bpm) || 0
       });
     }
   } catch (error) {
@@ -365,7 +371,9 @@ export async function selectTrack(index) {
       title: song.title,
       artist: song.artist,
       thumbnail: song.thumbnail,
-      isPlaying: true
+      isPlaying: true,
+      songKey: state.currentTrack?.songKey || state.currentTrack?.song_key || "",
+      bpm: Number(state.currentTrack?.bpm) || 0
     });
 
     state.lastRafTime = performance.now();

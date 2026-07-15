@@ -260,15 +260,8 @@
       setLineTexts(newCurrent, newNext);
     }
 
-    function updateOverlay(data) {
-      if (!data) return;
-
-      if (!data.is_playing && !isPreview && !data.is_force_visible) {
-        hideOverlay();
-        return;
-      }
-      
-      const style = data.lyrics_style || {};
+    /** 오버레이 스타일(CSS 변수) 적용 — 표시 여부와 무관하게 호출된다. */
+    function applyStyle(style) {
       const scale = style.scale || 1.0;
       const font = style.font || 'Inter';
       const color = (style.color || 'ffffff').replace('#', '');
@@ -288,12 +281,29 @@
       document.documentElement.style.setProperty('--accent-color', `#${color}`);
       document.documentElement.style.setProperty('--text-main', `#${textColorHex}`);
       document.documentElement.style.setProperty('--text-sub', `rgba(${hexToRgb(textColorHex)}, 0.58)`);
-      
+
       let duration = '0.85s';
       if (direction === 'right' || direction === 'left') duration = '1.5s';
       else duration = '0.7s';
       document.documentElement.style.setProperty('--anim-duration', duration);
-      
+    }
+
+    function updateOverlay(data) {
+      if (!data) return;
+
+      // 스타일은 표시 여부와 무관하게 항상 먼저 반영한다 — 예전에는 재생
+      // 중이 아닐 때 아래 early-return이 스타일 적용을 건너뛰어, 설정에서
+      // 바꾼 폰트 크기 등이 미리보기(iframe, isPreview)에만 보이고 OBS
+      // 쪽에는 다음 재생 전까지 반영되지 않는 버그가 있었음.
+      applyStyle(data.lyrics_style || {});
+
+      if (!data.is_playing && !isPreview && !data.is_force_visible) {
+        hideOverlay();
+        return;
+      }
+
+      const direction = (data.lyrics_style || {}).animation_direction || 'right';
+
       const hasCurrent = data.current_lyric && data.current_lyric.trim() !== "";
       const hasNext = data.next_lyric && data.next_lyric.trim() !== "";
       const nextTitle = (data.title || "").trim();

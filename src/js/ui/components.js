@@ -347,10 +347,12 @@ export function updateTaskUI() {
   const separationCount = renderSeparationTasks();
   const alignmentActiveCount = renderAlignmentQueue();
 
+  // 99를 넘으면 "99+"로 캡 — 자릿수가 늘어 배지가 셰브론을 밀어내지 않게.
+  const formatCount = (n) => (n > 99 ? '99+' : String(n));
   const sepBadge = document.getElementById('separation-section-count');
-  if (sepBadge) sepBadge.textContent = separationCount;
+  if (sepBadge) sepBadge.textContent = formatCount(separationCount);
   const alignBadge = document.getElementById('alignment-section-count');
-  if (alignBadge) alignBadge.textContent = (state.alignmentQueue || []).length;
+  if (alignBadge) alignBadge.textContent = formatCount((state.alignmentQueue || []).length);
 
   const total = separationCount + alignmentActiveCount;
   elements.taskBadge.textContent = total;

@@ -79,6 +79,58 @@ export function parseTimeInput(str) {
   return null;
 }
 
+/** 한 줄이 한글 위주인지 — 3줄(원문/차음/번역) 그룹핑에서 차음/번역 줄 판별용.
+ *  한글 음절/자모 수가 그 외 스크립트 글자(가나·한자·라틴 등) 수보다 많으면 true. */
+export function isHangulDominant(text) {
+  let hangul = 0;
+  let other = 0;
+  for (const c of text || '') {
+    const cp = c.codePointAt(0);
+    if ((cp >= 0xac00 && cp <= 0xd7a3) || (cp >= 0x3131 && cp <= 0x318e)) hangul++;
+    else if (/\p{L}/u.test(c)) other++;
+  }
+  return hangul > 0 && hangul >= other;
+}
+
+/**
+ * 3줄(원문/차음/번역) 모드 가사 그룹핑 — 스크립트 인식.
+ *
+ * 단순히 3줄씩 자르면 일본어 곡에 영어 소절이 섞였을 때(영어는 차음/번역
+ * 없이 원문 1줄만 있는 경우가 많음) 그 뒤 모든 그룹이 밀린다. 대신:
+ * 비(非)한글 줄을 원문으로 시작하고, 바로 뒤따르는 한글 위주 줄을 차음,
+ * 그 다음 한글 위주 줄을 번역으로 붙인다. 뒤에 한글 줄이 없으면 원문
+ * 1줄짜리 그룹(영어 소절 등)으로 처리한다.
+ *
+ * @param lines 공백 줄이 제거된 가사 줄 배열
+ * @returns [{original, pronunciation, translation, text}] (start/end 없음)
+ */
+export function groupTripletLines(lines) {
+  const cues = [];
+  let i = 0;
+  const arr = lines || [];
+  while (i < arr.length) {
+    const original = arr[i++];
+    let pronunciation = '';
+    let translation = '';
+    if (!isHangulDominant(original)) {
+      if (i < arr.length && isHangulDominant(arr[i])) {
+        pronunciation = arr[i++];
+        if (i < arr.length && isHangulDominant(arr[i])) {
+          translation = arr[i++];
+        }
+      }
+    }
+    if (pronunciation) {
+      cues.push({ text: original, original, pronunciation, translation });
+    } else {
+      // 차음이 없는 줄(영어 소절, 순한글 줄 등)은 일반 줄로 —
+      // 트리플렛로 만들면 싱크 기준(차음)이 비어 정렬/탭에서 빠진다.
+      cues.push({ text: original });
+    }
+  }
+  return cues;
+}
+
 /** 마커 시간 표시 포맷 — `mm:ss.xx` (parseTimeInput과 라운드트립). */
 export function formatTimeInput(sec) {
   if (typeof sec !== 'number' || !Number.isFinite(sec) || sec < 0) return '';

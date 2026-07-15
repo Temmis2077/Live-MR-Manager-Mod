@@ -221,24 +221,14 @@ async function confirmAdd() {
 
         // 2. 가사 저장 (+정렬 대기열) — 가사는 단일 곡에만 의미가 있음
         if (doAlign && lyricsText && songs.length === 1) {
-            const { encodeLrc } = await import('../lrc-parser.js');
+            const { encodeLrc, groupTripletLines } = await import('../lrc-parser.js');
             const lines = lyricsText.split('\n').map((t) => t.trim()).filter(Boolean);
             let segments;
             if (overlay.querySelector('#addsong-triplet-check').checked) {
-                // 3줄 모드: 위에서부터 [원문/차음/번역] 3줄씩 한 소절로 묶음
-                // (마지막 그룹이 모자라면 있는 줄까지만 사용). AI 정렬은
-                // 차음(한글 발음) 줄 기준으로 동작(getSyncText).
-                segments = [];
-                for (let i = 0; i < lines.length; i += 3) {
-                    segments.push({
-                        original: lines[i] || '',
-                        pronunciation: lines[i + 1] || '',
-                        translation: lines[i + 2] || '',
-                        text: lines[i] || '',
-                        start: 0,
-                        end: 0,
-                    });
-                }
+                // 3줄 모드: [원문/차음/번역]을 스크립트 인식으로 묶음 — 영어
+                // 소절(원문 1줄)이 섞여도 밀리지 않는다. AI 정렬은 차음 줄
+                // 기준으로 동작(getSyncText).
+                segments = groupTripletLines(lines).map((c) => ({ ...c, start: 0, end: 0 }));
             } else {
                 segments = lines.map((text) => ({ text, start: 0, end: 0 }));
             }
@@ -367,7 +357,12 @@ export async function openAddSongModal(prefillLocalPaths = null) {
     // 이벤트 연결
     overlay.querySelector('#addsong-close').onclick = close;
     overlay.querySelector('#addsong-cancel').onclick = close;
-    overlay.onclick = (e) => { if (e.target === overlay) close(); };
+    // 바깥 클릭 닫기 — mousedown이 오버레이(바깥)에서 시작된 경우에만.
+    // 제목/가사를 드래그하다 마우스를 모달 밖에서 떼면 click 타깃이
+    // 오버레이가 되어 창이 꺼지던 문제 방지(닫기는 취소/X/진짜 바깥 클릭만).
+    let downOnOverlay = false;
+    overlay.onmousedown = (e) => { downOnOverlay = e.target === overlay; };
+    overlay.onclick = (e) => { if (e.target === overlay && downOnOverlay) close(); };
     overlay.querySelector('#addsong-yt-fetch').onclick = fetchYoutube;
     overlay.querySelector('#addsong-yt-url').onkeydown = (e) => { if (e.key === 'Enter') fetchYoutube(); };
     overlay.querySelector('#addsong-local-pick').onclick = () => pickLocalFiles();
