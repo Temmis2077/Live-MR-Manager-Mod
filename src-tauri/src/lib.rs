@@ -15,6 +15,7 @@ mod metadata_fetcher;
 pub mod audio;
 pub mod onnx_engine;
 mod library;
+mod search;
 mod meloming;
 mod key_bpm;
 mod audio_commands;
@@ -154,6 +155,8 @@ pub fn run() {
             system::get_app_paths,
             system::pick_audio_files,
             system::open_lyrics_window,
+            search::search_youtube,
+            search::search_lyrics_sites,
             system::export_backup, 
             system::import_backup,
             system::export_library_spreadsheet,

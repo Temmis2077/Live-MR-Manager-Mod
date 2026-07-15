@@ -112,6 +112,10 @@ async function fetchYoutube() {
     btn.textContent = '가져오는 중…';
     try {
         const metadata = await getAudioMetadata(normalized);
+        if (!metadata || !metadata.path) {
+            showNotification('유튜브 정보를 가져오지 못했습니다.', 'error');
+            return;
+        }
         if (isDuplicateYoutubeTrack(state.songLibrary, normalized, metadata)) {
             showNotification('이미 등록된 곡입니다.', 'warning');
             return;
@@ -126,6 +130,108 @@ async function fetchYoutube() {
         btn.disabled = false;
         btn.textContent = '가져오기';
     }
+}
+
+/** 초 → m:ss (검색 결과 길이 표시용) */
+function fmtDuration(sec) {
+    const s = Number(sec) || 0;
+    if (s <= 0) return '';
+    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+
+/**
+ * 곡명·가수 통합 검색 — 유튜브 영상 후보와 가사 페이지 링크를 동시에 찾는다.
+ * 유튜브 쪽은 백엔드가 공식 음원(자동 생성 설명)을 최상단으로 올려준다.
+ */
+async function runSearch() {
+    const input = overlay.querySelector('#addsong-search-input');
+    const btn = overlay.querySelector('#addsong-search-btn');
+    const panes = overlay.querySelector('#addsong-search-panes');
+    const ytBox = overlay.querySelector('#addsong-yt-results');
+    const lyrBox = overlay.querySelector('#addsong-lyrics-results');
+    const query = input.value.trim();
+    if (!query) return;
+
+    panes.style.display = 'grid';
+    ytBox.innerHTML = '<div class="addsong-empty">검색 중…</div>';
+    lyrBox.innerHTML = '<div class="addsong-empty">검색 중…</div>';
+    btn.disabled = true;
+    btn.textContent = '검색 중…';
+
+    // 두 검색은 서로 독립이라 하나가 실패해도 다른 쪽은 보여준다.
+    const [yt, lyr] = await Promise.allSettled([
+        invoke('search_youtube', { query, limit: 8 }),
+        invoke('search_lyrics_sites', { query }),
+    ]);
+
+    // ── 유튜브 결과
+    if (yt.status === 'fulfilled' && (yt.value || []).length > 0) {
+        ytBox.innerHTML = yt.value.map((r, i) => `
+            <div class="addsong-result addsong-yt-result" data-idx="${i}" title="${esc(r.title)}">
+                <img class="addsong-result-thumb" src="${esc(r.thumbnail)}" loading="lazy" onerror="this.style.visibility='hidden'">
+                <div class="addsong-result-body">
+                    <div class="addsong-result-title">${esc(r.title)}</div>
+                    <div class="addsong-result-sub">
+                        ${r.official ? '<span class="addsong-official-badge">공식 음원</span>' : ''}
+                        ${esc(r.channel)}${r.duration ? ` · ${fmtDuration(r.duration)}` : ''}
+                    </div>
+                </div>
+            </div>
+        `).join('');
+        ytBox.querySelectorAll('.addsong-yt-result').forEach((el) => {
+            el.onclick = () => {
+                const r = yt.value[parseInt(el.dataset.idx, 10)];
+                // 선택한 영상 URL을 입력란에 넣고 바로 메타데이터를 가져와 목록에 추가
+                overlay.querySelector('#addsong-yt-url').value = r.url;
+                ytBox.querySelectorAll('.addsong-result').forEach((n) => n.classList.remove('selected'));
+                el.classList.add('selected');
+                fetchYoutube();
+            };
+        });
+    } else {
+        ytBox.innerHTML = `<div class="addsong-empty">${yt.status === 'rejected' ? '검색 실패: ' + esc(String(yt.reason)) : '결과가 없습니다.'}</div>`;
+    }
+
+    // ── 가사 링크 결과 (원문은 가져오지 않고 링크만)
+    if (lyr.status === 'fulfilled' && (lyr.value || []).length > 0) {
+        lyrBox.innerHTML = lyr.value.map((r, i) => `
+            <div class="addsong-result addsong-lyr-result" data-idx="${i}" title="${esc(r.url)}">
+                <div class="addsong-result-body">
+                    <div class="addsong-result-title">${esc(r.title)}</div>
+                    ${r.snippet ? `<div class="addsong-result-snippet">${esc(r.snippet)}</div>` : ''}
+                    <div class="addsong-result-sub">${esc(r.domain)}</div>
+                </div>
+                <button type="button" class="addsong-open-btn" data-url="${esc(r.url)}" title="브라우저에서 열기">↗</button>
+            </div>
+        `).join('');
+        lyrBox.querySelectorAll('.addsong-lyr-result').forEach((el) => {
+            el.onclick = (e) => {
+                if (e.target.closest('.addsong-open-btn')) return;
+                const r = lyr.value[parseInt(el.dataset.idx, 10)];
+                overlay.querySelector('#addsong-lyrics-link').value = r.url;
+                lyrBox.querySelectorAll('.addsong-result').forEach((n) => n.classList.remove('selected'));
+                el.classList.add('selected');
+            };
+        });
+        lyrBox.querySelectorAll('.addsong-open-btn').forEach((b) => {
+            b.onclick = async (e) => {
+                e.stopPropagation();
+                const url = b.dataset.url;
+                try {
+                    // 가사 싱크 탭의 링크 열기와 동일한 방식(외부 브라우저)
+                    if (window.__TAURI__?.opener?.openUrl) await window.__TAURI__.opener.openUrl(url);
+                    else window.open(url, '_blank', 'noopener,noreferrer');
+                } catch (err) {
+                    console.error('[AddSong] open lyrics link failed:', err);
+                }
+            };
+        });
+    } else {
+        lyrBox.innerHTML = `<div class="addsong-empty">${lyr.status === 'rejected' ? '검색 실패: ' + esc(String(lyr.reason)) : '결과가 없습니다.'}</div>`;
+    }
+
+    btn.disabled = false;
+    btn.textContent = '검색';
 }
 
 async function pickLocalFiles(prefillPaths = null) {
@@ -144,6 +250,10 @@ async function pickLocalFiles(prefillPaths = null) {
         if (state.songLibrary.some((s) => s.path === path) || pendingSongs.some((m) => m.path === path)) continue;
         try {
             const metadata = await getAudioMetadata(path);
+            if (!metadata || !metadata.path) {
+                console.error('[AddSong] empty metadata for:', path);
+                continue;
+            }
             metadata.source = 'local';
             pendingSongs.push(metadata);
         } catch (err) {
@@ -190,6 +300,7 @@ async function confirmAdd() {
         : genreSelValue.trim();
     const category = overlay.querySelector('#addsong-category').value.trim();
     const tags = overlay.querySelector('#addsong-tags').value.split(',').map((t) => t.trim()).filter(Boolean);
+    const lyricsLink = overlay.querySelector('#addsong-lyrics-link').value.trim();
     if (pendingSongs.length === 1) {
         const title = overlay.querySelector('#addsong-title').value.trim();
         const artist = overlay.querySelector('#addsong-artist').value.trim();
@@ -200,6 +311,11 @@ async function confirmAdd() {
         if (genre) m.genre = genre;
         if (category) m.categories = [category];
         if (tags.length) m.tags = tags;
+        // 가사 링크는 단일 곡일 때만 의미 있음(검색으로 고른 그 곡의 링크)
+        if (lyricsLink && pendingSongs.length === 1) {
+            m.lyricsLink = lyricsLink;
+            m.lyrics_link = lyricsLink;
+        }
     });
 
     // (c)/(d) 옵션
@@ -294,8 +410,24 @@ export async function openAddSongModal(prefillLocalPaths = null) {
 
             <div class="addsong-section">
                 <div class="addsong-section-title">1. 소스</div>
+                <!-- 곡명·가수로 검색하면 유튜브 영상 후보와 가사 페이지 링크를
+                     한 번에 찾아준다(URL을 직접 구해 붙여넣지 않아도 됨). -->
                 <div class="addsong-source-row">
-                    <input type="text" id="addsong-yt-url" class="addsong-input" placeholder="YouTube URL을 입력하세요" spellcheck="false" style="flex:1;">
+                    <input type="text" id="addsong-search-input" class="addsong-input" placeholder="곡명 · 가수로 검색 (예: 에픽하이 트로트)" spellcheck="false" style="flex:1;">
+                    <button type="button" class="app-btn app-btn-primary" id="addsong-search-btn">검색</button>
+                </div>
+                <div id="addsong-search-panes" class="addsong-search-panes" style="display:none;">
+                    <div class="addsong-search-pane">
+                        <div class="addsong-pane-title">유튜브 영상</div>
+                        <div id="addsong-yt-results" class="addsong-result-list"></div>
+                    </div>
+                    <div class="addsong-search-pane">
+                        <div class="addsong-pane-title">가사 링크</div>
+                        <div id="addsong-lyrics-results" class="addsong-result-list"></div>
+                    </div>
+                </div>
+                <div class="addsong-source-row" style="margin-top:10px;">
+                    <input type="text" id="addsong-yt-url" class="addsong-input" placeholder="YouTube URL 직접 입력" spellcheck="false" style="flex:1;">
                     <button type="button" class="app-btn" id="addsong-yt-fetch">가져오기</button>
                     <span class="addsong-or">또는</span>
                     <button type="button" class="app-btn" id="addsong-local-pick">로컬 파일 선택…</button>
@@ -312,6 +444,7 @@ export async function openAddSongModal(prefillLocalPaths = null) {
                     <input type="text" id="addsong-genre-custom" class="addsong-input" placeholder="장르 직접 입력" style="display:none;">
                     <input type="text" id="addsong-category" class="addsong-input" placeholder="카테고리" list="addsong-category-list">
                     <input type="text" id="addsong-tags" class="addsong-input" placeholder="태그 (쉼표로 구분)">
+                    <input type="text" id="addsong-lyrics-link" class="addsong-input" placeholder="가사 링크 (검색에서 선택하면 자동 입력)" spellcheck="false" style="grid-column: span 2;">
                 </div>
                 <datalist id="addsong-category-list"></datalist>
             </div>
@@ -365,6 +498,8 @@ export async function openAddSongModal(prefillLocalPaths = null) {
     overlay.onclick = (e) => { if (e.target === overlay && downOnOverlay) close(); };
     overlay.querySelector('#addsong-yt-fetch').onclick = fetchYoutube;
     overlay.querySelector('#addsong-yt-url').onkeydown = (e) => { if (e.key === 'Enter') fetchYoutube(); };
+    overlay.querySelector('#addsong-search-btn').onclick = runSearch;
+    overlay.querySelector('#addsong-search-input').onkeydown = (e) => { if (e.key === 'Enter') runSearch(); };
     overlay.querySelector('#addsong-local-pick').onclick = () => pickLocalFiles();
     overlay.querySelector('#addsong-confirm').onclick = confirmAdd;
 

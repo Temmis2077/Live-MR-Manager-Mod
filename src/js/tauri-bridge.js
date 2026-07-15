@@ -34,6 +34,23 @@ export async function invoke(command, args = {}) {
       return;
     case 'analyze_key_bpm':
       return { key: 'C', bpm: 120 };
+    case 'get_audio_metadata':
+      return { path: args.path, title: '샘플 곡', artist: '샘플 아티스트', duration: '4:47', thumbnail: '', source: 'youtube' };
+    // 통합 검색 — 브라우저(정적 프리뷰)에서 UI를 시험할 수 있게 샘플 응답
+    case 'search_youtube':
+      return [
+        { id: 'aaa11122233', url: 'https://youtu.be/aaa11122233', title: `${args.query} (Official Audio)`,
+          channel: '샘플 아티스트', duration: 287, thumbnail: 'https://i.ytimg.com/vi/aaa11122233/mqdefault.jpg', official: true },
+        { id: 'bbb44455566', url: 'https://youtu.be/bbb44455566', title: `[LIVE] ${args.query} 무대 영상`,
+          channel: '샘플 방송', duration: 258, thumbnail: 'https://i.ytimg.com/vi/bbb44455566/mqdefault.jpg', official: false },
+      ];
+    case 'search_lyrics_sites':
+      return [
+        { title: `${args.query} 가사`, url: 'https://music.bugs.co.kr/track/1804107',
+          snippet: '가사 미리보기 샘플 텍스트입니다.', domain: 'music.bugs.co.kr' },
+        { title: `${args.query} - 노래 가사`, url: 'https://www.lyrics.co.kr/?p=270496',
+          snippet: '두 번째 결과 샘플.', domain: 'lyrics.co.kr' },
+      ];
     default:
       return null;
   }
