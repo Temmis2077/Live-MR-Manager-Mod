@@ -21,6 +21,31 @@ let overlay = null;
 // 소스 단계에서 확보한 곡 메타데이터 목록 (유튜브 1개 or 로컬 N개)
 let pendingSongs = [];
 
+// 대중적인 장르 프리셋 — 곡이 많아져도 일관된 값으로 분류/필터되도록
+// 자유 입력 대신 드롭다운을 기본으로 한다. 값 규약(소문자 키)은 곡 정보
+// 편집 모달(#edit-genre-dropdown, ui/modals.js defaultGenres)과 동일.
+const COMMON_GENRES = [
+    ['kpop', 'K-POP'],
+    ['pop', 'POP (해외)'],
+    ['ballad', '발라드'],
+    ['dance', '댄스'],
+    ['hiphop', '힙합/랩'],
+    ['rnb', 'R&B/소울'],
+    ['rock', '락/메탈'],
+    ['indie', '인디'],
+    ['trot', '트로트'],
+    ['jpop', 'J-POP'],
+    ['anime', '애니메이션'],
+    ['vocaloid', '보컬로이드'],
+    ['ost', 'OST'],
+    ['edm', 'EDM/일렉트로닉'],
+    ['jazz', '재즈'],
+    ['classical', '클래식'],
+    ['folk', '포크/어쿠스틱'],
+    ['ccm', 'CCM'],
+    ['etc', '기타'],
+];
+
 function close() {
     if (overlay) { overlay.remove(); overlay = null; }
     pendingSongs = [];
@@ -159,7 +184,10 @@ async function confirmAdd() {
     btn.textContent = '추가 중…';
 
     // (b) 곡 정보 일괄/단일 적용
-    const genre = overlay.querySelector('#addsong-genre').value.trim();
+    const genreSelValue = overlay.querySelector('#addsong-genre').value;
+    const genre = genreSelValue === '__custom'
+        ? overlay.querySelector('#addsong-genre-custom').value.trim()
+        : genreSelValue.trim();
     const category = overlay.querySelector('#addsong-category').value.trim();
     const tags = overlay.querySelector('#addsong-tags').value.split(',').map((t) => t.trim()).filter(Boolean);
     if (pendingSongs.length === 1) {
@@ -194,15 +222,40 @@ async function confirmAdd() {
         // 2. 가사 저장 (+정렬 대기열) — 가사는 단일 곡에만 의미가 있음
         if (doAlign && lyricsText && songs.length === 1) {
             const { encodeLrc } = await import('../lrc-parser.js');
-            const segments = lyricsText.split('\n').map((t) => t.trim()).filter(Boolean)
-                .map((text) => ({ text, start: 0, end: 0 }));
+            const lines = lyricsText.split('\n').map((t) => t.trim()).filter(Boolean);
+            let segments;
+            if (overlay.querySelector('#addsong-triplet-check').checked) {
+                // 3줄 모드: 위에서부터 [원문/차음/번역] 3줄씩 한 소절로 묶음
+                // (마지막 그룹이 모자라면 있는 줄까지만 사용). AI 정렬은
+                // 차음(한글 발음) 줄 기준으로 동작(getSyncText).
+                segments = [];
+                for (let i = 0; i < lines.length; i += 3) {
+                    segments.push({
+                        original: lines[i] || '',
+                        pronunciation: lines[i + 1] || '',
+                        translation: lines[i + 2] || '',
+                        text: lines[i] || '',
+                        start: 0,
+                        end: 0,
+                    });
+                }
+            } else {
+                segments = lines.map((text) => ({ text, start: 0, end: 0 }));
+            }
             await invoke('save_lrc_file', { audioPath: songs[0].path, content: encodeLrc(segments) });
             const song = state.songLibrary.find((s) => s.path === songs[0].path);
             if (song) { song.hasLyrics = true; song.has_lyrics = true; song.lyricSyncStatus = 'unsynced'; }
             const { setAlignmentLanguage } = await import('../alignment-model.js');
             setAlignmentLanguage(alignLang);
-            const { enqueueAlignment } = await import('../alignment-queue.js');
-            enqueueAlignment([songs[0].path]);
+            const { enqueueAlignment, deferAlignmentUntilSeparated } = await import('../alignment-queue.js');
+            if (doSeparate && modelId) {
+                // 정렬 엔진은 분리된 보컬 스템을 우선 쓰므로, 분리도 함께
+                // 요청했다면 분리가 끝난 뒤 정렬을 걸어야 정확하다 — 분리
+                // 종료 이벤트(backend.js)가 오면 자동으로 대기열에 등록됨.
+                deferAlignmentUntilSeparated(songs[0].path);
+            } else {
+                enqueueAlignment([songs[0].path]);
+            }
         }
 
         // 3. MR 분리 시작 (여러 곡이면 순서대로 대기열에 걸림)
@@ -215,9 +268,10 @@ async function confirmAdd() {
             }
         }
 
+        const withAlign = doAlign && lyricsText && songs.length === 1;
         const extras = [
             doSeparate ? 'MR 분리' : null,
-            (doAlign && lyricsText && songs.length === 1) ? 'AI 정렬' : null,
+            withAlign ? (doSeparate ? '분리 완료 후 AI 정렬' : 'AI 정렬') : null,
         ].filter(Boolean);
         showNotification(
             `${songs.length}곡을 추가했습니다.${extras.length ? ` (${extras.join(' · ')} 시작됨)` : ''}`,
@@ -264,11 +318,11 @@ export async function openAddSongModal(prefillLocalPaths = null) {
                 <div class="addsong-grid">
                     <input type="text" id="addsong-title" class="addsong-input" placeholder="제목">
                     <input type="text" id="addsong-artist" class="addsong-input" placeholder="아티스트">
-                    <input type="text" id="addsong-genre" class="addsong-input" placeholder="장르" list="addsong-genre-list">
+                    <select id="addsong-genre" class="addsong-input" title="장르"></select>
+                    <input type="text" id="addsong-genre-custom" class="addsong-input" placeholder="장르 직접 입력" style="display:none;">
                     <input type="text" id="addsong-category" class="addsong-input" placeholder="카테고리" list="addsong-category-list">
-                    <input type="text" id="addsong-tags" class="addsong-input" placeholder="태그 (쉼표로 구분)" style="grid-column: span 2;">
+                    <input type="text" id="addsong-tags" class="addsong-input" placeholder="태그 (쉼표로 구분)">
                 </div>
-                <datalist id="addsong-genre-list"></datalist>
                 <datalist id="addsong-category-list"></datalist>
             </div>
 
@@ -285,6 +339,11 @@ export async function openAddSongModal(prefillLocalPaths = null) {
                 </div>
                 <div id="addsong-lyrics-wrap" style="display:none;">
                     <textarea id="addsong-lyrics" class="addsong-lyrics" rows="5" placeholder="가사를 붙여넣으세요 (한 줄 = 한 소절). 등록 후 AI가 자동으로 싱크 초안을 잡습니다." spellcheck="false"></textarea>
+                    <div class="addsong-source-row" style="margin-top:6px;">
+                        <label class="addsong-check" title="일본어 곡처럼 한 소절이 [원문 / 한글 발음(차음) / 번역] 3줄로 된 가사. 위에서부터 3줄씩 한 소절로 묶고, AI 정렬은 차음 줄 기준으로 실행됩니다.">
+                            <input type="checkbox" id="addsong-triplet-check"> 원문/차음/번역 3줄 모드 (일본어 곡 등)
+                        </label>
+                    </div>
                     <div class="addsong-source-row" style="margin-top:6px;">
                         <span class="addsong-hint">정렬 언어:</span>
                         <select id="addsong-align-lang" class="addsong-input" style="width:auto;">
@@ -328,20 +387,33 @@ export async function openAddSongModal(prefillLocalPaths = null) {
         const { getAlignmentLanguage } = await import('../alignment-model.js');
         overlay.querySelector('#addsong-align-lang').value = getAlignmentLanguage();
     } catch (_) {}
+    // 장르 드롭다운: 대중 장르 프리셋 + 라이브러리에서 이미 쓰는 커스텀 값
+    // + 직접 입력. 곡이 많아져도 장르 값이 일관되게 유지되도록.
+    let dbGenres = [];
+    let dbCategories = [];
     try {
         const { getAllGenres, getAllCategories } = await import('../state.js');
-        const [genres, categories] = await Promise.all([getAllGenres(), getAllCategories()]);
-        genres.forEach((name) => {
-            const opt = document.createElement('option');
-            opt.value = name;
-            overlay.querySelector('#addsong-genre-list').appendChild(opt);
-        });
-        categories.forEach((name) => {
-            const opt = document.createElement('option');
-            opt.value = name;
-            overlay.querySelector('#addsong-category-list').appendChild(opt);
-        });
+        [dbGenres, dbCategories] = await Promise.all([getAllGenres(), getAllCategories()]);
     } catch (_) {}
+    const genreSel = overlay.querySelector('#addsong-genre');
+    const knownValues = new Set(COMMON_GENRES.map(([v]) => v));
+    const extraGenres = dbGenres.filter((g) => g && !knownValues.has(String(g).toLowerCase()));
+    genreSel.innerHTML = [
+        '<option value="">장르 선택…</option>',
+        ...COMMON_GENRES.map(([v, label]) => `<option value="${esc(v)}">${esc(label)}</option>`),
+        ...extraGenres.map((g) => `<option value="${esc(g)}">${esc(g)} (기존)</option>`),
+        '<option value="__custom">직접 입력…</option>',
+    ].join('');
+    const genreCustom = overlay.querySelector('#addsong-genre-custom');
+    genreSel.onchange = () => {
+        genreCustom.style.display = genreSel.value === '__custom' ? '' : 'none';
+        if (genreSel.value === '__custom') genreCustom.focus();
+    };
+    dbCategories.forEach((name) => {
+        const opt = document.createElement('option');
+        opt.value = name;
+        overlay.querySelector('#addsong-category-list').appendChild(opt);
+    });
     renderModelChoices();
     renderPendingList();
 

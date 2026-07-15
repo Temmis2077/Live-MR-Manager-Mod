@@ -35,6 +35,33 @@ export function isAlignmentBusy() {
     return state.alignmentQueue.some((i) => i.status === 'queued' || i.status === 'processing');
 }
 
+// ── MR 분리 후 정렬 (노래 추가 원스톱 흐름) ─────────────────────────
+// 정렬 엔진은 분리된 보컬 스템을 우선 사용하므로, 분리와 정렬을 함께
+// 요청한 곡은 분리가 끝난 뒤에 정렬을 걸어야 정확하다. 분리 완료 이벤트는
+// backend.js의 separation-progress 리스너가 받아 onSeparationTerminated를
+// 호출해준다.
+const pendingAfterSeparation = new Set();
+
+/** 이 곡의 정렬을 분리 종료 시점까지 미룬다. */
+export function deferAlignmentUntilSeparated(path) {
+    if (path) pendingAfterSeparation.add(path);
+}
+
+/**
+ * 분리가 종료(완료/오류/취소)된 곡에 미뤄둔 정렬이 있으면 대기열에 등록.
+ * 오류/취소로 끝나도 정렬은 진행한다 — 가사는 이미 저장돼 있고, 원본
+ * 음원으로도 정렬은 (정확도는 낮지만) 가능하므로 사용자의 요청을 버리지
+ * 않는다. matches는 유튜브 URL 변형까지 비교하는 backend.js의 pathMatches.
+ */
+export function onSeparationTerminated(path, matches = null) {
+    for (const pending of [...pendingAfterSeparation]) {
+        if (pending === path || (matches && matches(pending, path))) {
+            pendingAfterSeparation.delete(pending);
+            enqueueAlignment([pending]);
+        }
+    }
+}
+
 function notifyQueueChanged() {
     import('./ui/components.js').then((m) => {
         if (m.updateTaskUI) m.updateTaskUI();

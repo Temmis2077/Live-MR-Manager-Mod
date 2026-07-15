@@ -21,7 +21,9 @@ export function openEditModal(song, index) {
   const genreDropdown = document.getElementById("edit-genre-dropdown");
   
   if (genreSelect && genreCustom && genreDropdown) {
-    const defaultGenres = ["pop", "ballad", "dance", "rock", "jpop", "kpop", "etc"];
+    // index.html의 #edit-genre-dropdown 옵션 목록과 동기화할 것 —
+    // 노래 추가 모달(add-song-modal.js COMMON_GENRES)도 같은 값 규약을 쓴다.
+    const defaultGenres = ["kpop", "pop", "ballad", "dance", "hiphop", "rnb", "rock", "indie", "trot", "jpop", "anime", "vocaloid", "ost", "edm", "jazz", "classical", "folk", "ccm", "etc"];
     const songGenre = (song.genre || "").toLowerCase();
     
     if (defaultGenres.includes(songGenre)) {

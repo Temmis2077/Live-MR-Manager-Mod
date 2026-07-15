@@ -194,6 +194,13 @@ export async function setupBackendListeners() {
         showNotification(formatSeparationFailure(status), "error");
       }
 
+      // 노래 추가에서 "분리 후 정렬"로 미뤄둔 곡이면 이제 정렬 대기열에 등록
+      // (완료뿐 아니라 오류/취소로 끝나도 — 가사는 저장돼 있고 원본으로도
+      // 정렬은 가능하므로 요청을 버리지 않는다).
+      import('../alignment-queue.js')
+        .then((m) => m.onSeparationTerminated(path, pathMatches))
+        .catch(() => {});
+
       // Refresh library badges for all termination states (finished, cancelled, error)
       renderLibrary();
     } else {
