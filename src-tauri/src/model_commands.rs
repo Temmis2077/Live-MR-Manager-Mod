@@ -292,16 +292,37 @@ pub async fn remove_custom_model(window: WebviewWindow, model_id: String) -> Res
 
 #[tauri::command]
 pub fn get_mr_cache_format() -> String {
+    // 형식은 Settings DB가 진실의 원천 — in-process static은 분리 스레드가
+    // 빠르게 읽는 캐시일 뿐이라, 재시작 후 첫 조회 시 DB 값으로 복원한다.
+    // (이전에는 static만 있어서 재시작하면 WAV 선택이 mp3로 되돌아갔음.)
+    let saved: Option<String> = {
+        let db = crate::state::DB.lock();
+        db.query_row(
+            "SELECT value FROM Settings WHERE key = 'mr_cache_format'",
+            [],
+            |row| row.get(0),
+        )
+        .ok()
+    };
+    if let Some(fmt) = saved {
+        let _ = crate::mr_cache::set_format(&fmt);
+    }
     crate::mr_cache::current_format().as_str().to_string()
 }
 
 #[tauri::command]
 pub fn set_mr_cache_format(format: String) -> Result<(), String> {
     crate::mr_cache::set_format(&format)?;
-    sys_log(&format!(
-        "MR cache format set to: {}",
-        crate::mr_cache::current_format().as_str()
-    ));
+    let normalized = crate::mr_cache::current_format().as_str().to_string();
+    {
+        let db = crate::state::DB.lock();
+        db.execute(
+            "INSERT OR REPLACE INTO Settings (key, value) VALUES ('mr_cache_format', ?)",
+            rusqlite::params![normalized],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+    sys_log(&format!("MR cache format set to: {}", normalized));
     Ok(())
 }
 

@@ -169,7 +169,7 @@ export class ForcedAlignmentViewer {
                         <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px; flex-wrap:wrap;">
                             <button id="ai-align-btn" class="sync-reset-btn" style="background:var(--align-item-active-bg); color:var(--accent-primary); border-color:var(--align-item-active-border);" title="AI 음성인식 모델로 가사와 오디오를 자동 정렬합니다. 노래 음성 특성상 완벽하지 않을 수 있어 결과는 직접 다듬어야 합니다.">AI 자동 정렬</button>
                             <select id="ai-align-language" title="정렬에 사용할 음성 인식 언어. 가사 언어에 맞게 선택하세요. 랩/혼합은 한국어·영어 모델을 모두 사용해 줄마다 우세 언어 결과를 채택합니다 (정렬 시간 2배)." style="font-size:0.75rem; padding:4px 6px; border-radius:6px; background:var(--align-surface-input); color:var(--align-text-soft); border:1px solid var(--align-item-border);">
-                                <option value="ko">한국어</option>
+                                <option value="ko">한국어/일본어(차음)</option>
                                 <option value="en">English</option>
                                 <option value="rap">랩/혼합 (한+영)</option>
                             </select>
@@ -606,15 +606,16 @@ export class ForcedAlignmentViewer {
             }
             this.state.currentTime = positionMs / 1000;
 
-            // 타임바 따라가기: 재생 위치가 보이는 구간을 벗어나면 뷰포트를
-            // 자동 이동(위치 선이 화면 30% 지점에 오게). 확대 중일 때만 의미.
+            // 타임바 따라가기: 재생 중에는 위치 선이 항상 화면 중앙에 오도록
+            // 뷰포트를 연속 이동(끝에 닿을 때 점프하는 방식보다 시선이 편함).
+            // 확대 중일 때만 의미. 곡 양 끝에서는 범위 클램프로 자연히 멈춤.
             if (this.followPlayhead && this.state.isPlaying && this.state.zoomLevel > 1 && this.state.duration > 0) {
                 const visible = this.state.duration / this.state.zoomLevel;
-                const t = this.state.currentTime;
-                if (t < this.state.scrollTime || t > this.state.scrollTime + visible * 0.9) {
-                    this.state.scrollTime = Math.max(0, Math.min(t - visible * 0.3, this.state.duration - visible));
-                    this.updateScrollbar();
-                }
+                this.state.scrollTime = Math.max(0, Math.min(
+                    this.state.currentTime - visible / 2,
+                    this.state.duration - visible
+                ));
+                this.updateScrollbar();
             }
 
             this.updateTimeDisplay();

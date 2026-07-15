@@ -225,6 +225,22 @@ function renderAlignmentQueue() {
 
   const items = state.alignmentQueue || [];
 
+  // "대기열 전체 지우기" — 항목이 있을 때만 노출, 클릭 시 처리 중 취소 + 전체 제거
+  const actionsBar = document.getElementById('alignment-queue-actions');
+  if (actionsBar) {
+    actionsBar.style.display = items.length > 0 ? 'flex' : 'none';
+    const clearBtn = document.getElementById('alignment-clear-all');
+    if (clearBtn && !clearBtn._wired) {
+      clearBtn._wired = true;
+      clearBtn.onclick = async () => {
+        const hasProcessing = (state.alignmentQueue || []).some((i) => i.status === 'processing');
+        if (hasProcessing && !confirm('처리 중인 정렬이 있습니다. 취소하고 대기열을 모두 지울까요?')) return;
+        const { clearAlignmentQueue } = await import('../alignment-queue.js');
+        await clearAlignmentQueue();
+      };
+    }
+  }
+
   const statusMap = {
     'queued': '대기 중',
     'processing': '정렬 중',

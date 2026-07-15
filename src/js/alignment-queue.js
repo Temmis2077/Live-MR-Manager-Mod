@@ -298,6 +298,21 @@ export function enqueueAlignment(paths) {
     return added;
 }
 
+/** 정렬 대기열 전체 지우기 — 처리 중인 항목이 있으면 취소하고, 대기/완료/
+ *  오류 항목을 모두 목록에서 제거한다. (AI 프로세싱 탭의 "전체 지우기") */
+export async function clearAlignmentQueue() {
+    const processing = state.alignmentQueue.find((i) => i.status === 'processing');
+    if (processing) {
+        try {
+            await invoke('cancel_forced_alignment');
+        } catch (err) {
+            console.error('[AlignQueue] cancel during clear failed:', err);
+        }
+    }
+    state.alignmentQueue.length = 0;
+    notifyQueueChanged();
+}
+
 /** 대기열 항목 취소/제거. queued는 즉시 제거(백엔드 호출 없음), processing은
  *  전역 취소 커맨드 호출(활성 정렬은 항상 1개라 안전). done/error 등 완료
  *  상태는 목록에서 치우는 용도. */

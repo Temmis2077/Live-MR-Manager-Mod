@@ -20,10 +20,13 @@
       --text-shadow: rgba(0, 0, 0, 0.3);
       --enter-gap-x: 120px;
       --enter-gap-y: 80px;
+      /* 가사 폰트 크기 — 설정에서 조정 가능(update_overlay_style font_size).
+         줄 높이는 폰트 크기에 비례해 따라가므로 크기를 키워도 잘리지 않음. */
+      --lyric-font-size: 22px;
       /* 원문/차음(+번역) 3줄 모드는 <br>로 2~3줄이 들어올 수 있어 여유를 둠.
          (전체 오버레이 레이아웃 리디자인은 하지 않고 높이만 늘림) */
-      --lyric-current-height: 50px;
-      --lyric-next-height: 40px;
+      --lyric-current-height: calc(var(--lyric-font-size) * 2.27);
+      --lyric-next-height: calc(var(--lyric-font-size) * 1.82);
       --lyric-lines-gap: 4px;
     }
 
@@ -123,7 +126,7 @@
 
     .lyric-line.current {
       color: var(--text-main);
-      font-size: 22px;
+      font-size: var(--lyric-font-size);
       line-height: 1.35;
       font-weight: 700;
       text-shadow: 0 2px 4px var(--text-shadow);
@@ -135,7 +138,7 @@
 
     .lyric-line.next {
       color: var(--text-sub);
-      font-size: 16px;
+      font-size: calc(var(--lyric-font-size) * 0.73);
       margin-top: 4px;
       line-height: 1.35;
       height: var(--lyric-next-height);
@@ -150,11 +153,11 @@
        (하위 줄은 lyric-drawer.js의 displayText()가 0.7em 인라인 스타일로
        이미 상대적으로 더 작게 렌더링하므로, 여기서는 컨테이너 기준값만 조정) */
     .lyric-line.current.multi-line {
-      font-size: 17px;
+      font-size: calc(var(--lyric-font-size) * 0.77);
       line-height: 1.22;
     }
     .lyric-line.next.multi-line {
-      font-size: 13px;
+      font-size: calc(var(--lyric-font-size) * 0.59);
       line-height: 1.22;
     }
 
@@ -162,7 +165,7 @@
       transform: translateY(-14px);
       opacity: 0.72;
       color: var(--text-sub);
-      font-size: 16px;
+      font-size: calc(var(--lyric-font-size) * 0.73);
       font-weight: 500;
       transition-delay: 0ms;
     }
@@ -170,7 +173,7 @@
       transform: translateY(calc(-1 * (var(--lyric-next-height) + var(--lyric-lines-gap))));
       opacity: 1;
       color: var(--text-main);
-      font-size: 22px;
+      font-size: var(--lyric-font-size);
       font-weight: 700;
       transition-delay: 0ms;
     }
@@ -276,6 +279,9 @@
       const direction = style.animation_direction || 'right';
 
       document.documentElement.style.setProperty('--overlay-scale', scale);
+      // 가사 폰트 크기 — 0/미지정이면 기본 22px. 줄 높이는 CSS calc로 비례.
+      const fontSize = Number(style.font_size ?? style.fontSize) || 0;
+      document.documentElement.style.setProperty('--lyric-font-size', `${fontSize > 0 ? fontSize : 22}px`);
       document.documentElement.style.setProperty('--overlay-font', `"${font}", 'Noto Sans KR', sans-serif`);
       document.documentElement.style.setProperty('--glass-bg', `rgba(${hexToRgb(bgColor)}, ${bgOpacity})`);
       document.documentElement.style.setProperty('--overlay-rounding', `${rounding}px`);

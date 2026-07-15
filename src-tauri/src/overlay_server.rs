@@ -22,6 +22,9 @@ pub struct OverlayStyle {
     pub bg_opacity: f32,
     pub rounding: f32,
     pub animation_direction: String,
+    /// 가사 오버레이 전용 폰트 크기(px). 0 = 기본값(22px) 사용.
+    #[serde(default)]
+    pub font_size: f32,
 }
 
 impl Default for OverlayStyle {
@@ -35,6 +38,7 @@ impl Default for OverlayStyle {
             bg_opacity: 0.6,
             rounding: 20.0,
             animation_direction: "left".to_string(),
+            font_size: 0.0,
         }
     }
 }
@@ -362,7 +366,7 @@ pub async fn update_overlay_state(title: String, artist: String, thumbnail: Stri
 }
 
 #[tauri::command]
-pub async fn update_overlay_style(target: String, scale: f32, font: String, color: String, text_color: String, bg_color: String, bg_opacity: f32, rounding: f32, is_force_visible: bool, animation_direction: String, theme_mode: String) {
+pub async fn update_overlay_style(target: String, scale: f32, font: String, color: String, text_color: String, bg_color: String, bg_opacity: f32, rounding: f32, is_force_visible: bool, animation_direction: String, theme_mode: String, font_size: Option<f32>) {
     let mut state = CURRENT_STATE.lock().await.clone();
     let style = OverlayStyle {
         scale,
@@ -373,6 +377,7 @@ pub async fn update_overlay_style(target: String, scale: f32, font: String, colo
         bg_opacity,
         rounding,
         animation_direction,
+        font_size: font_size.unwrap_or(0.0),
     };
     let shared_color = style.color.clone();
     let shared_text_color = style.text_color.clone();
