@@ -16,6 +16,15 @@ export function initNavigation() {
         import('../ui/add-song-modal.js').then(({ openAddSongModal }) => openAddSongModal());
         return;
       }
+      // "가사 창"은 탭이 아니라 별도 가사 호버창을 연다.
+      if (tabId === "lyrics-window") {
+        import('../tauri-bridge.js').then(({ invoke }) => invoke('open_lyrics_window'))
+          .catch((err) => {
+            console.error('[LyricsWindow] open failed:', err);
+            import('../utils.js').then(m => m.showNotification('가사 창을 열지 못했습니다: ' + err, 'error'));
+          });
+        return;
+      }
       if (tabId === "overlay") {
         switchTab("overlay");
         return;

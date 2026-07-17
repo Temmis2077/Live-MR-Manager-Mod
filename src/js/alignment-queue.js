@@ -63,12 +63,68 @@ export function onSeparationTerminated(path, matches = null) {
 }
 
 function notifyQueueChanged() {
+    persistQueue();
     import('./ui/components.js').then((m) => {
         if (m.updateTaskUI) m.updateTaskUI();
     }).catch(() => {});
     // 가사 싱크 에디터 등 큐 상태에 반응해야 하는 UI용 (예: "AI 자동 정렬"
     // 버튼의 변환 중 표시). 직접 import 대신 이벤트로 느슨하게 연결.
     try { window.dispatchEvent(new CustomEvent('alignment-queue-changed')); } catch (e) {}
+}
+
+// ── 대기열 영속화 ───────────────────────────────────────────────────
+// 정렬은 곡당 수십 초~분 단위라 작업 도중 앱을 끄거나 PC를 재시작하는 일이
+// 흔하다. 아직 끝나지 않은 항목만 저장해 뒀다가 다음 실행에서 이어서 처리한다.
+// (완료/오류/취소 등 종결 항목은 남길 이유가 없어 저장하지 않는다.)
+const QUEUE_STORAGE_KEY = 'alignmentQueueV1';
+
+function persistQueue() {
+    try {
+        const pending = (state.alignmentQueue || [])
+            .filter((i) => i.status === 'queued' || i.status === 'processing')
+            .map((i) => ({ path: i.path, title: i.title, thumbnail: i.thumbnail }));
+        if (pending.length === 0) localStorage.removeItem(QUEUE_STORAGE_KEY);
+        else localStorage.setItem(QUEUE_STORAGE_KEY, JSON.stringify(pending));
+    } catch (err) {
+        console.warn('[AlignQueue] persist failed:', err);
+    }
+}
+
+/**
+ * 앱 시작 시 호출 — 지난 실행에서 남은 정렬 항목을 복원하고 이어서 처리한다.
+ * 처리 중이던 항목도 백엔드 작업은 이미 사라졌으므로 '대기 중'으로 되돌린다.
+ */
+export function restoreAlignmentQueue() {
+    let saved = [];
+    try {
+        const raw = localStorage.getItem(QUEUE_STORAGE_KEY);
+        if (!raw) return 0;
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) saved = parsed;
+    } catch (err) {
+        console.warn('[AlignQueue] restore failed:', err);
+        return 0;
+    }
+
+    let restored = 0;
+    saved.forEach((item) => {
+        if (!item || !item.path) return;
+        if (state.alignmentQueue.some((i) => i.path === item.path)) return;
+        const song = state.songLibrary.find((s) => s.path === item.path);
+        state.alignmentQueue.push({
+            path: item.path,
+            title: song?.title || item.title || item.path,
+            thumbnail: song?.thumbnail || item.thumbnail || '',
+            status: 'queued',
+        });
+        restored++;
+    });
+
+    if (restored > 0) {
+        notifyQueueChanged();
+        runQueue();
+    }
+    return restored;
 }
 
 function currentProcessingItem() {

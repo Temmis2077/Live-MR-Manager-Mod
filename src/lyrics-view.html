@@ -247,9 +247,9 @@
       if (bpm > 0) chipBpm.textContent = `${Math.round(bpm)} BPM`;
 
       const lines = data.lyrics_lines || data.lyricsLines || [];
-      const key = lines.join('');
-      if (key !== renderedLines) {
-        renderedLines = key;
+      const linesKey = lines.join('|');
+      if (linesKey !== renderedLines) {
+        renderedLines = linesKey;
         lastIndex = -2;
         renderLines(lines);
       }

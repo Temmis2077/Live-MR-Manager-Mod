@@ -131,7 +131,8 @@ function renderSeparationTasks() {
     "Processing": "분리 중",
     "Finished": "완료",
     "Cancelled": "취소됨",
-    "Error": "오류"
+    "Error": "오류",
+    "RetryWaiting": "재시도 대기 중"
   };
 
   const formatTaskViewModel = (task) => {
@@ -140,7 +141,13 @@ function renderSeparationTasks() {
     const pStr = (task.provider || "").toUpperCase();
     const isGPU = pStr.includes("GPU") || pStr.includes("CUDA") || pStr.includes("DIRECTML");
     const providerLabel = isGPU ? "GPU" : "CPU";
-    const displayStatus = statusMap[task.status] || task.status || '대기 중';
+    let displayStatus = statusMap[task.status] || task.status || '대기 중';
+    // 다운로드 실패 후 백오프 대기 — 몇 번째 시도이고 얼마 뒤인지 같이 보여준다.
+    if (task.status === "RetryWaiting") {
+      const d = Number(task.retryDelayMs || 0);
+      const when = d >= 60000 ? `${Math.round(d / 60000)}분 후` : `${Math.round(d / 1000)}초 후`;
+      displayStatus = `재시도 대기 중 (${task.retryAttempt}/${task.retryMax} · ${when})`;
+    }
     return { percent, thumbUrl, isGPU, providerLabel, displayStatus };
   };
 
