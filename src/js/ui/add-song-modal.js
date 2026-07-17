@@ -16,35 +16,13 @@ import { state } from '../state.js';
 import { showNotification, getThumbnailUrl } from '../utils.js';
 import { getAudioMetadata, saveLibrary } from '../audio.js';
 import { isDuplicateYoutubeTrack, normalizeYoutubeUrl } from '../youtube-utils.js';
+// 장르/카테고리는 taxonomy.js 단일 소스를 따른다 (곡 정보 편집·필터와 동일 기준).
+import { GENRES, CATEGORIES } from '../taxonomy.js';
 
 let overlay = null;
 // 소스 단계에서 확보한 곡 메타데이터 목록 (유튜브 1개 or 로컬 N개)
 let pendingSongs = [];
 
-// 대중적인 장르 프리셋 — 곡이 많아져도 일관된 값으로 분류/필터되도록
-// 자유 입력 대신 드롭다운을 기본으로 한다. 값 규약(소문자 키)은 곡 정보
-// 편집 모달(#edit-genre-dropdown, ui/modals.js defaultGenres)과 동일.
-const COMMON_GENRES = [
-    ['kpop', 'K-POP'],
-    ['pop', 'POP (해외)'],
-    ['ballad', '발라드'],
-    ['dance', '댄스'],
-    ['hiphop', '힙합/랩'],
-    ['rnb', 'R&B/소울'],
-    ['rock', '락/메탈'],
-    ['indie', '인디'],
-    ['trot', '트로트'],
-    ['jpop', 'J-POP'],
-    ['anime', '애니메이션'],
-    ['vocaloid', '보컬로이드'],
-    ['ost', 'OST'],
-    ['edm', 'EDM/일렉트로닉'],
-    ['jazz', '재즈'],
-    ['classical', '클래식'],
-    ['folk', '포크/어쿠스틱'],
-    ['ccm', 'CCM'],
-    ['etc', '기타'],
-];
 
 function close() {
     if (overlay) { overlay.remove(); overlay = null; }
@@ -294,11 +272,14 @@ async function confirmAdd() {
     btn.textContent = '추가 중…';
 
     // (b) 곡 정보 일괄/단일 적용
-    const genreSelValue = overlay.querySelector('#addsong-genre').value;
-    const genre = genreSelValue === '__custom'
-        ? overlay.querySelector('#addsong-genre-custom').value.trim()
-        : genreSelValue.trim();
-    const category = overlay.querySelector('#addsong-category').value.trim();
+    const readChoice = (selId, customId) => {
+        const sel = overlay.querySelector(selId);
+        return sel.value === '__custom'
+            ? overlay.querySelector(customId).value.trim()
+            : sel.value.trim();
+    };
+    const genre = readChoice('#addsong-genre', '#addsong-genre-custom');
+    const category = readChoice('#addsong-category', '#addsong-category-custom');
     const tags = overlay.querySelector('#addsong-tags').value.split(',').map((t) => t.trim()).filter(Boolean);
     const lyricsLink = overlay.querySelector('#addsong-lyrics-link').value.trim();
     if (pendingSongs.length === 1) {
@@ -440,13 +421,13 @@ export async function openAddSongModal(prefillLocalPaths = null) {
                 <div class="addsong-grid">
                     <input type="text" id="addsong-title" class="addsong-input" placeholder="제목">
                     <input type="text" id="addsong-artist" class="addsong-input" placeholder="아티스트">
-                    <select id="addsong-genre" class="addsong-input" title="장르"></select>
+                    <select id="addsong-genre" class="addsong-input" title="장르 — 음악 스타일(사운드). 예: 락, 힙합, 댄스"></select>
+                    <select id="addsong-category" class="addsong-input" title="카테고리 — 씬/시장(출신). 예: K-POP, J-POP, 애니메이션"></select>
                     <input type="text" id="addsong-genre-custom" class="addsong-input" placeholder="장르 직접 입력" style="display:none;">
-                    <input type="text" id="addsong-category" class="addsong-input" placeholder="카테고리" list="addsong-category-list">
-                    <input type="text" id="addsong-tags" class="addsong-input" placeholder="태그 (쉼표로 구분)">
+                    <input type="text" id="addsong-category-custom" class="addsong-input" placeholder="카테고리 직접 입력" style="display:none;">
+                    <input type="text" id="addsong-tags" class="addsong-input" placeholder="태그 (쉼표로 구분)" style="grid-column: span 2;">
                     <input type="text" id="addsong-lyrics-link" class="addsong-input" placeholder="가사 링크 (검색에서 선택하면 자동 입력)" spellcheck="false" style="grid-column: span 2;">
                 </div>
-                <datalist id="addsong-category-list"></datalist>
             </div>
 
             <div class="addsong-section">
@@ -517,33 +498,40 @@ export async function openAddSongModal(prefillLocalPaths = null) {
         const { getAlignmentLanguage } = await import('../alignment-model.js');
         overlay.querySelector('#addsong-align-lang').value = getAlignmentLanguage();
     } catch (_) {}
-    // 장르 드롭다운: 대중 장르 프리셋 + 라이브러리에서 이미 쓰는 커스텀 값
-    // + 직접 입력. 곡이 많아져도 장르 값이 일관되게 유지되도록.
+    // 장르·카테고리 드롭다운 — taxonomy.js 표준 목록 + 라이브러리에 이미 있는
+    // 비표준 값(기존) + 직접 입력. 곡이 많아져도 값이 일관되게 유지되도록
+    // 자유 입력 대신 선택을 기본으로 한다.
     let dbGenres = [];
     let dbCategories = [];
     try {
         const { getAllGenres, getAllCategories } = await import('../state.js');
         [dbGenres, dbCategories] = await Promise.all([getAllGenres(), getAllCategories()]);
     } catch (_) {}
-    const genreSel = overlay.querySelector('#addsong-genre');
-    const knownValues = new Set(COMMON_GENRES.map(([v]) => v));
-    const extraGenres = dbGenres.filter((g) => g && !knownValues.has(String(g).toLowerCase()));
-    genreSel.innerHTML = [
-        '<option value="">장르 선택…</option>',
-        ...COMMON_GENRES.map(([v, label]) => `<option value="${esc(v)}">${esc(label)}</option>`),
-        ...extraGenres.map((g) => `<option value="${esc(g)}">${esc(g)} (기존)</option>`),
-        '<option value="__custom">직접 입력…</option>',
-    ].join('');
-    const genreCustom = overlay.querySelector('#addsong-genre-custom');
-    genreSel.onchange = () => {
-        genreCustom.style.display = genreSel.value === '__custom' ? '' : 'none';
-        if (genreSel.value === '__custom') genreCustom.focus();
+
+    const buildOptions = (sel, preset, dbValues, placeholder) => {
+        const known = new Set(preset);
+        const extras = (dbValues || []).filter((v) => v && !known.has(String(v).trim()));
+        sel.innerHTML = [
+            `<option value="">${placeholder}</option>`,
+            ...preset.map((v) => `<option value="${esc(v)}">${esc(v)}</option>`),
+            ...extras.map((v) => `<option value="${esc(v)}">${esc(v)} (기존)</option>`),
+            '<option value="__custom">직접 입력…</option>',
+        ].join('');
     };
-    dbCategories.forEach((name) => {
-        const opt = document.createElement('option');
-        opt.value = name;
-        overlay.querySelector('#addsong-category-list').appendChild(opt);
-    });
+    const bindCustom = (sel, customInput) => {
+        sel.onchange = () => {
+            customInput.style.display = sel.value === '__custom' ? '' : 'none';
+            if (sel.value === '__custom') customInput.focus();
+        };
+    };
+
+    const genreSel = overlay.querySelector('#addsong-genre');
+    buildOptions(genreSel, GENRES, dbGenres, '장르 선택… (사운드)');
+    bindCustom(genreSel, overlay.querySelector('#addsong-genre-custom'));
+
+    const catSel = overlay.querySelector('#addsong-category');
+    buildOptions(catSel, CATEGORIES, dbCategories, '카테고리 선택… (씬/시장)');
+    bindCustom(catSel, overlay.querySelector('#addsong-category-custom'));
     renderModelChoices();
     renderPendingList();
 

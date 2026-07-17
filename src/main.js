@@ -106,6 +106,19 @@ async function initApp() {
     const savedLibrary = await loadLibrary();
     state.songLibrary = savedLibrary || [];
     console.log(`[App] Loaded ${state.songLibrary.length} songs.`);
+
+    // 장르/카테고리 표준 재매핑 — 예전 값(소문자 kpop/ballad, 자동수집 '록'
+    // 등)을 새 기준으로 한 번만 정리한다(docs/GENRE_CATEGORY_STANDARD.md).
+    if (localStorage.getItem("taxonomyMigratedV1") !== "true") {
+      const { migrateLibraryTaxonomy } = await import('./js/taxonomy.js');
+      const changed = migrateLibraryTaxonomy(state.songLibrary);
+      if (changed > 0) {
+        const { saveLibrary } = await import('./js/audio.js');
+        await saveLibrary(state.songLibrary);
+        console.log(`[App] Taxonomy migrated: ${changed} songs`);
+      }
+      localStorage.setItem("taxonomyMigratedV1", "true");
+    }
   } catch (err) {
     console.error("Failed to load library:", err);
   }

@@ -5,53 +5,65 @@ import { state } from '../state.js';
 import { elements } from './elements.js';
 import { getSongCategory } from './library.js';
 import { setMetaStarRating } from '../utils.js';
+// 장르/카테고리 기준은 taxonomy.js 단일 소스 (docs/GENRE_CATEGORY_STANDARD.md).
+import { GENRES, CATEGORIES } from '../taxonomy.js';
+
+/** 커스텀 셀렉트(.custom-select)의 옵션 목록을 주어진 값들로 다시 만든다. */
+function fillCustomSelect(dropdown, values) {
+  const box = dropdown?.querySelector(".select-options");
+  if (!box) return;
+  box.innerHTML = [
+    '<div class="option-item" data-value="">장르 선택...</div>',
+    ...values.map((v) => `<div class="option-item" data-value="${v}">${v}</div>`),
+  ].join("");
+}
+
+/** 커스텀 셀렉트에서 특정 값을 선택 상태로 표시. */
+function selectCustomOption(dropdown, value) {
+  const option = dropdown?.querySelector(`.option-item[data-value='${value}']`);
+  const selectedText = dropdown?.querySelector(".selected-text");
+  if (!option || !selectedText) return;
+  selectedText.textContent = option.textContent;
+  dropdown.querySelectorAll(".option-item").forEach((o) => o.classList.remove("selected"));
+  option.classList.add("selected");
+}
 
 export function openEditModal(song, index) {
   if (!elements.metadataModal) return;
-  
+
   state.editingSongIndex = index;
-  
+
   // Fill modal fields
   document.getElementById("edit-title").value = song.title || "";
   document.getElementById("edit-artist").value = song.artist || "";
-  
-  // Genre Handling
+
+  // Genre Handling — 옵션은 taxonomy(GENRES)에서 만들어 노래 추가 모달과 항상 일치.
   const genreSelect = document.getElementById("edit-genre-select");
   const genreCustom = document.getElementById("edit-genre-custom");
   const genreDropdown = document.getElementById("edit-genre-dropdown");
-  
+
   if (genreSelect && genreCustom && genreDropdown) {
-    // index.html의 #edit-genre-dropdown 옵션 목록과 동기화할 것 —
-    // 노래 추가 모달(add-song-modal.js COMMON_GENRES)도 같은 값 규약을 쓴다.
-    const defaultGenres = ["kpop", "pop", "ballad", "dance", "hiphop", "rnb", "rock", "indie", "trot", "jpop", "anime", "vocaloid", "ost", "edm", "jazz", "classical", "folk", "ccm", "etc"];
-    const songGenre = (song.genre || "").toLowerCase();
-    
-    if (defaultGenres.includes(songGenre)) {
+    fillCustomSelect(genreDropdown, GENRES);
+    const songGenre = (song.genre || "").trim();
+
+    if (GENRES.includes(songGenre)) {
       genreSelect.value = songGenre;
       genreCustom.value = "";
-      
-      const selectedOption = genreDropdown.querySelector(`.option-item[data-value='${songGenre}']`);
-      const selectedText = genreDropdown.querySelector(".selected-text");
-      if (selectedOption && selectedText) {
-        selectedText.textContent = selectedOption.textContent;
-        genreDropdown.querySelectorAll(".option-item").forEach(opt => opt.classList.remove("selected"));
-        selectedOption.classList.add("selected");
-      }
+      selectCustomOption(genreDropdown, songGenre);
     } else {
-      genreSelect.value = "etc";
-      genreCustom.value = song.genre || "";
-      
-      const selectedOption = genreDropdown.querySelector(".option-item[data-value='etc']");
-      const selectedText = genreDropdown.querySelector(".selected-text");
-      if (selectedOption && selectedText) {
-        selectedText.textContent = selectedOption.textContent;
-        genreDropdown.querySelectorAll(".option-item").forEach(opt => opt.classList.remove("selected"));
-        selectedOption.classList.add("selected");
-      }
+      // 표준에 없는 값(사용자 커스텀)은 '기타' + 직접 입력란에 원본 보존
+      genreSelect.value = songGenre ? "기타" : "";
+      genreCustom.value = songGenre;
+      selectCustomOption(genreDropdown, songGenre ? "기타" : "");
     }
   }
 
-  document.getElementById("edit-category").value = getSongCategory(song) || "기본";
+  // 카테고리 — 표준 목록을 datalist 제안으로 제공(자유 입력도 허용).
+  const catPresets = document.getElementById("edit-category-presets");
+  if (catPresets) {
+    catPresets.innerHTML = CATEGORIES.map((c) => `<option value="${c}"></option>`).join("");
+  }
+  document.getElementById("edit-category").value = getSongCategory(song) || "";
   document.getElementById("edit-tags").value = (song.tags || []).join(", ");
   const editVolume = document.getElementById("edit-volume");
   const editVolumeVal = document.getElementById("edit-volume-val");

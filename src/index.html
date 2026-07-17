@@ -1241,12 +1241,13 @@
             </div>
           </div>
           <div class="input-group">
-            <label>카테고리</label>
-            <input type="text" id="edit-category" placeholder="예: 애창곡, 벌칙곡, 미션곡 등" autocomplete="off">
+            <label>카테고리 <span style="font-weight:400; color:var(--text-dim); font-size:0.72rem;">(씬/시장)</span></label>
+            <input type="text" id="edit-category" placeholder="예: K-POP, J-POP, 애니메이션, OST" autocomplete="off" list="edit-category-presets">
+            <datalist id="edit-category-presets"></datalist>
             <div id="edit-category-suggestions" class="suggestion-dropdown"></div>
           </div>
           <div class="input-group">
-            <label>장르</label>
+            <label>장르 <span style="font-weight:400; color:var(--text-dim); font-size:0.72rem;">(사운드)</span></label>
             <div class="combo-box">
               <div class="custom-select" id="edit-genre-dropdown" style="flex: 1;">
                 <div class="select-trigger">
