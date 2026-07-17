@@ -29,6 +29,26 @@ export async function invoke(command, args = {}) {
       return false;
     case 'get_gpu_recommendation':
       return { recommendation: "Browser Mock", gpu: "None" };
+    case 'get_gpu_pack_status':
+      return { installed: false, dir: 'C:\\Users\\<user>\\AppData\\Local\\LiveMRManager\\tools\\gpu', missing: ['nvinfer_10.dll', 'cudnn64_9.dll'] };
+    case 'open_gpu_pack_dir':
+      return;
+    case 'list_model_presets':
+      return [
+        { key: 'mdx_vocal', label: 'MDX-Net (보컬 추출)', description: 'Kim Vocal 2 계열.' },
+        { key: 'melband_roformer', label: 'Mel-Band RoFormer (파형 직접 입출력, GPU 권장)', description: 'STFT 내장 ONNX.' },
+      ];
+    case 'list_custom_models':
+      return [];
+    case 'add_custom_model':
+      return { id: 'custom_mock', name: args.name, filename: 'custom_mock.onnx', url: args.source || '', presetKey: args.presetKey };
+    case 'remove_custom_model':
+      return;
+    case 'list_all_models':
+      return [
+        { id: 'kim', name: 'Kim Vocal 2', isCustom: false, presetKey: null },
+        { id: 'inst_hq_3', name: 'Inst HQ 3', isCustom: false, presetKey: null },
+      ];
     case 'set_master_volume':
     case 'set_volume':
       return;

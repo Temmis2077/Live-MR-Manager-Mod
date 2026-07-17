@@ -876,6 +876,27 @@
                 </div>
               </div>
 
+              <!-- GPU 가속 팩 (TensorRT) -->
+              <div class="ai-model-card">
+                <div class="ai-info-left" style="flex: 1;">
+                  <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px;">
+                    <div id="gpu-pack-status" class="ai-status-badge status-offline">확인 중...</div>
+                  </div>
+                  <h2 class="ai-title-large" style="margin: 0 0 8px;">GPU 가속 팩 (선택)</h2>
+                  <div class="ai-model-desc">
+                    NVIDIA GPU에서 <strong>MR 분리 속도를 곡당 20~30분 → 약 30초</strong>로 줄입니다
+                    (RTX 2070 실측). 용량이 약 2GB라 설치본에 넣지 않고, 원하는 분들만 따로
+                    받아 쓰는 구조입니다. 없어도 앱은 기존대로 동작합니다.
+                    <br>NVIDIA GPU 전용이며, 처음 분리할 때 GPU에 맞춰 엔진을 빌드하느라
+                    2~3분 걸립니다(이후 캐시되어 바로 시작).
+                  </div>
+                  <div id="gpu-pack-detail" style="margin-top: 8px; font-size: 0.78rem; color: var(--text-muted); word-break: break-all;"></div>
+                </div>
+                <div class="ai-actions-right" style="justify-content: flex-start;">
+                  <button id="btn-open-gpu-pack" class="btn-ai-action secondary">폴더 열기</button>
+                </div>
+              </div>
+
               <div class="ai-model-card">
                 <div class="ai-info-left" style="flex: 1;">
                   <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px;">
@@ -1403,7 +1424,32 @@
         <button class="close-btn" id="custom-model-close">&times;</button>
       </header>
       <div class="modal-body" style="display: flex; flex-direction: column; gap: 20px;">
-        <div style="display: flex; flex-direction: column; gap: 12px;">
+        <!-- 가이드 배너 -->
+        <div class="cm-guide-banner">
+          <div style="display:flex; align-items:flex-start; gap:10px;">
+            <div style="font-size:1.1rem; line-height:1;">📘</div>
+            <div style="flex:1; min-width:0;">
+              <div style="font-weight:700; font-size:0.86rem; margin-bottom:4px;">커스텀 모델이 처음이신가요?</div>
+              <div style="font-size:0.76rem; color:var(--text-muted); line-height:1.55;">
+                기본 모델(Kim Vocal 2 · Inst HQ 3)로도 대부분 충분합니다. 더 깨끗한 분리가 필요하면
+                아래 <strong>추천 모델</strong>에서 골라 <strong>추가</strong>만 누르세요 — 프리셋이 이미 맞춰져 있어
+                실패하지 않습니다. 직접 받은 ONNX를 넣으려면 아키텍처에 맞는 프리셋을 골라야 합니다.
+              </div>
+              <button type="button" id="cm-guide-link" class="cm-guide-link">자세한 가이드 보기 →</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 추천 모델 (원클릭 추가) -->
+        <div>
+          <div style="font-weight:700; margin-bottom:10px; font-size:0.85rem;">추천 모델</div>
+          <div id="cm-catalog"></div>
+        </div>
+
+        <!-- 직접 추가 (고급) -->
+        <details class="cm-advanced">
+          <summary>직접 ONNX 모델 추가 (고급)</summary>
+          <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 12px;">
           <div style="font-size: 0.75rem; color: var(--text-muted); line-height: 1.5;">
             직접 받은 ONNX 분리 모델을 추가합니다. 모델의 아키텍처에 맞는 프리셋을 선택해야 정상 동작합니다.
           </div>
@@ -1434,7 +1480,8 @@
           <input id="cm-url" type="text" placeholder="https://.../model.onnx" class="hex-text-input" style="width: 100%; padding: 10px 12px; display: none;">
 
           <button id="cm-add-btn" class="primary-btn" style="margin-top: 4px;">모델 추가</button>
-        </div>
+          </div>
+        </details>
 
         <div>
           <div style="font-weight: 700; margin-bottom: 10px; font-size: 0.85rem;">등록된 커스텀 모델</div>

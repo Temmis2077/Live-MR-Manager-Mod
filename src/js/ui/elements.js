@@ -47,6 +47,9 @@ export const elements = {
   btnNext: null,
   aiModelStatus: null,
   aiEngineProvider: null,
+  gpuPackStatus: null,
+  gpuPackDetail: null,
+  btnOpenGpuPack: null,
   btnDownloadModel: null,
   btnDeleteModel: null,
   btnStartTrack: null,
@@ -150,6 +153,9 @@ export function initDomReferences() {
   elements.btnNext = document.getElementById("btn-next");
   elements.aiModelStatus = document.getElementById("ai-model-status");
   elements.aiEngineProvider = document.getElementById("ai-engine-provider");
+  elements.gpuPackStatus = document.getElementById("gpu-pack-status");
+  elements.gpuPackDetail = document.getElementById("gpu-pack-detail");
+  elements.btnOpenGpuPack = document.getElementById("btn-open-gpu-pack");
   elements.btnDownloadModel = document.getElementById("btn-download-model");
   elements.btnDeleteModel = document.getElementById("btn-delete-model");
   elements.btnStartTrack = document.getElementById("btn-start-track");

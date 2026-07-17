@@ -8,12 +8,77 @@ import {
   removeCustomModel,
 } from '../../model-api.js';
 import { refreshModelDropdown } from './ai.js';
+import { MODEL_CATALOG } from '../../model-catalog.js';
+
+const GUIDE_URL = 'https://github.com/Temmis2077/Live-MR-Manager-Mod/blob/main/docs/CUSTOM_MODELS.md';
 
 let presetsCache = [];
 
 async function notify(message, type) {
   const { showNotification } = await import('../../utils.js');
   showNotification(message, type);
+}
+
+async function openExternal(url) {
+  try {
+    if (window.__TAURI__?.opener?.openUrl) await window.__TAURI__.opener.openUrl(url);
+    else window.open(url, '_blank', 'noopener,noreferrer');
+  } catch (err) {
+    console.error('open external failed:', err);
+  }
+}
+
+/** 추천 모델 카탈로그 렌더링. 이미 등록된 항목(같은 프리셋+URL)은 "추가됨"으로 표시. */
+async function renderCatalog() {
+  const el = document.getElementById('cm-catalog');
+  if (!el) return;
+  let existing = [];
+  try { existing = await listCustomModels(); } catch (_) {}
+  const isInstalled = (entry) => existing.some((m) => m.url && m.url === entry.url);
+
+  el.innerHTML = MODEL_CATALOG.map((entry) => {
+    const installed = isInstalled(entry);
+    const badges = [
+      entry.recommended ? '<span class="cm-catalog-badge">추천</span>' : '',
+      entry.gpuRecommended ? '<span class="cm-catalog-badge muted">GPU 권장</span>' : '',
+    ].join('');
+    return `
+      <div class="cm-catalog-card ${entry.recommended ? 'recommended' : ''}">
+        <div class="cm-catalog-info">
+          <div class="cm-catalog-title">${entry.name} ${badges}</div>
+          <div class="cm-catalog-meta">
+            ${entry.summary}<br>
+            약 ${entry.sizeMB}MB · 라이선스 ${entry.license} · 처음 분리할 때 자동 다운로드
+          </div>
+        </div>
+        <button class="primary-btn cm-catalog-add ${installed ? 'installed' : ''}"
+                data-id="${entry.id}" ${installed ? 'disabled' : ''}>
+          ${installed ? '추가됨' : '추가'}
+        </button>
+      </div>`;
+  }).join('');
+
+  el.querySelectorAll('.cm-catalog-add').forEach((btn) => {
+    if (btn.disabled) return;
+    btn.onclick = async () => {
+      const entry = MODEL_CATALOG.find((e) => e.id === btn.dataset.id);
+      if (!entry) return;
+      btn.disabled = true;
+      btn.textContent = '추가 중...';
+      try {
+        await addCustomModel({ name: entry.name, sourceKind: 'url', source: entry.url, presetKey: entry.preset });
+        await notify(`${entry.name} 추가됨 — 처음 분리할 때 다운로드됩니다.`, 'success');
+        await renderCatalog();
+        await renderCustomList();
+        await refreshModelDropdown();
+      } catch (err) {
+        const msg = String(err);
+        if (!msg.includes('CANCELLED')) await notify('모델 추가 실패: ' + msg, 'error');
+        btn.disabled = false;
+        btn.textContent = '추가';
+      }
+    };
+  });
 }
 
 function openModal() {
@@ -83,6 +148,7 @@ async function renderCustomList() {
         await removeCustomModel(id);
         await notify('커스텀 모델이 삭제되었습니다.', 'info');
         await renderCustomList();
+        await renderCatalog();
         await refreshModelDropdown();
       } catch (err) {
         await notify('삭제 실패: ' + err, 'error');
@@ -102,6 +168,7 @@ export function initCustomModelListeners() {
   if (openBtn) {
     openBtn.onclick = async () => {
       await populatePresets();
+      await renderCatalog();
       await renderCustomList();
       updatePresetDesc(presetHidden ? presetHidden.value : '');
       openModal();
@@ -109,6 +176,9 @@ export function initCustomModelListeners() {
   }
 
   if (closeBtn) closeBtn.onclick = closeModal;
+
+  const guideLink = document.getElementById('cm-guide-link');
+  if (guideLink) guideLink.onclick = () => openExternal(GUIDE_URL);
 
   // Source kind radio toggles the URL input visibility.
   document.querySelectorAll('input[name="cm-source"]').forEach((radio) => {
@@ -142,6 +212,7 @@ export function initCustomModelListeners() {
         if (nameInput) nameInput.value = '';
         if (urlInput) urlInput.value = '';
         await renderCustomList();
+        await renderCatalog();
         await refreshModelDropdown();
       } catch (err) {
         const msg = String(err);

@@ -15,6 +15,7 @@ mod metadata_fetcher;
 pub mod audio;
 pub mod onnx_engine;
 mod library;
+pub mod gpu_pack;
 mod search;
 mod meloming;
 mod key_bpm;
@@ -99,6 +100,8 @@ pub fn run() {
             let paths = crate::state::AppPaths::from_handle(app.handle());
             *crate::state::APP_PATHS.lock() = Some(paths.clone());
             app.manage(paths);
+            // TensorRT/cuDNN 팩이 있으면 ORT가 찾을 수 있게 DLL 경로를 먼저 등록.
+            crate::gpu_pack::register_dll_search_path();
             crate::audio_player::sys_log("[App] Startup complete");
             let _ = &*crate::state::DB;
             
@@ -155,6 +158,8 @@ pub fn run() {
             system::get_app_paths,
             system::pick_audio_files,
             system::open_lyrics_window,
+            gpu_pack::get_gpu_pack_status,
+            gpu_pack::open_gpu_pack_dir,
             search::search_youtube,
             search::search_lyrics_sites,
             system::export_backup, 

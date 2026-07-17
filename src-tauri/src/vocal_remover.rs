@@ -10,6 +10,7 @@ use once_cell::sync::Lazy;
 use crate::audio_player::sys_log;
 use ort::execution_providers::{CUDAExecutionProvider, CPUExecutionProvider};
 use ort::execution_providers::DirectMLExecutionProvider;
+use ort::execution_providers::TensorRTExecutionProvider;
 use rustfft::{FftPlanner, num_complex::Complex};
 use symphonia::core::formats::FormatOptions;
 use symphonia::core::meta::MetadataOptions;
@@ -330,14 +331,44 @@ impl WaveformRemover {
 
         let mut providers_to_try = Vec::new();
         if gpu_opt_in {
+            // TensorRT는 선택 설치형 GPU 팩(~2GB)이 있을 때만 쓸 수 있다. 이 모델은
+            // 노드 5118개가 융합되지 않은 채 남아 커널 실행 오버헤드에 묶여 있어서
+            // (GPU 사용률 7%) CUDA EP로도 CPU보다 느리다. TensorRT는 그래프를 융합해
+            // 청크당 14.1초 → 0.85초로 떨어뜨린다(실측, RTX 2070).
+            // MDX(Kim_Vocal_2 등)는 DirectML에서 이미 곡당 18.5초로 잘 돈다. 거기에
+            // 모델별 2~3분짜리 엔진 빌드를 붙일 이득이 확인되지 않았으므로, 실제
+            // 병목인 RawWaveform에만 적용한다. (MDX+TensorRT는 측정 후 판단)
+            if is_raw_waveform && crate::gpu_pack::is_installed() {
+                let cache = crate::gpu_pack::trt_engine_cache_dir();
+                std::fs::create_dir_all(&cache).ok();
+                providers_to_try.push((
+                    "GPU (TensorRT)",
+                    TensorRTExecutionProvider::default()
+                        .with_device_id(0)
+                        // 엔진 빌드는 GPU 아키텍처별로 2~3분 걸린다. 캐시하면 이후 로드 12초.
+                        .with_engine_cache(true)
+                        .with_engine_cache_path(cache.to_string_lossy().as_ref())
+                        .build()
+                        .error_on_failure(),
+                ));
+            } else if is_raw_waveform {
+                sys_log("[AI-ENGINE] GPU 가속 팩 미설치 — TensorRT 건너뜀 (설정에서 설치하면 분리 속도가 크게 빨라집니다)");
+            }
+
             if is_raw_waveform {
                 sys_log("[AI-ENGINE] RawWaveform model: skipping DirectML (known TDR/device-removed risk on heavy single-shot dispatches)");
             } else {
-                providers_to_try.push(("GPU (DirectML)", DirectMLExecutionProvider::default().build()));
+                providers_to_try.push((
+                    "GPU (DirectML)",
+                    DirectMLExecutionProvider::default().build().error_on_failure(),
+                ));
             }
             providers_to_try.push((
                 "GPU (CUDA)",
-                CUDAExecutionProvider::default().with_device_id(0).build(),
+                CUDAExecutionProvider::default()
+                    .with_device_id(0)
+                    .build()
+                    .error_on_failure(),
             ));
             // Keep CPU as the final fallback when GPU is explicitly enabled.
             providers_to_try.push(("CPU", CPUExecutionProvider::default().build()));
@@ -358,7 +389,10 @@ impl WaveformRemover {
                 let builder_started = Instant::now();
                 let mut builder = Session::builder()?
                     .with_intra_threads(threads)?
-                    .with_optimization_level(ort::session::builder::GraphOptimizationLevel::Level1)?;
+                    // Level1은 융합을 거의 하지 않아 CPU 경로가 청크당 39초까지 갔다.
+                    // Level3(ORT 기본)에서 14.1초로 줄고, 출력 통계는 소수점 8자리까지
+                    // 동일했다(샘플 141만 개 비교).
+                    .with_optimization_level(ort::session::builder::GraphOptimizationLevel::Level3)?;
                 sys_log(&format!(
                     "[AI-ENGINE] Provider {} builder ready in {} ms",
                     name,
@@ -380,6 +414,10 @@ impl WaveformRemover {
                 } else {
                     let ep_started = Instant::now();
                     sys_log(&format!("[AI-ENGINE] Provider {} EP registration start", name));
+                    // ep는 error_on_failure()로 만든다 — ort의 기본 동작은 EP 등록 실패를
+                    // 경고만 남기고 CPU로 조용히 계속 진행하는 것이라, "Using: GPU (CUDA)"를
+                    // 찍으면서 실제로는 CPU로 도는 상태가 오래 발각되지 않았다. 실패를
+                    // 오류로 올려야 아래 루프가 정직하게 다음 프로바이더로 넘어간다.
                     let mut builder = builder
                         .with_execution_providers([ep])?
                         ;

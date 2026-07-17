@@ -909,3 +909,92 @@
   color: var(--text-muted);
   line-height: 1.5;
 }
+
+/* --- 커스텀 모델: 가이드 배너 + 추천 카탈로그 --- */
+.cm-guide-banner {
+  padding: 12px 14px;
+  background: rgb(var(--accent-rgb) / 0.08);
+  border: 1px solid rgb(var(--accent-rgb) / 0.25);
+  border-radius: 12px;
+}
+
+.cm-guide-link {
+  margin-top: 8px;
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--accent-primary);
+  font-size: 0.76rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.cm-guide-link:hover { text-decoration: underline; }
+
+.cm-catalog-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  background: var(--surface-1);
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  margin-bottom: 8px;
+}
+.cm-catalog-card.recommended {
+  border-color: rgb(var(--accent-rgb) / 0.45);
+}
+
+.cm-catalog-info { flex: 1; min-width: 0; }
+
+.cm-catalog-title {
+  font-weight: 700;
+  font-size: 0.9rem;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.cm-catalog-badge {
+  font-size: 0.64rem;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgb(var(--accent-rgb) / 0.18);
+  color: var(--accent-primary);
+  white-space: nowrap;
+}
+.cm-catalog-badge.muted {
+  background: var(--surface-2);
+  color: var(--text-muted);
+}
+
+.cm-catalog-meta {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  margin-top: 4px;
+  line-height: 1.5;
+}
+
+.cm-catalog-add {
+  white-space: nowrap;
+  width: auto;
+  padding: 0 16px;
+}
+.cm-catalog-add:disabled { opacity: 0.6; cursor: default; }
+
+.cm-catalog-add.installed {
+  background: var(--surface-2);
+  color: var(--text-muted);
+  border-color: var(--glass-border);
+}
+
+.cm-advanced > summary {
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--text-dim);
+  padding: 8px 0;
+  list-style: revert;
+}
+.cm-advanced > summary:hover { color: var(--text-main); }

@@ -6,7 +6,7 @@ import { state } from './js/state.js';
 import { 
   initDomReferences, renderLibrary,
   refreshFilterDropdowns, updateSortDropdown, updateAiModelStatus, 
-  updateAiTogglesState, updateGpuStatus, setupGridResizeObserver, initSortable, elements
+  updateAiTogglesState, updateGpuStatus, refreshGpuPackStatus, setupGridResizeObserver, initSortable, elements
 } from './js/ui/index.js';
 import { initAllEvents, switchTab } from './js/events/index.js';
 import { loadLibrary, checkAiModelStatus, cancelSeparation, setMasterVolume } from './js/audio.js';
@@ -155,6 +155,16 @@ async function initApp() {
     updateAiModelStatus(state.isAiModelReady);
     const gpuStatus = await invoke("get_gpu_recommendation");
     updateGpuStatus(gpuStatus);
+  } catch (err) {}
+
+  try {
+    await refreshGpuPackStatus();
+    elements.btnOpenGpuPack?.addEventListener("click", async () => {
+      try {
+        await invoke("open_gpu_pack_dir");
+        await refreshGpuPackStatus();
+      } catch (err) {}
+    });
   } catch (err) {}
 
   // 7. Initial volume sync

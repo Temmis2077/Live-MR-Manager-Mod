@@ -770,6 +770,25 @@ export function updateThumbnailOverlay() {
   }
 }
 
+export async function refreshGpuPackStatus() {
+  if (!elements.gpuPackStatus) return;
+  try {
+    const s = await invoke("get_gpu_pack_status");
+    const installed = !!s.installed;
+    elements.gpuPackStatus.textContent = installed ? "설치됨" : "미설치";
+    elements.gpuPackStatus.className = "ai-status-badge " + (installed ? "status-online" : "status-offline");
+    if (elements.gpuPackDetail) {
+      elements.gpuPackDetail.textContent = installed
+        ? s.dir
+        : (s.missing && s.missing.length
+            ? `빠진 파일 ${s.missing.length}개 (${s.missing.slice(0, 3).join(", ")}${s.missing.length > 3 ? " 외" : ""}) — 위치: ${s.dir}`
+            : s.dir);
+    }
+  } catch (err) {
+    elements.gpuPackStatus.textContent = "확인 실패";
+  }
+}
+
 export function updateGpuStatus(provider) {
   if (elements.aiEngineProvider) {
     const pStr = (provider || "").toUpperCase();
