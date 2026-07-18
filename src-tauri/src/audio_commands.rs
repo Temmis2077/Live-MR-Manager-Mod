@@ -187,7 +187,8 @@ pub async fn play_track_internal(window: WebviewWindow, path: String, duration_m
         // 메트로놈 파라미터: 곡 길이만큼만(무한 스트림이라 잘라 씀), 시작 위치 정렬.
         let start_ms0 = start_pos_ms.unwrap_or(0);
         let remaining_ms = ms.saturating_sub(start_ms0).max(0);
-        let metro_bpm = handler.state.lock().metro_bpm;
+        // 메트로놈 BPM은 공유 atomic을 쓴다(재생 중 변경을 클릭에 실시간 반영).
+        handler.metro_bpm.store(handler.state.lock().metro_bpm.to_bits(), Ordering::Relaxed);
 
         // --- 모니터 채널 (기존 주 출력) ---
         let stretched_v = StretchedSource::new(v_decoder, handler.active_pitch.clone(), handler.active_tempo.clone(), Arc::new(AtomicU64::new(0)));
@@ -197,7 +198,7 @@ pub async fn play_track_internal(window: WebviewWindow, path: String, duration_m
         let resampled_i = UniformSourceIterator::new(DynamicVolumeSource::new(stretched_i, handler.instrumental_volume.clone()), target_channels_nz, target_rate_nz);
 
         let start_frame_mon = start_ms0.saturating_mul(target_rate as u64) / 1000;
-        let metro_mon = crate::audio_player::MetronomeSource::new(metro_bpm, target_rate, target_channels, start_frame_mon)
+        let metro_mon = crate::audio_player::MetronomeSource::new(handler.metro_bpm.clone(), target_rate, target_channels, start_frame_mon)
             .take_duration(Duration::from_millis(remaining_ms));
         let resampled_metro = UniformSourceIterator::new(DynamicVolumeSource::new(metro_mon, handler.mon_metro_volume.clone()), target_channels_nz, target_rate_nz);
 
@@ -242,7 +243,7 @@ pub async fn play_track_internal(window: WebviewWindow, path: String, duration_m
                             let rv = UniformSourceIterator::new(DynamicVolumeSource::new(sv, handler.mr_vocal_volume.clone()), mr_ch_nz, mr_rate_nz);
                             let ri = UniformSourceIterator::new(DynamicVolumeSource::new(si, handler.mr_inst_volume.clone()), mr_ch_nz, mr_rate_nz);
                             let start_frame_mr = start_ms0.saturating_mul(mr_rate as u64) / 1000;
-                            let metro_mr = crate::audio_player::MetronomeSource::new(metro_bpm, mr_rate, mr_ch, start_frame_mr)
+                            let metro_mr = crate::audio_player::MetronomeSource::new(handler.metro_bpm.clone(), mr_rate, mr_ch, start_frame_mr)
                                 .take_duration(Duration::from_millis(remaining_ms));
                             let rm = UniformSourceIterator::new(DynamicVolumeSource::new(metro_mr, handler.mr_metro_volume.clone()), mr_ch_nz, mr_rate_nz);
                             let mr_mixed = ri.mix(rv).mix(rm);
@@ -622,6 +623,8 @@ pub async fn set_metronome(enabled: bool, bpm: f64, gain: f64) -> Result<(), Str
         s.metro_bpm = bpm as f32;
         s.metro_gain = (gain as f32).clamp(0.0, 100.0);
     }
+    // 재생 중인 클릭에 즉시 반영되도록 공유 atomic 갱신.
+    handler.metro_bpm.store((bpm as f32).to_bits(), Ordering::Relaxed);
     recompute_mix(&handler);
     Ok(())
 }

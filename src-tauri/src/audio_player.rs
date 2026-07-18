@@ -162,28 +162,44 @@ impl<S> Source for DynamicVolumeSource<S> where S: Source<Item = f32> {
     }
 }
 
-/// 메트로놈 클릭 소스. BPM에 맞춰 짧은 감쇠 톤을 낸다. 4박마다 다운비트를
-/// 조금 높은 음으로 강조한다. 재생 위치(프레임)에서 시작하도록 start_frame을 받는다.
-/// (무한 스트림이므로 사용 측에서 take_duration으로 곡 길이만큼 잘라 쓴다.)
+/// 메트로놈 클릭 소스. 공유 atomic에서 BPM을 **매 박자 읽어** 클릭 간격을
+/// 실시간 반영한다(재생 중 BPM을 바꿔도 다음 박자부터 즉시 적용, 위상 연속).
+/// 4박마다 다운비트를 조금 높은 음으로 강조한다. 재생 위치(프레임)에서
+/// 시작하도록 start_frame을 받는다. (무한 스트림이라 사용 측에서 take_duration으로
+/// 곡 길이만큼 잘라 쓴다.)
 pub struct MetronomeSource {
     sample_rate: u32,
     channels: u16,
-    samples_per_beat: u64, // 프레임 단위
-    click_len: u64,        // 프레임 단위
-    frame: u64,
+    bpm_bits: Arc<AtomicU32>, // f32 bits, 0 이하면 120으로 처리
+    click_len: u64,           // 프레임 단위
+    frame_in_beat: u64,       // 현재 박자 시작 이후 프레임 수
+    samples_per_beat: u64,    // 현재 박자 길이(박자 시작 시 BPM으로 확정)
+    beat_index: u64,          // 다운비트 강조용
     ch_i: u16,
 }
 
 impl MetronomeSource {
-    pub fn new(bpm: f32, sample_rate: u32, channels: u16, start_frame: u64) -> Self {
-        let bpm = if bpm <= 0.0 { 120.0 } else { bpm };
-        let spb = ((60.0 / bpm) * sample_rate as f32) as u64;
+    fn resolve_bpm(bits: &Arc<AtomicU32>) -> f32 {
+        let b = f32::from_bits(bits.load(Ordering::Relaxed));
+        if b <= 0.0 { 120.0 } else { b }
+    }
+
+    fn spb_for(bpm: f32, sample_rate: u32) -> u64 {
+        (((60.0 / bpm) * sample_rate as f32) as u64).max(1)
+    }
+
+    pub fn new(bpm_bits: Arc<AtomicU32>, sample_rate: u32, channels: u16, start_frame: u64) -> Self {
+        // 시작 위치를 현재 BPM 기준 박자 위상으로 환산.
+        let bpm0 = Self::resolve_bpm(&bpm_bits);
+        let spb0 = Self::spb_for(bpm0, sample_rate);
         Self {
             sample_rate,
             channels: channels.max(1),
-            samples_per_beat: spb.max(1),
+            bpm_bits,
             click_len: ((sample_rate as f32) * 0.03) as u64, // 30ms
-            frame: start_frame,
+            frame_in_beat: start_frame % spb0,
+            samples_per_beat: spb0,
+            beat_index: start_frame / spb0,
             ch_i: 0,
         }
     }
@@ -192,14 +208,12 @@ impl MetronomeSource {
 impl Iterator for MetronomeSource {
     type Item = f32;
     fn next(&mut self) -> Option<f32> {
-        let into_beat = self.frame % self.samples_per_beat;
-        let beat_index = self.frame / self.samples_per_beat;
-        let sample = if into_beat < self.click_len {
-            let t = into_beat as f32 / self.sample_rate as f32;
+        let sample = if self.frame_in_beat < self.click_len {
+            let t = self.frame_in_beat as f32 / self.sample_rate as f32;
             // 선형 감쇠 엔벨로프.
-            let env = 1.0 - (into_beat as f32 / self.click_len as f32);
+            let env = 1.0 - (self.frame_in_beat as f32 / self.click_len as f32);
             // 4박마다 다운비트 강조(높은 음).
-            let freq = if beat_index % 4 == 0 { 1500.0 } else { 1000.0 };
+            let freq = if self.beat_index % 4 == 0 { 1500.0 } else { 1000.0 };
             (2.0 * std::f32::consts::PI * freq * t).sin() * env * 0.4
         } else {
             0.0
@@ -208,7 +222,14 @@ impl Iterator for MetronomeSource {
         self.ch_i += 1;
         if self.ch_i >= self.channels {
             self.ch_i = 0;
-            self.frame += 1;
+            self.frame_in_beat += 1;
+            // 박자 경계 도달 시 다음 박자 길이를 현재 BPM으로 다시 확정(실시간 반영).
+            if self.frame_in_beat >= self.samples_per_beat {
+                self.frame_in_beat = 0;
+                self.beat_index = self.beat_index.wrapping_add(1);
+                let bpm = Self::resolve_bpm(&self.bpm_bits);
+                self.samples_per_beat = Self::spb_for(bpm, self.sample_rate);
+            }
         }
         Some(sample)
     }
@@ -400,6 +421,9 @@ pub struct AudioHandler {
     pub mr_vocal_volume: Arc<AtomicU32>,  // MR 채널 보컬 게인
     pub mr_inst_volume: Arc<AtomicU32>,   // MR 채널 인스트 게인
     pub mr_metro_volume: Arc<AtomicU32>,  // MR 채널 메트로놈 게인
+    /// 메트로놈 BPM(f32 bits). 재생 중 변경을 클릭에 실시간 반영하기 위해 공유.
+    /// 0 이하면 소스가 120으로 처리.
+    pub metro_bpm: Arc<AtomicU32>,
     /// 마스터 게인(Player.set_volume에 넣는 최종값, f32 bits). 장치 전환 시 새
     /// player에 다시 적용하기 위해 보관한다(마스터 볼륨은 player에만 있으므로).
     pub master_gain: Arc<AtomicU32>,
@@ -517,6 +541,7 @@ pub static AUDIO_HANDLER: Lazy<Result<Arc<AudioHandler>, String>> = Lazy::new(||
         mr_vocal_volume: Arc::new(AtomicU32::new(0.0f32.to_bits())),
         mr_inst_volume: Arc::new(AtomicU32::new(0.0f32.to_bits())),
         mr_metro_volume: Arc::new(AtomicU32::new(0.0f32.to_bits())),
+        metro_bpm: Arc::new(AtomicU32::new(0.0f32.to_bits())),
         master_gain: Arc::new(AtomicU32::new(1.0f32.to_bits())),
         mr_stream: Mutex::new(mr_stream_opt),
         mr_controller: Mutex::new(mr_player_opt),
@@ -526,3 +551,31 @@ pub static AUDIO_HANDLER: Lazy<Result<Arc<AudioHandler>, String>> = Lazy::new(||
         playback_cv: parking_lot::Condvar::new(),
     }))
 });
+
+#[cfg(test)]
+mod metro_tests {
+    use super::*;
+
+    #[test]
+    fn spb_and_resolve_math() {
+        assert_eq!(MetronomeSource::spb_for(120.0, 44100), 22050);
+        assert_eq!(MetronomeSource::spb_for(240.0, 44100), 11025);
+        let z = Arc::new(AtomicU32::new(0f32.to_bits()));
+        assert_eq!(MetronomeSource::resolve_bpm(&z), 120.0, "0이면 120으로 처리");
+    }
+
+    // 재생 중 BPM 변경이 클릭 간격에 실시간 반영되는지: 120→240으로 바꾸면
+    // 같은 시간에 박자가 약 2배로 진행돼야 한다.
+    #[test]
+    fn bpm_change_applies_live() {
+        let bpm = Arc::new(AtomicU32::new(120f32.to_bits()));
+        let mut m = MetronomeSource::new(bpm.clone(), 44100, 1, 0);
+        for _ in 0..44100 { m.next(); } // 1초 @120 → 2박
+        let beats_120 = m.beat_index;
+        bpm.store(240f32.to_bits(), Ordering::Relaxed);
+        for _ in 0..44100 { m.next(); } // 1초 @240 → 약 4박
+        let added = m.beat_index - beats_120;
+        assert_eq!(beats_120, 2, "120 BPM 1초 = 2박");
+        assert!(added >= 3, "240 BPM 1초 ≈ 4박(실시간 반영), got {}", added);
+    }
+}
