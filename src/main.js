@@ -179,6 +179,12 @@ async function initApp() {
     await refreshMixerState();
   } catch (err) {}
 
+  try {
+    const { initDereverbControls, refreshDereverbStatus } = await import('./js/dereverb.js');
+    initDereverbControls();
+    await refreshDereverbStatus();
+  } catch (err) {}
+
   // 7. Initial volume sync
   try {
     if (elements.volSlider) {

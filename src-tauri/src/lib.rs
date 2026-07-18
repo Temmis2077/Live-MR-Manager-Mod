@@ -16,6 +16,7 @@ pub mod audio;
 pub mod onnx_engine;
 mod library;
 pub mod gpu_pack;
+pub mod dereverb;
 mod search;
 mod meloming;
 mod key_bpm;
@@ -164,6 +165,9 @@ pub fn run() {
             system::open_lyrics_window,
             gpu_pack::get_gpu_pack_status,
             gpu_pack::open_gpu_pack_dir,
+            dereverb::get_dereverb_status,
+            dereverb::set_dereverb_enabled,
+            dereverb::open_dereverb_dir,
             search::search_youtube,
             search::search_lyrics_sites,
             system::export_backup, 

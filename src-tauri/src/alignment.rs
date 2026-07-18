@@ -379,6 +379,9 @@ pub async fn run_forced_alignment(
     let resolved_audio_path = resolve_audio_path(&handle, &audio_path)
         .await
         .unwrap_or_else(|_| PathBuf::from(&audio_path));
+    // 정렬 전용 디리버브: 켜져 있고 모델이 있으면 잔향을 걷어낸 보컬로 정렬한다
+    // (없거나 실패하면 원본 보컬로 폴백 — 재생에는 영향 없음).
+    let resolved_audio_path = crate::dereverb::resolve_alignment_vocal(resolved_audio_path).await;
     sys_log(&format!(
         "[Alignment] Resolved alignment input: {:?} (requested: {})",
         resolved_audio_path, audio_path

@@ -76,6 +76,11 @@ export async function invoke(command, args = {}) {
     case 'set_bus_delay':
     case 'set_limiter':
       return;
+    case 'get_dereverb_status':
+      return { installed: false, enabled: true, dir: 'C:\\Users\\<user>\\AppData\\Local\\LiveMRManager\\tools\\dereverb' };
+    case 'set_dereverb_enabled':
+    case 'open_dereverb_dir':
+      return;
     case 'get_mr_output_device':
       return '';
     case 'set_mr_output_device':

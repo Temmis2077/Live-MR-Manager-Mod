@@ -1114,6 +1114,18 @@
                 </svg>
               </button>
               <div class="section-body">
+                <!-- 정렬 디리버브 (정확도 향상) -->
+                <div class="dereverb-bar" style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:8px 10px; margin-bottom:10px; background:var(--surface-1); border:1px solid var(--glass-border); border-radius:8px;">
+                  <label style="display:flex; align-items:center; gap:6px; font-size:0.8rem; cursor:pointer;">
+                    <input type="checkbox" id="dereverb-enable" checked style="width:15px; height:15px;">
+                    <strong>정렬 디리버브</strong>
+                  </label>
+                  <span style="font-size:0.72rem; color:var(--text-muted); flex:1; min-width:180px;">
+                    분리된 보컬의 잔향·이펙트를 걷어내고 정렬해 정확도를 높입니다(영어·리버브 심한 곡). 재생엔 영향 없음.
+                  </span>
+                  <span id="dereverb-status" style="font-size:0.72rem; font-weight:700;"></span>
+                  <button type="button" class="app-btn" id="dereverb-open-dir" title="변환한 디리버브 ONNX 모델을 이 폴더에 두세요.">모델 폴더</button>
+                </div>
                 <div id="alignment-queue-actions" style="display:none; justify-content:flex-end; margin-bottom:10px;">
                   <button type="button" class="app-btn" id="alignment-clear-all" title="처리 중인 정렬은 취소하고 대기·완료·오류 항목을 모두 지웁니다.">대기열 전체 지우기</button>
                 </div>
