@@ -5,6 +5,52 @@
  * 볼륨·밸런스·페이더·음소거·솔로를 종합해 백엔드 recompute_mix가 계산한다.
  */
 import { invoke } from './tauri-bridge.js';
+import { state } from './state.js';
+
+// --- 탭 템포 ---
+// 자동 탐지 BPM을 "평균의 시작점"으로 두고, 사용자가 두드린 간격으로 보정한다.
+// 탭이 3회 이상 쌓이면 자동 탐지값을 버리고 순수 탭 평균으로 완전히 덮어쓴다
+// (자동 탐지가 틀렸을 때 사용자가 오버라이드할 수 있게).
+let tapTimes = [];
+const TAP_RESET_MS = 2000; // 이 이상 쉬면 새로 시작
+const MAX_TAPS = 8;
+
+function autoDetectedBpm() {
+  const b = Number(state.currentTrack?.bpm);
+  return Number.isFinite(b) && b > 0 ? b : 0;
+}
+
+async function onTap() {
+  const now = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+  if (tapTimes.length && now - tapTimes[tapTimes.length - 1] > TAP_RESET_MS) tapTimes = [];
+  tapTimes.push(now);
+  if (tapTimes.length > MAX_TAPS + 1) tapTimes.shift();
+
+  const intervals = [];
+  for (let i = 1; i < tapTimes.length; i++) intervals.push(tapTimes[i] - tapTimes[i - 1]);
+
+  const seed = autoDetectedBpm();
+  const seedInterval = seed > 0 ? 60000 / seed : null;
+
+  // 탭 간격이 3개 미만이면 자동 탐지값을 평균에 섞고, 충분히 쌓이면 순수 탭.
+  let samples;
+  if (intervals.length >= 3) {
+    samples = intervals;
+  } else if (seedInterval) {
+    samples = [seedInterval, ...intervals];
+  } else {
+    samples = intervals;
+  }
+  if (!samples.length) return; // 첫 탭 & 시드 없음
+
+  const avg = samples.reduce((a, b) => a + b, 0) / samples.length;
+  let bpm = Math.round(60000 / avg);
+  bpm = Math.min(300, Math.max(30, bpm));
+
+  const bpmInput = document.getElementById('metro-bpm');
+  if (bpmInput) bpmInput.value = bpm;
+  await pushMetronome();
+}
 
 function setFaderVal(track, pct) {
   const el = document.querySelector(`.track-fader-val[data-track="${track}"]`);
@@ -95,6 +141,7 @@ export function initTrackMixer() {
     });
   }
   document.getElementById('metro-bpm')?.addEventListener('change', pushMetronome);
+  document.querySelector('.metro-tap')?.addEventListener('click', onTap);
 
   // 라우팅 체크박스
   document.querySelectorAll('.route-cb').forEach((cb) => {
