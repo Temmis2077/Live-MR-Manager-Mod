@@ -130,7 +130,7 @@ pub fn run() {
             audio_commands::set_vocal_balance, audio_commands::toggle_ai_feature,
             audio_commands::list_output_devices, audio_commands::get_output_device, audio_commands::set_output_device,
             audio_commands::get_mr_output_device, audio_commands::set_mr_output_device,
-            audio_commands::set_channel_route, audio_commands::set_metronome, audio_commands::set_bus_delay,
+            audio_commands::set_channel_route, audio_commands::set_metronome, audio_commands::set_bus_delay, audio_commands::set_limiter,
             audio_commands::get_mix_state, audio_commands::set_track_fader, audio_commands::set_track_mute, audio_commands::set_track_solo,
             model_commands::check_mr_separated,
             model_commands::get_separation_info,

@@ -162,6 +162,54 @@ impl<S> Source for DynamicVolumeSource<S> where S: Source<Item = f32> {
     }
 }
 
+/// 임계값 이하는 그대로 통과, 이상은 부드럽게 포화시켜 |출력|이 1.0을 넘지
+/// 않게 한다(무상태·룩어헤드 없음 → RT-safe). 여러 소스를 합산할 때 생기는
+/// 클리핑(디지털 오버플로 왜곡)을 막는 안전 리미터.
+pub fn soft_clip(x: f32, threshold: f32) -> f32 {
+    let a = x.abs();
+    if a <= threshold {
+        x
+    } else {
+        let over = (a - threshold) / (1.0 - threshold);
+        x.signum() * (threshold + (1.0 - threshold) * over.tanh())
+    }
+}
+
+/// 버스 출력 끝단 소프트 리미터. `enabled`(0/1 atomic)로 켜고 끌 수 있다.
+pub struct SoftClipSource<S> where S: Source<Item = f32> {
+    pub input: S,
+    pub threshold: f32,
+    pub enabled: Arc<AtomicU32>, // 1 = on, 0 = bypass
+}
+
+impl<S> SoftClipSource<S> where S: Source<Item = f32> {
+    pub fn new(input: S, threshold: f32, enabled: Arc<AtomicU32>) -> Self {
+        Self { input, threshold, enabled }
+    }
+}
+
+impl<S> Iterator for SoftClipSource<S> where S: Source<Item = f32> {
+    type Item = f32;
+    fn next(&mut self) -> Option<f32> {
+        let s = self.input.next()?;
+        if self.enabled.load(Ordering::Relaxed) == 0 {
+            Some(s)
+        } else {
+            Some(soft_clip(s, self.threshold))
+        }
+    }
+}
+
+impl<S> Source for SoftClipSource<S> where S: Source<Item = f32> {
+    fn current_span_len(&self) -> Option<usize> { self.input.current_span_len() }
+    fn channels(&self) -> NonZeroU16 { self.input.channels() }
+    fn sample_rate(&self) -> NonZeroU32 { self.input.sample_rate() }
+    fn total_duration(&self) -> Option<Duration> { self.input.total_duration() }
+    fn try_seek(&mut self, pos: Duration) -> Result<(), rodio::source::SeekError> {
+        self.input.try_seek(pos)
+    }
+}
+
 /// 메트로놈 클릭 소스. 공유 atomic에서 BPM을 **매 박자 읽어** 클릭 간격을
 /// 실시간 반영한다(재생 중 BPM을 바꿔도 다음 박자부터 즉시 적용, 위상 연속).
 /// 4박마다 다운비트를 조금 높은 음으로 강조한다. 재생 위치(프레임)에서
@@ -466,6 +514,8 @@ pub struct AudioHandler {
     /// 메트로놈 BPM(f32 bits). 재생 중 변경을 클릭에 실시간 반영하기 위해 공유.
     /// 0 이하면 소스가 120으로 처리.
     pub metro_bpm: Arc<AtomicU32>,
+    /// 출력 소프트 리미터 on/off (1/0). 기본 켜짐(합산 클리핑 방지). 재생 중 즉시 반영.
+    pub limiter_enabled: Arc<AtomicU32>,
     /// 마스터 게인(Player.set_volume에 넣는 최종값, f32 bits). 장치 전환 시 새
     /// player에 다시 적용하기 위해 보관한다(마스터 볼륨은 player에만 있으므로).
     pub master_gain: Arc<AtomicU32>,
@@ -608,6 +658,7 @@ pub static AUDIO_HANDLER: Lazy<Result<Arc<AudioHandler>, String>> = Lazy::new(||
         mr_inst_volume: Arc::new(AtomicU32::new(0.0f32.to_bits())),
         mr_metro_volume: Arc::new(AtomicU32::new(0.0f32.to_bits())),
         metro_bpm: Arc::new(AtomicU32::new(0.0f32.to_bits())),
+        limiter_enabled: Arc::new(AtomicU32::new(1)), // 기본 켜짐
         master_gain: Arc::new(AtomicU32::new(1.0f32.to_bits())),
         mr_stream: Mutex::new(mr_stream_opt),
         mr_controller: Mutex::new(mr_player_opt),
@@ -619,6 +670,20 @@ pub static AUDIO_HANDLER: Lazy<Result<Arc<AudioHandler>, String>> = Lazy::new(||
 #[cfg(test)]
 mod metro_tests {
     use super::*;
+
+    #[test]
+    fn soft_clip_transparent_below_and_bounded_above() {
+        // 임계값 이하는 그대로.
+        assert!((soft_clip(0.5, 0.8) - 0.5).abs() < 1e-6);
+        assert!((soft_clip(-0.5, 0.8) + 0.5).abs() < 1e-6);
+        assert!((soft_clip(0.8, 0.8) - 0.8).abs() < 1e-6);
+        // 임계값 이상은 1.0을 절대 넘지 않음(양·음 모두).
+        for x in [0.9f32, 1.0, 1.5, 3.0, 100.0] {
+            let y = soft_clip(x, 0.8);
+            assert!(y <= 1.0 && y > 0.8, "x={x} → y={y} (0.8<y<=1.0)");
+            assert!((soft_clip(-x, 0.8) + y).abs() < 1e-6, "대칭성");
+        }
+    }
 
     #[test]
     fn spb_and_resolve_math() {

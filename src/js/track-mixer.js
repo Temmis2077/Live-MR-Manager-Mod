@@ -94,6 +94,10 @@ export async function refreshMixerState() {
     cb.checked = !!routes[`${cb.dataset.channel}-${cb.dataset.source}`];
   });
 
+  // 출력 리미터
+  const lim = document.getElementById('limiter-enable');
+  if (lim) lim.checked = s.limiterEnabled !== false;
+
   // 지연 보정 + 장치 추정
   const monDelay = document.getElementById('mon-delay-ms');
   if (monDelay) monDelay.value = Math.round(s.monDelayMs || 0);
@@ -167,6 +171,11 @@ export function initTrackMixer() {
   };
   onDelay('monitor', 'mon-delay-ms');
   onDelay('mr', 'mr-delay-ms');
+
+  // 출력 리미터 토글
+  document.getElementById('limiter-enable')?.addEventListener('change', async (e) => {
+    try { await invoke('set_limiter', { enabled: e.target.checked }); } catch (_) {}
+  });
 
   // 라우팅 체크박스
   document.querySelectorAll('.route-cb').forEach((cb) => {

@@ -8,9 +8,12 @@ use rodio::Source;
 use rodio::source::UniformSourceIterator;
 use std::num::{NonZeroU16, NonZeroU32};
 use crate::audio_player::{
-    AUDIO_HANDLER, StreamingReader, StretchedSource, DynamicVolumeSource,
+    AUDIO_HANDLER, StreamingReader, StretchedSource, DynamicVolumeSource, SoftClipSource,
     sys_log
 };
+
+/// 소프트 리미터 임계값(이 값 이하는 그대로, 이상은 부드럽게 1.0으로 포화).
+const LIMITER_THRESHOLD: f32 = 0.8;
 use crate::types::{Status, PlaybackStatus, PlaybackProgress, AppState};
 use crate::state::DB;
 use crate::youtube::YoutubeManager;
@@ -207,7 +210,9 @@ pub async fn play_track_internal(window: WebviewWindow, path: String, duration_m
         let resampled_metro = UniformSourceIterator::new(DynamicVolumeSource::new(metro_mon, handler.mon_metro_volume.clone()), target_channels_nz, target_rate_nz);
 
         // 메트로놈은 게인 0이라도 항상 믹스에 포함(라우팅을 atomic으로 실시간 반영).
-        let mixed = resampled_i.mix(resampled_v).mix(resampled_metro).delay(Duration::from_millis(mon_delay_ms));
+        let mixed_raw = resampled_i.mix(resampled_v).mix(resampled_metro).delay(Duration::from_millis(mon_delay_ms));
+        // 합산 클리핑 방지: 버스 출력 끝단 소프트 리미터.
+        let mixed = SoftClipSource::new(mixed_raw, LIMITER_THRESHOLD, handler.limiter_enabled.clone());
 
         let final_v = PLAYBACK_VERSION.load(Ordering::SeqCst);
         if final_v != target_version { return Ok(0); }
@@ -250,7 +255,8 @@ pub async fn play_track_internal(window: WebviewWindow, path: String, duration_m
                             let metro_mr = crate::audio_player::MetronomeSource::new(handler.metro_bpm.clone(), mr_rate, mr_ch, start_frame_mr)
                                 .take_duration(Duration::from_millis(remaining_ms));
                             let rm = UniformSourceIterator::new(DynamicVolumeSource::new(metro_mr, handler.mr_metro_volume.clone()), mr_ch_nz, mr_rate_nz);
-                            let mr_mixed = ri.mix(rv).mix(rm).delay(Duration::from_millis(mr_delay_ms));
+                            let mr_mixed_raw = ri.mix(rv).mix(rm).delay(Duration::from_millis(mr_delay_ms));
+                            let mr_mixed = SoftClipSource::new(mr_mixed_raw, LIMITER_THRESHOLD, handler.limiter_enabled.clone());
 
                             if let Some(ctrl) = handler.mr_controller.lock().as_ref() {
                                 ctrl.clear();
@@ -635,6 +641,14 @@ pub async fn set_metronome(enabled: bool, bpm: f64, gain: f64) -> Result<(), Str
     Ok(())
 }
 
+/// 출력 소프트 리미터 on/off. 재생 중 즉시 반영(리미터 소스가 atomic을 읽음).
+#[tauri::command]
+pub async fn set_limiter(enabled: bool) -> Result<(), String> {
+    let handler = AUDIO_HANDLER.as_ref().map_err(|e| e.clone())?.clone();
+    handler.limiter_enabled.store(if enabled { 1 } else { 0 }, Ordering::Relaxed);
+    Ok(())
+}
+
 /// 버스 지연 보정(ms) 설정. bus: "monitor" | "mr". 값은 ≥0. 딜레이는 재생
 /// 파이프라인에 붙으므로, 곡이 로드돼 있으면 현재 위치에서 재구성해 즉시 반영한다.
 #[tauri::command]
@@ -848,6 +862,8 @@ pub struct MixState {
     pub mon_est_latency_ms: f32,
     pub mr_delay_ms: f32,
     pub mr_est_latency_ms: f32,
+    // 출력 리미터 on/off.
+    pub limiter_enabled: bool,
 }
 
 #[tauri::command]
@@ -858,6 +874,7 @@ pub fn get_mix_state() -> Result<MixState, String> {
     let mon_est = handler.monitor.est_latency_val();
     let mr_delay = handler.mr.delay_ms_val();
     let mr_est = handler.mr.est_latency_val();
+    let limiter_enabled = handler.limiter_enabled.load(Ordering::Relaxed) != 0;
     let s = handler.state.lock();
     Ok(MixState {
         vocal_fader: s.vocal_fader,
@@ -880,6 +897,7 @@ pub fn get_mix_state() -> Result<MixState, String> {
         mon_est_latency_ms: mon_est,
         mr_delay_ms: mr_delay,
         mr_est_latency_ms: mr_est,
+        limiter_enabled,
     })
 }
 

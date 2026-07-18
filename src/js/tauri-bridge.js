@@ -66,6 +66,7 @@ export async function invoke(command, args = {}) {
         mrRouteVocal: false, mrRouteInst: true, mrRouteMetro: false,
         metroEnabled: false, metroBpm: 0, metroGain: 80, mrDevice: '',
         monDelayMs: 0, monEstLatencyMs: 50, mrDelayMs: 0, mrEstLatencyMs: 0,
+        limiterEnabled: true,
       };
     case 'set_track_fader':
     case 'set_track_mute':
@@ -73,6 +74,7 @@ export async function invoke(command, args = {}) {
     case 'set_channel_route':
     case 'set_metronome':
     case 'set_bus_delay':
+    case 'set_limiter':
       return;
     case 'get_mr_output_device':
       return '';
