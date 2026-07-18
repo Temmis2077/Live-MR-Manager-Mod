@@ -818,6 +818,80 @@
                 </div>
               </div>
 
+              <!-- 출력 장치 (실시간 전환) -->
+              <div class="ai-model-card" style="flex-direction: column; align-items: stretch; gap: 12px;">
+                <div class="ai-info-left">
+                  <h2 class="ai-title-large">출력 장치</h2>
+                  <div class="ai-model-desc">
+                    소리를 내보낼 장치를 고릅니다. <strong>재생 중에도 즉시 전환</strong>되며(현재
+                    위치·볼륨 유지) 선택은 저장됩니다. 가상 케이블(VoiceMeeter, OBS 등)로 보내
+                    방송에 활용할 수 있습니다.
+                  </div>
+                </div>
+                <div class="ai-actions-right" style="justify-content: flex-start; gap: 8px; align-items: center;">
+                  <select id="output-device-select" style="flex: 1; min-width: 220px; padding: 9px 11px; border-radius: 8px; background: var(--surface-1); color: var(--text-main); border: 1px solid var(--glass-border);"></select>
+                  <button id="btn-refresh-output-devices" class="btn-ai-action secondary" style="white-space: nowrap;" title="장치 목록 새로고침">↻</button>
+                </div>
+              </div>
+
+              <!-- 트랙 믹서 (개발용 최소 UI) -->
+              <div class="ai-model-card" style="flex-direction: column; align-items: stretch; gap: 10px;">
+                <div class="ai-info-left">
+                  <h2 class="ai-title-large">트랙 믹서 (개발용)</h2>
+                  <div class="ai-model-desc">보컬/MR 독립 페이더 · 음소거 · 솔로. 볼륨·밸런스 위에 곱해지는 트림입니다.</div>
+                </div>
+                <div class="track-mixer-row" data-track="vocal">
+                  <span class="track-mixer-label">보컬</span>
+                  <input type="range" min="0" max="100" value="100" class="track-fader" data-track="vocal">
+                  <span class="track-fader-val" data-track="vocal">100%</span>
+                  <button class="btn-ai-action secondary track-mute" data-track="vocal">음소거</button>
+                  <button class="btn-ai-action secondary track-solo" data-track="vocal">솔로</button>
+                </div>
+                <div class="track-mixer-row" data-track="inst">
+                  <span class="track-mixer-label">MR</span>
+                  <input type="range" min="0" max="100" value="100" class="track-fader" data-track="inst">
+                  <span class="track-fader-val" data-track="inst">100%</span>
+                  <button class="btn-ai-action secondary track-mute" data-track="inst">음소거</button>
+                  <button class="btn-ai-action secondary track-solo" data-track="inst">솔로</button>
+                </div>
+
+                <!-- 메트로놈 -->
+                <div class="track-mixer-row" data-track="metro">
+                  <span class="track-mixer-label">메트로놈</span>
+                  <input type="range" min="0" max="100" value="80" class="track-fader" data-track="metro">
+                  <span class="track-fader-val" data-track="metro">80%</span>
+                  <button class="btn-ai-action secondary metro-enable">켜기</button>
+                  <label style="font-size:0.76rem; color:var(--text-muted); display:flex; align-items:center; gap:4px;">BPM
+                    <input type="number" id="metro-bpm" min="0" max="300" value="0" style="width:56px; padding:4px 6px; border-radius:6px; background:var(--surface-1); color:var(--text-main); border:1px solid var(--glass-border);" title="0 = 곡 자동(미구현 시 120)">
+                  </label>
+                </div>
+
+                <!-- 채널 라우팅 매트릭스 -->
+                <div style="margin-top:6px; font-size:0.8rem; font-weight:700;">채널 라우팅</div>
+                <div class="route-matrix">
+                  <div class="route-head"></div>
+                  <div class="route-head">보컬</div>
+                  <div class="route-head">MR</div>
+                  <div class="route-head">메트로놈</div>
+
+                  <div class="route-ch-label">모니터</div>
+                  <input type="checkbox" class="route-cb" data-channel="monitor" data-source="vocal">
+                  <input type="checkbox" class="route-cb" data-channel="monitor" data-source="inst">
+                  <input type="checkbox" class="route-cb" data-channel="monitor" data-source="metro">
+
+                  <div class="route-ch-label">MR 출력</div>
+                  <input type="checkbox" class="route-cb" data-channel="mr" data-source="vocal">
+                  <input type="checkbox" class="route-cb" data-channel="mr" data-source="inst">
+                  <input type="checkbox" class="route-cb" data-channel="mr" data-source="metro">
+                </div>
+
+                <!-- MR 채널 출력 장치 -->
+                <div class="track-mixer-row" style="margin-top:4px;">
+                  <span class="track-mixer-label" style="width:auto;">MR 채널 장치</span>
+                  <select id="mr-output-device-select" style="flex:1; min-width:160px; padding:8px 10px; border-radius:8px; background:var(--surface-1); color:var(--text-main); border:1px solid var(--glass-border);"></select>
+                </div>
+              </div>
+
               <!-- MR 캐시 저장 형식 -->
               <div class="ai-model-card mr-cache-format-card">
                 <div class="ai-info-left">

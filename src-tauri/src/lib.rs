@@ -127,7 +127,11 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             audio_commands::get_model_settings, audio_commands::update_model_settings,
             audio_commands::play_track, audio_commands::toggle_playback, audio_commands::stop_playback, audio_commands::seek_to, audio_commands::set_pitch, audio_commands::set_tempo, audio_commands::set_volume, audio_commands::set_master_volume,
-            audio_commands::set_vocal_balance, audio_commands::toggle_ai_feature, 
+            audio_commands::set_vocal_balance, audio_commands::toggle_ai_feature,
+            audio_commands::list_output_devices, audio_commands::get_output_device, audio_commands::set_output_device,
+            audio_commands::get_mr_output_device, audio_commands::set_mr_output_device,
+            audio_commands::set_channel_route, audio_commands::set_metronome,
+            audio_commands::get_mix_state, audio_commands::set_track_fader, audio_commands::set_track_mute, audio_commands::set_track_solo,
             model_commands::check_mr_separated,
             model_commands::get_separation_info,
             model_commands::delete_mr,

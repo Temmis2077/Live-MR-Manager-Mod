@@ -49,6 +49,33 @@ export async function invoke(command, args = {}) {
         { id: 'kim', name: 'Kim Vocal 2', isCustom: false, presetKey: null },
         { id: 'inst_hq_3', name: 'Inst HQ 3', isCustom: false, presetKey: null },
       ];
+    case 'list_output_devices':
+      return [
+        { name: 'Speakers (Realtek High Definition Audio)', config: '48000Hz, 2ch', isActive: true },
+        { name: 'VoiceMeeter Input (VB-Audio)', config: '44100Hz, 2ch', isActive: false },
+        { name: 'OBS Virtual Audio Device', config: '48000Hz, 2ch', isActive: false },
+      ];
+    case 'get_output_device':
+      return 'Speakers (Realtek High Definition Audio)';
+    case 'set_output_device':
+      return args.name || '시스템 기본 장치';
+    case 'get_mix_state':
+      return {
+        vocalFader: 100, instFader: 100, vocalMuted: false, instMuted: false, vocalSolo: false, instSolo: false,
+        monRouteVocal: true, monRouteInst: true, monRouteMetro: false,
+        mrRouteVocal: false, mrRouteInst: true, mrRouteMetro: false,
+        metroEnabled: false, metroBpm: 0, metroGain: 80, mrDevice: '',
+      };
+    case 'set_track_fader':
+    case 'set_track_mute':
+    case 'set_track_solo':
+    case 'set_channel_route':
+    case 'set_metronome':
+      return;
+    case 'get_mr_output_device':
+      return '';
+    case 'set_mr_output_device':
+      return args.name || '';
     case 'set_master_volume':
     case 'set_volume':
       return;

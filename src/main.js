@@ -167,6 +167,18 @@ async function initApp() {
     });
   } catch (err) {}
 
+  try {
+    const { initOutputDeviceControls, refreshOutputDevices } = await import('./js/audio-devices.js');
+    initOutputDeviceControls();
+    await refreshOutputDevices();
+  } catch (err) {}
+
+  try {
+    const { initTrackMixer, refreshMixerState } = await import('./js/track-mixer.js');
+    initTrackMixer();
+    await refreshMixerState();
+  } catch (err) {}
+
   // 7. Initial volume sync
   try {
     if (elements.volSlider) {

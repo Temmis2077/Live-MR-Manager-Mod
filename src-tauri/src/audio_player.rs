@@ -162,6 +162,66 @@ impl<S> Source for DynamicVolumeSource<S> where S: Source<Item = f32> {
     }
 }
 
+/// 메트로놈 클릭 소스. BPM에 맞춰 짧은 감쇠 톤을 낸다. 4박마다 다운비트를
+/// 조금 높은 음으로 강조한다. 재생 위치(프레임)에서 시작하도록 start_frame을 받는다.
+/// (무한 스트림이므로 사용 측에서 take_duration으로 곡 길이만큼 잘라 쓴다.)
+pub struct MetronomeSource {
+    sample_rate: u32,
+    channels: u16,
+    samples_per_beat: u64, // 프레임 단위
+    click_len: u64,        // 프레임 단위
+    frame: u64,
+    ch_i: u16,
+}
+
+impl MetronomeSource {
+    pub fn new(bpm: f32, sample_rate: u32, channels: u16, start_frame: u64) -> Self {
+        let bpm = if bpm <= 0.0 { 120.0 } else { bpm };
+        let spb = ((60.0 / bpm) * sample_rate as f32) as u64;
+        Self {
+            sample_rate,
+            channels: channels.max(1),
+            samples_per_beat: spb.max(1),
+            click_len: ((sample_rate as f32) * 0.03) as u64, // 30ms
+            frame: start_frame,
+            ch_i: 0,
+        }
+    }
+}
+
+impl Iterator for MetronomeSource {
+    type Item = f32;
+    fn next(&mut self) -> Option<f32> {
+        let into_beat = self.frame % self.samples_per_beat;
+        let beat_index = self.frame / self.samples_per_beat;
+        let sample = if into_beat < self.click_len {
+            let t = into_beat as f32 / self.sample_rate as f32;
+            // 선형 감쇠 엔벨로프.
+            let env = 1.0 - (into_beat as f32 / self.click_len as f32);
+            // 4박마다 다운비트 강조(높은 음).
+            let freq = if beat_index % 4 == 0 { 1500.0 } else { 1000.0 };
+            (2.0 * std::f32::consts::PI * freq * t).sin() * env * 0.4
+        } else {
+            0.0
+        };
+        // 모든 채널에 동일 값. 채널 인덱스가 한 바퀴 돌면 프레임 전진.
+        self.ch_i += 1;
+        if self.ch_i >= self.channels {
+            self.ch_i = 0;
+            self.frame += 1;
+        }
+        Some(sample)
+    }
+}
+
+impl Source for MetronomeSource {
+    fn current_span_len(&self) -> Option<usize> { None }
+    fn channels(&self) -> NonZeroU16 { NonZeroU16::new(self.channels).unwrap_or(NonZeroU16::new(2).unwrap()) }
+    fn sample_rate(&self) -> NonZeroU32 { NonZeroU32::new(self.sample_rate).unwrap_or(NonZeroU32::new(44100).unwrap()) }
+    fn total_duration(&self) -> Option<Duration> { None }
+    fn try_seek(&mut self, _pos: Duration) -> Result<(), rodio::source::SeekError> { Ok(()) }
+}
+
 /// Source for real-time pitch and tempo shifting.
 pub struct StretchedSource<S> where S: Source<Item = f32> {
     pub input: S,
@@ -319,62 +379,150 @@ pub struct SeekToArgs {
 // --- AppState is in types.rs ---
 
 pub struct AudioHandler {
-    pub _stream: MixerDeviceSink, // Keep alive
+    // 출력 장치는 런타임에 교체될 수 있으므로 sink와 player를 함께 잠그고 바꾼다.
+    // (device 전환 시 새 sink에 새 player를 연결해 통째로 교체)
+    pub _stream: Mutex<MixerDeviceSink>, // Keep alive
     pub controller: Mutex<Player>,
     pub state: Mutex<AppState>,
     pub active_pitch: Arc<AtomicU32>,
     pub active_tempo: Arc<AtomicU32>,
     pub current_pos_samples: Arc<AtomicU64>,
     pub total_duration_ms: Arc<AtomicU64>,
-    pub active_sample_rate: u32,
-    pub active_channels: u16,
+    // 현재 열린 출력 장치의 실제 설정. 장치 전환 시 갱신되어 리샘플 타깃으로 쓰인다.
+    pub active_sample_rate: Arc<AtomicU32>,
+    pub active_channels: Arc<AtomicU32>, // u16 값을 u32로 보관
+    /// 현재 선택된 출력 장치 이름(빈 문자열이면 시스템 기본).
+    pub output_device_name: Mutex<String>,
     pub track_sample_rate: Arc<AtomicU32>,
-    pub vocal_volume: Arc<AtomicU32>, // f32 bits
-    pub instrumental_volume: Arc<AtomicU32>, // f32 bits
+    pub vocal_volume: Arc<AtomicU32>, // 모니터 채널 보컬 게인, f32 bits
+    pub instrumental_volume: Arc<AtomicU32>, // 모니터 채널 인스트 게인, f32 bits
+    pub mon_metro_volume: Arc<AtomicU32>, // 모니터 채널 메트로놈 게인
+    pub mr_vocal_volume: Arc<AtomicU32>,  // MR 채널 보컬 게인
+    pub mr_inst_volume: Arc<AtomicU32>,   // MR 채널 인스트 게인
+    pub mr_metro_volume: Arc<AtomicU32>,  // MR 채널 메트로놈 게인
+    /// 마스터 게인(Player.set_volume에 넣는 최종값, f32 bits). 장치 전환 시 새
+    /// player에 다시 적용하기 위해 보관한다(마스터 볼륨은 player에만 있으므로).
+    pub master_gain: Arc<AtomicU32>,
+    // MR 채널(2번째 출력, 선택). device_name이 비면 채널 꺼짐(모니터만 재생).
+    pub mr_stream: Mutex<Option<MixerDeviceSink>>,
+    pub mr_controller: Mutex<Option<Player>>,
+    pub mr_device_name: Mutex<String>,
+    pub mr_active_sample_rate: Arc<AtomicU32>,
+    pub mr_active_channels: Arc<AtomicU32>,
     pub playback_cv: parking_lot::Condvar,
 }
 
-pub static AUDIO_HANDLER: Lazy<Result<Arc<AudioHandler>, String>> = Lazy::new(|| {
-    let stream = match DeviceSinkBuilder::open_default_sink() {
-        Ok(s) => s,
-        Err(e) => return Err(format!("오디오 출력을 열지 못했습니다: {}", e)),
-    };
-    
+/// 지정한 이름의 출력 장치를 열어 (sink, sample_rate, channels, 실제 장치 이름)을
+/// 돌려준다. `device_name`이 None이거나 매칭에 실패하면 시스템 기본 장치로 폴백한다.
+pub fn open_output_sink(
+    device_name: Option<&str>,
+) -> Result<(MixerDeviceSink, u32, u16, String), String> {
     let host = cpal::default_host();
-    let device = host.default_output_device();
-    let device_name = match device.as_ref() {
-        #[allow(deprecated)]
-        Some(d) => d.name().unwrap_or_else(|_| "Unknown Device".into()),
-        None => "Unknown Device".to_string(),
+
+    // 요청한 이름과 일치하는 장치를 먼저 찾는다.
+    let picked: Option<cpal::Device> = device_name.filter(|s| !s.is_empty()).and_then(|want| {
+        host.output_devices().ok().and_then(|devs| {
+            devs.into_iter()
+                .find(|d| d.description().map(|desc| desc.name() == want).unwrap_or(false))
+        })
+    });
+
+    let (stream, resolved) = if let Some(dev) = picked {
+        let name = dev
+            .description()
+            .map(|d| d.name().to_string())
+            .unwrap_or_else(|_| "Unknown Device".into());
+        let s = DeviceSinkBuilder::from_device(dev)
+            .map_err(|e| e.to_string())?
+            .open_stream()
+            .map_err(|e| e.to_string())?;
+        (s, name)
+    } else {
+        // 기본 장치. (요청 이름이 없거나 그 장치가 사라진 경우)
+        let s = DeviceSinkBuilder::open_default_sink().map_err(|e| e.to_string())?;
+        let name = host
+            .default_output_device()
+            .and_then(|d| d.description().ok().map(|x| x.name().to_string()))
+            .unwrap_or_else(|| "기본 장치".into());
+        (s, name)
     };
-    
-    let (mut device_rate, mut device_channels) = if let Some(ref d) = device {
-        let config_res = d.default_output_config();
-        if let Ok(config) = config_res {
-            (u32::from(config.sample_rate()), config.channels() as u16)
-        } else { (44100, 2) }
-    } else { (44100, 2) };
+
+    let cfg = stream.config();
+    let rate = u32::from(cfg.sample_rate()).max(1);
+    let channels = u16::from(cfg.channel_count()).max(1);
+    Ok((stream, rate, channels, resolved))
+}
+
+/// Settings DB에 저장된 출력 장치 이름(없으면 None → 기본 장치).
+fn saved_output_device() -> Option<String> {
+    saved_setting("output_device")
+}
+
+fn saved_setting(key: &str) -> Option<String> {
+    let db = crate::state::DB.lock();
+    db.query_row(
+        "SELECT value FROM Settings WHERE key = ?",
+        [key],
+        |row| row.get::<_, String>(0),
+    )
+    .ok()
+    .filter(|s| !s.is_empty())
+}
+
+pub static AUDIO_HANDLER: Lazy<Result<Arc<AudioHandler>, String>> = Lazy::new(|| {
+    // 저장된 장치를 우선 열되, 실패하면 기본 장치로 폴백.
+    let saved = saved_output_device();
+    let (stream, mut device_rate, mut device_channels, device_name) =
+        match open_output_sink(saved.as_deref()) {
+            Ok(v) => v,
+            Err(e) => match open_output_sink(None) {
+                Ok(v) => v,
+                Err(_) => return Err(format!("오디오 출력을 열지 못했습니다: {}", e)),
+            },
+        };
 
     if device_rate == 0 { device_rate = 44100; }
     if device_channels == 0 { device_channels = 2; }
 
     sys_log(&format!("[AUDIO] Device Initialized: {} ({}Hz, {}ch)", device_name, device_rate, device_channels));
-    
+
     let player = Player::connect_new(&stream.mixer());
 
+    // MR 채널(2번째 출력) 복원 — 저장된 장치가 있으면 best-effort로 연다.
+    let (mr_stream_opt, mr_player_opt, mr_name, mr_rate, mr_ch) =
+        match saved_setting("mr_output_device").and_then(|n| open_output_sink(Some(&n)).ok()) {
+            Some((s, r, c, name)) => {
+                let p = Player::connect_new(&s.mixer());
+                sys_log(&format!("[AUDIO] MR channel restored: {} ({}Hz, {}ch)", name, r, c));
+                (Some(s), Some(p), name, r, c as u32)
+            }
+            None => (None, None, String::new(), device_rate, device_channels as u32),
+        };
+
     Ok(Arc::new(AudioHandler {
-        _stream: stream,
+        _stream: Mutex::new(stream),
         controller: Mutex::new(player),
         state: Mutex::new(AppState::default()),
         active_pitch: Arc::new(AtomicU32::new(0f32.to_bits())),
         active_tempo: Arc::new(AtomicU32::new(1.0f32.to_bits())),
         current_pos_samples: Arc::new(AtomicU64::new(0)),
         total_duration_ms: Arc::new(AtomicU64::new(0)),
-        active_sample_rate: device_rate,
-        active_channels: device_channels,
+        active_sample_rate: Arc::new(AtomicU32::new(device_rate)),
+        active_channels: Arc::new(AtomicU32::new(device_channels as u32)),
+        output_device_name: Mutex::new(device_name),
         track_sample_rate: Arc::new(AtomicU32::new(device_rate)),
         vocal_volume: Arc::new(AtomicU32::new(100.0f32.to_bits())),
         instrumental_volume: Arc::new(AtomicU32::new(100.0f32.to_bits())),
+        mon_metro_volume: Arc::new(AtomicU32::new(0.0f32.to_bits())),
+        mr_vocal_volume: Arc::new(AtomicU32::new(0.0f32.to_bits())),
+        mr_inst_volume: Arc::new(AtomicU32::new(0.0f32.to_bits())),
+        mr_metro_volume: Arc::new(AtomicU32::new(0.0f32.to_bits())),
+        master_gain: Arc::new(AtomicU32::new(1.0f32.to_bits())),
+        mr_stream: Mutex::new(mr_stream_opt),
+        mr_controller: Mutex::new(mr_player_opt),
+        mr_device_name: Mutex::new(mr_name),
+        mr_active_sample_rate: Arc::new(AtomicU32::new(mr_rate)),
+        mr_active_channels: Arc::new(AtomicU32::new(mr_ch)),
         playback_cv: parking_lot::Condvar::new(),
     }))
 });

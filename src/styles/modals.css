@@ -998,3 +998,65 @@
   list-style: revert;
 }
 .cm-advanced > summary:hover { color: var(--text-main); }
+
+/* --- 트랙 믹서 (개발용 최소 UI) --- */
+.track-mixer-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.track-mixer-label {
+  width: 40px;
+  font-weight: 700;
+  font-size: 0.82rem;
+}
+.track-fader { flex: 1; min-width: 100px; }
+.track-fader-val {
+  width: 42px;
+  text-align: right;
+  font-size: 0.76rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.track-mute.active {
+  background: #b23b3b;
+  color: #fff;
+  border-color: #b23b3b;
+}
+.track-solo.active {
+  background: var(--accent-primary);
+  color: #fff;
+  border-color: var(--accent-primary);
+}
+.metro-enable.active {
+  background: #2f8f5b;
+  color: #fff;
+  border-color: #2f8f5b;
+}
+
+.route-matrix {
+  display: grid;
+  grid-template-columns: 72px repeat(3, 1fr);
+  gap: 6px 10px;
+  align-items: center;
+  padding: 8px 10px;
+  background: var(--surface-1);
+  border: 1px solid var(--glass-border);
+  border-radius: 8px;
+}
+.route-head {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-align: center;
+}
+.route-ch-label {
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+.route-cb {
+  justify-self: center;
+  width: 17px;
+  height: 17px;
+  cursor: pointer;
+}
