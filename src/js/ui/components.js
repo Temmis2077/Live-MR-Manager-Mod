@@ -139,8 +139,12 @@ function renderSeparationTasks() {
     const percent = Math.floor(task.percentage || 0);
     const thumbUrl = task.thumbnail ? getThumbnailUrl(task.thumbnail, task) : '';
     const pStr = (task.provider || "").toUpperCase();
-    const isGPU = pStr.includes("GPU") || pStr.includes("CUDA") || pStr.includes("DIRECTML");
-    const providerLabel = isGPU ? "GPU" : "CPU";
+    // 대기 중인 태스크는 실제 provider가 아직 정해지지 않아 placeholder("local"/
+    // "SYSTEM"/"UNKNOWN"/"")로 들어온다. 이때 CPU로 단정하면 작업 시작 시 GPU로
+    // 바뀌어 보이는 오해가 생기므로, provider가 확정되기 전엔 "대기"로 표시한다.
+    const providerKnown = pStr !== "" && !["LOCAL", "SYSTEM", "UNKNOWN"].includes(pStr);
+    const isGPU = providerKnown && (pStr.includes("GPU") || pStr.includes("CUDA") || pStr.includes("DIRECTML") || pStr.includes("TENSORRT"));
+    const providerLabel = providerKnown ? (isGPU ? "GPU" : "CPU") : "대기";
     let displayStatus = statusMap[task.status] || task.status || '대기 중';
     // 다운로드 실패 후 백오프 대기 — 몇 번째 시도이고 얼마 뒤인지 같이 보여준다.
     if (task.status === "RetryWaiting") {
