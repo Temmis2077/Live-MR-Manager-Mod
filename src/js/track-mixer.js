@@ -94,6 +94,18 @@ export async function refreshMixerState() {
     cb.checked = !!routes[`${cb.dataset.channel}-${cb.dataset.source}`];
   });
 
+  // 지연 보정 + 장치 추정
+  const monDelay = document.getElementById('mon-delay-ms');
+  if (monDelay) monDelay.value = Math.round(s.monDelayMs || 0);
+  const mrDelay = document.getElementById('mr-delay-ms');
+  if (mrDelay) mrDelay.value = Math.round(s.mrDelayMs || 0);
+  const setEst = (bus, ms) => {
+    const el = document.querySelector(`.bus-est-label[data-bus="${bus}"]`);
+    if (el) el.textContent = ms > 0 ? `(장치 추정 ~${Math.round(ms)}ms)` : '';
+  };
+  setEst('monitor', s.monEstLatencyMs || 0);
+  setEst('mr', s.mrEstLatencyMs || 0);
+
   // MR 채널 장치 목록
   const mrSel = document.getElementById('mr-output-device-select');
   if (mrSel) {
@@ -142,6 +154,19 @@ export function initTrackMixer() {
   }
   document.getElementById('metro-bpm')?.addEventListener('change', pushMetronome);
   document.querySelector('.metro-tap')?.addEventListener('click', onTap);
+
+  // 버스 지연 보정
+  const onDelay = (bus, inputId) => {
+    const el = document.getElementById(inputId);
+    if (!el) return;
+    el.addEventListener('change', async () => {
+      const ms = Math.max(0, parseFloat(el.value) || 0);
+      el.value = Math.round(ms);
+      try { await invoke('set_bus_delay', { bus, delayMs: ms }); } catch (_) {}
+    });
+  };
+  onDelay('monitor', 'mon-delay-ms');
+  onDelay('mr', 'mr-delay-ms');
 
   // 라우팅 체크박스
   document.querySelectorAll('.route-cb').forEach((cb) => {

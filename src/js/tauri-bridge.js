@@ -65,12 +65,14 @@ export async function invoke(command, args = {}) {
         monRouteVocal: true, monRouteInst: true, monRouteMetro: false,
         mrRouteVocal: false, mrRouteInst: true, mrRouteMetro: false,
         metroEnabled: false, metroBpm: 0, metroGain: 80, mrDevice: '',
+        monDelayMs: 0, monEstLatencyMs: 50, mrDelayMs: 0, mrEstLatencyMs: 0,
       };
     case 'set_track_fader':
     case 'set_track_mute':
     case 'set_track_solo':
     case 'set_channel_route':
     case 'set_metronome':
+    case 'set_bus_delay':
       return;
     case 'get_mr_output_device':
       return '';

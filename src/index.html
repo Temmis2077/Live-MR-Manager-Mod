@@ -891,6 +891,19 @@
                   <span class="track-mixer-label" style="width:auto;">MR 채널 장치</span>
                   <select id="mr-output-device-select" style="flex:1; min-width:160px; padding:8px 10px; border-radius:8px; background:var(--surface-1); color:var(--text-main); border:1px solid var(--glass-border);"></select>
                 </div>
+
+                <!-- 지연 보정 (버스별) -->
+                <div style="margin-top:6px; font-size:0.8rem; font-weight:700;">지연 보정 <span style="font-weight:400; color:var(--text-muted); font-size:0.72rem;">방송/녹음에서 목소리와 MR 정렬용 · ms 늘리면 그 채널이 늦게 나감</span></div>
+                <div class="track-mixer-row">
+                  <span class="track-mixer-label" style="width:auto;">모니터</span>
+                  <input type="number" id="mon-delay-ms" min="0" max="2000" value="0" style="width:70px; padding:6px 8px; border-radius:6px; background:var(--surface-1); color:var(--text-main); border:1px solid var(--glass-border);"> ms
+                  <span class="bus-est-label" data-bus="monitor" style="font-size:0.72rem; color:var(--text-muted);"></span>
+                </div>
+                <div class="track-mixer-row">
+                  <span class="track-mixer-label" style="width:auto;">MR 출력</span>
+                  <input type="number" id="mr-delay-ms" min="0" max="2000" value="0" style="width:70px; padding:6px 8px; border-radius:6px; background:var(--surface-1); color:var(--text-main); border:1px solid var(--glass-border);"> ms
+                  <span class="bus-est-label" data-bus="mr" style="font-size:0.72rem; color:var(--text-muted);"></span>
+                </div>
               </div>
 
               <!-- MR 캐시 저장 형식 -->

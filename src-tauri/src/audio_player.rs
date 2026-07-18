@@ -399,21 +399,63 @@ pub struct SeekToArgs {
 
 // --- AppState is in types.rs ---
 
+/// 출력 버스의 역할. 정렬 기준·기본값·UI 분기에 쓰인다.
+/// Monitor = 내가 듣는 저지연 경로, Capture = 방송/녹음으로 나가는 정렬 경로.
+/// (미래: InputBus 등 형제 개념이 같은 지연 모델로 들어온다.)
+#[derive(Clone, Copy, PartialEq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum BusRole {
+    Monitor,
+    Capture,
+}
+
+/// 하나의 출력 버스 설정. 트랜스포트(sink/player)는 AudioHandler가 별도로 들고
+/// 있고, 여기서는 **버스별 설정/상태**(장치·레이트·채널·지연 보정·추정 지연)만
+/// 다룬다. 지연 보정과 미래 버스 확장이 이 타입을 중심으로 이뤄진다.
+pub struct OutputBus {
+    pub role: BusRole,
+    /// 선택된 장치 이름(빈 문자열: Monitor=시스템 기본 / Capture=꺼짐).
+    pub device_name: Mutex<String>,
+    /// 현재 열린 장치의 실제 설정(리샘플 타깃).
+    pub sample_rate: Arc<AtomicU32>,
+    pub channels: Arc<AtomicU32>, // u16 값을 u32로 보관
+    /// 사용자 지연 보정(ms, f32 bits, ≥0). 이 버스 믹스를 그만큼 늦춰 정렬.
+    pub delay_ms: Arc<AtomicU32>,
+    /// 장치 버퍼 기반 추정 지연(ms, f32 bits). 보정 시작값 안내용(읽기전용).
+    pub est_latency_ms: Arc<AtomicU32>,
+}
+
+impl OutputBus {
+    pub fn new(role: BusRole, rate: u32, channels: u32) -> Self {
+        Self {
+            role,
+            device_name: Mutex::new(String::new()),
+            sample_rate: Arc::new(AtomicU32::new(rate)),
+            channels: Arc::new(AtomicU32::new(channels)),
+            delay_ms: Arc::new(AtomicU32::new(0f32.to_bits())),
+            est_latency_ms: Arc::new(AtomicU32::new(0f32.to_bits())),
+        }
+    }
+    pub fn delay_ms_val(&self) -> f32 {
+        f32::from_bits(self.delay_ms.load(Ordering::Relaxed)).max(0.0)
+    }
+    pub fn est_latency_val(&self) -> f32 {
+        f32::from_bits(self.est_latency_ms.load(Ordering::Relaxed))
+    }
+}
+
 pub struct AudioHandler {
     // 출력 장치는 런타임에 교체될 수 있으므로 sink와 player를 함께 잠그고 바꾼다.
     // (device 전환 시 새 sink에 새 player를 연결해 통째로 교체)
-    pub _stream: Mutex<MixerDeviceSink>, // Keep alive
-    pub controller: Mutex<Player>,
+    pub _stream: Mutex<MixerDeviceSink>, // Keep alive (모니터 트랜스포트)
+    pub controller: Mutex<Player>,       // 모니터 트랜스포트
+    /// 모니터 버스 설정(항상 켜져 있는 주 출력).
+    pub monitor: OutputBus,
     pub state: Mutex<AppState>,
     pub active_pitch: Arc<AtomicU32>,
     pub active_tempo: Arc<AtomicU32>,
     pub current_pos_samples: Arc<AtomicU64>,
     pub total_duration_ms: Arc<AtomicU64>,
-    // 현재 열린 출력 장치의 실제 설정. 장치 전환 시 갱신되어 리샘플 타깃으로 쓰인다.
-    pub active_sample_rate: Arc<AtomicU32>,
-    pub active_channels: Arc<AtomicU32>, // u16 값을 u32로 보관
-    /// 현재 선택된 출력 장치 이름(빈 문자열이면 시스템 기본).
-    pub output_device_name: Mutex<String>,
     pub track_sample_rate: Arc<AtomicU32>,
     pub vocal_volume: Arc<AtomicU32>, // 모니터 채널 보컬 게인, f32 bits
     pub instrumental_volume: Arc<AtomicU32>, // 모니터 채널 인스트 게인, f32 bits
@@ -427,20 +469,19 @@ pub struct AudioHandler {
     /// 마스터 게인(Player.set_volume에 넣는 최종값, f32 bits). 장치 전환 시 새
     /// player에 다시 적용하기 위해 보관한다(마스터 볼륨은 player에만 있으므로).
     pub master_gain: Arc<AtomicU32>,
-    // MR 채널(2번째 출력, 선택). device_name이 비면 채널 꺼짐(모니터만 재생).
+    // MR(캡처) 채널 트랜스포트(2번째 출력, 선택). 버스 설정은 `mr`에.
     pub mr_stream: Mutex<Option<MixerDeviceSink>>,
     pub mr_controller: Mutex<Option<Player>>,
-    pub mr_device_name: Mutex<String>,
-    pub mr_active_sample_rate: Arc<AtomicU32>,
-    pub mr_active_channels: Arc<AtomicU32>,
+    /// MR(캡처) 버스 설정. device_name이 비면 채널 꺼짐(모니터만 재생).
+    pub mr: OutputBus,
     pub playback_cv: parking_lot::Condvar,
 }
 
-/// 지정한 이름의 출력 장치를 열어 (sink, sample_rate, channels, 실제 장치 이름)을
-/// 돌려준다. `device_name`이 None이거나 매칭에 실패하면 시스템 기본 장치로 폴백한다.
+/// 지정한 이름의 출력 장치를 열어 (sink, sample_rate, channels, 실제 장치 이름,
+/// 추정 지연 ms)을 돌려준다. None이거나 매칭 실패면 시스템 기본 장치로 폴백한다.
 pub fn open_output_sink(
     device_name: Option<&str>,
-) -> Result<(MixerDeviceSink, u32, u16, String), String> {
+) -> Result<(MixerDeviceSink, u32, u16, String, f32), String> {
     let host = cpal::default_host();
 
     // 요청한 이름과 일치하는 장치를 먼저 찾는다.
@@ -474,7 +515,18 @@ pub fn open_output_sink(
     let cfg = stream.config();
     let rate = u32::from(cfg.sample_rate()).max(1);
     let channels = u16::from(cfg.channel_count()).max(1);
-    Ok((stream, rate, channels, resolved))
+    let est_latency_ms = estimate_latency_ms(cfg.buffer_size(), rate);
+    Ok((stream, rate, channels, resolved, est_latency_ms))
+}
+
+/// 장치 버퍼 크기로 출력 지연을 대략 추정한다(보정 시작값 안내용).
+/// 고정 버퍼면 buffer/rate, 아니면 rodio 빌더가 목표로 하는 ~50ms를 쓴다.
+/// 드라이버 지연은 알 수 없으므로 어디까지나 baseline이다.
+fn estimate_latency_ms(buffer: &cpal::BufferSize, rate: u32) -> f32 {
+    match buffer {
+        cpal::BufferSize::Fixed(frames) => (*frames as f32) / (rate as f32) * 1000.0,
+        cpal::BufferSize::Default => 50.0,
+    }
 }
 
 /// Settings DB에 저장된 출력 장치 이름(없으면 None → 기본 장치).
@@ -496,7 +548,7 @@ fn saved_setting(key: &str) -> Option<String> {
 pub static AUDIO_HANDLER: Lazy<Result<Arc<AudioHandler>, String>> = Lazy::new(|| {
     // 저장된 장치를 우선 열되, 실패하면 기본 장치로 폴백.
     let saved = saved_output_device();
-    let (stream, mut device_rate, mut device_channels, device_name) =
+    let (stream, mut device_rate, mut device_channels, device_name, mon_est) =
         match open_output_sink(saved.as_deref()) {
             Ok(v) => v,
             Err(e) => match open_output_sink(None) {
@@ -508,32 +560,46 @@ pub static AUDIO_HANDLER: Lazy<Result<Arc<AudioHandler>, String>> = Lazy::new(||
     if device_rate == 0 { device_rate = 44100; }
     if device_channels == 0 { device_channels = 2; }
 
-    sys_log(&format!("[AUDIO] Device Initialized: {} ({}Hz, {}ch)", device_name, device_rate, device_channels));
+    sys_log(&format!("[AUDIO] Device Initialized: {} ({}Hz, {}ch, ~{:.0}ms)", device_name, device_rate, device_channels, mon_est));
 
     let player = Player::connect_new(&stream.mixer());
 
+    let monitor = OutputBus::new(BusRole::Monitor, device_rate, device_channels as u32);
+    *monitor.device_name.lock() = device_name;
+    monitor.est_latency_ms.store(mon_est.to_bits(), Ordering::Relaxed);
+    if let Some(d) = saved_setting("output_delay_ms").and_then(|s| s.parse::<f32>().ok()) {
+        monitor.delay_ms.store(d.max(0.0).to_bits(), Ordering::Relaxed);
+    }
+
+    let mr = OutputBus::new(BusRole::Capture, device_rate, device_channels as u32);
+    if let Some(d) = saved_setting("mr_delay_ms").and_then(|s| s.parse::<f32>().ok()) {
+        mr.delay_ms.store(d.max(0.0).to_bits(), Ordering::Relaxed);
+    }
+
     // MR 채널(2번째 출력) 복원 — 저장된 장치가 있으면 best-effort로 연다.
-    let (mr_stream_opt, mr_player_opt, mr_name, mr_rate, mr_ch) =
+    let (mr_stream_opt, mr_player_opt) =
         match saved_setting("mr_output_device").and_then(|n| open_output_sink(Some(&n)).ok()) {
-            Some((s, r, c, name)) => {
+            Some((s, r, c, name, est)) => {
                 let p = Player::connect_new(&s.mixer());
-                sys_log(&format!("[AUDIO] MR channel restored: {} ({}Hz, {}ch)", name, r, c));
-                (Some(s), Some(p), name, r, c as u32)
+                sys_log(&format!("[AUDIO] MR channel restored: {} ({}Hz, {}ch, ~{:.0}ms)", name, r, c, est));
+                mr.sample_rate.store(r, Ordering::Relaxed);
+                mr.channels.store(c as u32, Ordering::Relaxed);
+                mr.est_latency_ms.store(est.to_bits(), Ordering::Relaxed);
+                *mr.device_name.lock() = name;
+                (Some(s), Some(p))
             }
-            None => (None, None, String::new(), device_rate, device_channels as u32),
+            None => (None, None),
         };
 
     Ok(Arc::new(AudioHandler {
         _stream: Mutex::new(stream),
         controller: Mutex::new(player),
+        monitor,
         state: Mutex::new(AppState::default()),
         active_pitch: Arc::new(AtomicU32::new(0f32.to_bits())),
         active_tempo: Arc::new(AtomicU32::new(1.0f32.to_bits())),
         current_pos_samples: Arc::new(AtomicU64::new(0)),
         total_duration_ms: Arc::new(AtomicU64::new(0)),
-        active_sample_rate: Arc::new(AtomicU32::new(device_rate)),
-        active_channels: Arc::new(AtomicU32::new(device_channels as u32)),
-        output_device_name: Mutex::new(device_name),
         track_sample_rate: Arc::new(AtomicU32::new(device_rate)),
         vocal_volume: Arc::new(AtomicU32::new(100.0f32.to_bits())),
         instrumental_volume: Arc::new(AtomicU32::new(100.0f32.to_bits())),
@@ -545,9 +611,7 @@ pub static AUDIO_HANDLER: Lazy<Result<Arc<AudioHandler>, String>> = Lazy::new(||
         master_gain: Arc::new(AtomicU32::new(1.0f32.to_bits())),
         mr_stream: Mutex::new(mr_stream_opt),
         mr_controller: Mutex::new(mr_player_opt),
-        mr_device_name: Mutex::new(mr_name),
-        mr_active_sample_rate: Arc::new(AtomicU32::new(mr_rate)),
-        mr_active_channels: Arc::new(AtomicU32::new(mr_ch)),
+        mr,
         playback_cv: parking_lot::Condvar::new(),
     }))
 });
