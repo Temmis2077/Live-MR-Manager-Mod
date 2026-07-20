@@ -9,6 +9,13 @@
 //! ONNX 변환해 `%LOCALAPPDATA%\LiveMRManager\tools\dereverb\`에 두면 활성화된다.
 //! 없거나 꺼져 있으면 원본 보컬로 폴백하므로 무회귀. 우리 엔진의 RawWaveform
 //! (melband_roformer 프리셋)을 그대로 재사용한다.
+//!
+//! **GPU 가속 팩이 반드시 필요하다**(선택 사항 아님). 이 모델은 CPU로 돌리면
+//! 비현실적으로 느려서(다른 RawWaveform 모델과 동일한 문제), GPU 팩이 없으면
+//! 시도 자체를 건너뛰고 원본 보컬로 폴백한다. GPU 팩이 있어도 이 모델은 처음
+//! 도는 것이라 TensorRT 엔진을 새로 빌드해야 하며, 그 첫 빌드가 오래 걸리거나
+//! 비정상적으로 멈출 수 있어 [`DEREVERB_TIMEOUT_SECS`] 로 상한을 둔다(초과 시
+//! 원본으로 폴백 — 정렬 취소만으로는 백그라운드 블로킹 스레드를 멈출 수 없으므로).
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
@@ -61,6 +68,12 @@ fn cached_dr(vocal_parent: &Path) -> Option<PathBuf> {
     None
 }
 
+/// 디리버브 엔진 초기화(TensorRT 첫 빌드 등) + 1회 추론에 허용하는 최대 시간.
+/// 메인 분리 엔진이 RawWaveform 모델에 쓰는 타임아웃(task.rs)과 동일한 값 —
+/// 이게 없으면 새 모델의 첫 TensorRT 엔진 빌드가 멈춰도 회수할 방법이 없다
+/// (정렬 취소로도 백그라운드 블로킹 스레드는 멈추지 않는다).
+const DEREVERB_TIMEOUT_SECS: u64 = 300;
+
 /// 정렬에 쓸 보컬 경로를 돌려준다. 디리버브가 켜져 있고 모델이 있으면 잔향을
 /// 걷어낸 vocal_dr을 만들어(또는 캐시 재사용) 그 경로를, 아니면 원본 vocal 경로를
 /// 반환한다. **어떤 실패든 원본으로 폴백한다**(정렬이 절대 막히지 않게).
@@ -75,16 +88,48 @@ pub async fn resolve_alignment_vocal(vocal_path: PathBuf) -> PathBuf {
     if let Some(c) = cached_dr(&parent) {
         return c;
     }
-    // 무거운 RoFormer 패스라 블로킹 스레드에서.
+    // GPU 팩 없이 CPU로 이 RawWaveform 모델을 돌리면 수십 분이 걸릴 수 있어
+    // 사실상 못 씀 — 아예 시도하지 않고 즉시 원본으로 폴백(무의미한 대기 방지).
+    if !crate::gpu_pack::is_installed() {
+        crate::audio_player::sys_log(
+            "[Dereverb] GPU 가속 팩 미설치 — CPU로는 비현실적으로 느려 건너뜀(원본 보컬로 정렬)",
+        );
+        return vocal_path;
+    }
+    // 무거운 RoFormer 패스라 블로킹 스레드에서. 새 모델의 첫 TensorRT 엔진 빌드가
+    // 비정상적으로 오래 걸리거나 멈춰도 타임아웃으로 회수해 정렬이 막히지 않게 한다.
     let vp = vocal_path.clone();
-    match tokio::task::spawn_blocking(move || generate(&vp, &parent)).await {
-        Ok(Ok(dr)) => dr,
-        Ok(Err(e)) => {
+    let started = std::time::Instant::now();
+    crate::audio_player::sys_log(&format!(
+        "[Dereverb] 디리버브 시작 (최초 실행 시 TensorRT 엔진 빌드로 수 분 걸릴 수 있음, 제한 {}초)",
+        DEREVERB_TIMEOUT_SECS
+    ));
+    let result = tokio::time::timeout(
+        std::time::Duration::from_secs(DEREVERB_TIMEOUT_SECS),
+        tokio::task::spawn_blocking(move || generate(&vp, &parent)),
+    )
+    .await;
+    match result {
+        Ok(Ok(Ok(dr))) => {
+            crate::audio_player::sys_log(&format!(
+                "[Dereverb] 완료 ({}ms)",
+                started.elapsed().as_millis()
+            ));
+            dr
+        }
+        Ok(Ok(Err(e))) => {
             crate::audio_player::sys_log(&format!("[Dereverb] 실패 — 원본 보컬로 정렬: {}", e));
             vocal_path
         }
-        Err(e) => {
+        Ok(Err(e)) => {
             crate::audio_player::sys_log(&format!("[Dereverb] 스레드 오류 — 원본 보컬로 정렬: {}", e));
+            vocal_path
+        }
+        Err(_) => {
+            crate::audio_player::sys_log(&format!(
+                "[Dereverb] {}초 초과 — 원본 보컬로 정렬(백그라운드 빌드는 계속될 수 있으나 정렬은 진행)",
+                DEREVERB_TIMEOUT_SECS
+            ));
             vocal_path
         }
     }
@@ -129,6 +174,9 @@ pub struct DereverbStatus {
     pub installed: bool,
     pub enabled: bool,
     pub dir: String,
+    /// GPU 가속 팩 설치 여부 — 이게 없으면 모델이 있어도 디리버브는 건너뛴다
+    /// (CPU로는 비현실적으로 느림).
+    pub gpu_pack_installed: bool,
 }
 
 #[tauri::command]
@@ -137,6 +185,7 @@ pub fn get_dereverb_status() -> DereverbStatus {
         installed: is_installed(),
         enabled: is_enabled(),
         dir: dereverb_dir().to_string_lossy().to_string(),
+        gpu_pack_installed: crate::gpu_pack::is_installed(),
     }
 }
 

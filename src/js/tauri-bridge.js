@@ -77,7 +77,7 @@ export async function invoke(command, args = {}) {
     case 'set_limiter':
       return;
     case 'get_dereverb_status':
-      return { installed: false, enabled: true, dir: 'C:\\Users\\<user>\\AppData\\Local\\LiveMRManager\\tools\\dereverb' };
+      return { installed: false, enabled: true, dir: 'C:\\Users\\<user>\\AppData\\Local\\LiveMRManager\\tools\\dereverb', gpuPackInstalled: false };
     case 'set_dereverb_enabled':
     case 'open_dereverb_dir':
       return;
