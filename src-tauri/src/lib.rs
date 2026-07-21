@@ -149,6 +149,7 @@ pub fn run() {
             model_commands::set_mr_cache_format,
             system::get_audio_devices,
             system::open_cache_folder,
+            system::open_mr_folder,
             system::get_mr_cache_dir,
             system::set_mr_cache_dir,
             system::reset_mr_cache_dir,

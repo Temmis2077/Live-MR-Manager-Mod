@@ -205,8 +205,27 @@ function initDockMoreMenu() {
   const itemSeparate = document.getElementById("dock-menu-separate");
   const itemLyricSync = document.getElementById("dock-menu-lyric-sync");
   const itemLyricsWindow = document.getElementById("dock-menu-lyrics-window");
+  const itemMrFolder = document.getElementById("dock-menu-mr-folder");
 
   const closeMenu = () => popover.classList.remove("active");
+
+  if (itemMrFolder) {
+    // 분리 결과 폴더 열기 — 캐시 폴더명은 경로를 URL 인코딩한 값이라
+    // 사용자가 직접 찾기 어려워서 백엔드가 해석해 열어준다.
+    itemMrFolder.onclick = async () => {
+      if (itemMrFolder.classList.contains("disabled")) return;
+      closeMenu();
+      const song = state.currentTrack;
+      if (!song) return;
+      const { invoke } = await import('../../tauri-bridge.js');
+      try {
+        await invoke('open_mr_folder', { path: song.path });
+      } catch (err) {
+        const { showNotification } = await import('../../utils.js');
+        showNotification(String(err), 'warning');
+      }
+    };
+  }
 
   if (itemLyricsWindow) {
     // 가사 호버창 — 곡과 무관하게 열 수 있다(재생 중인 곡을 자동으로 따라감).
@@ -236,13 +255,17 @@ function initDockMoreMenu() {
     }
     // 열 때마다 현재 곡 기준으로 항목 상태 갱신
     if (titleEl) titleEl.textContent = song.title || "현재 곡";
+    const inLib = state.songLibrary.find((s) => s.path === song.path) || song;
+    const isSeparated = !!(inLib.isSeparated || inLib.is_separated);
     if (itemSeparate) {
-      const inLib = state.songLibrary.find((s) => s.path === song.path) || song;
-      const isSeparated = !!(inLib.isSeparated || inLib.is_separated);
       const isManualMr = !!(inLib.isMr || inLib.is_mr);
       const busy = !!state.activeTasks[song.path];
       itemSeparate.classList.toggle("disabled", isSeparated || isManualMr || busy);
       itemSeparate.textContent = busy ? "분리 진행 중…" : (isSeparated ? "MR 분리됨" : "MR 분리");
+    }
+    if (itemMrFolder) {
+      // 분리 안 된 곡은 열 폴더가 없다.
+      itemMrFolder.classList.toggle("disabled", !isSeparated);
     }
     popover.classList.add("active");
   };

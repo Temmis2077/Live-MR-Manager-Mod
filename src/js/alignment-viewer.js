@@ -29,6 +29,10 @@ export class ForcedAlignmentViewer {
             resizeTarget: null,
             hoveringTarget: null,
             selectedTarget: null,
+            // 현재 타겟팅된 가사 블럭 인덱스(-1 = 없음). 가사 목록을 클릭하면
+            // 고정되고, 파형·플레이바로 시간을 옮기면 그 시각의 블럭으로 따라간다.
+            // currentSyncIndex(다음에 스탬프 찍을 위치)와는 별개의 개념.
+            selectedSegmentIndex: -1,
             // 보컬 시작 지점(초) — 진짜 목소리가 나오는 시작. 재생 시 인트로
             // 자동 건너뛰기의 기준([vocalstart] 마커로 저장). null이면 미지정.
             vocalStartSec: null,
@@ -619,6 +623,8 @@ export class ForcedAlignmentViewer {
             }
 
             this.updateTimeDisplay();
+            // 재생이 진행되면 현재 시각의 가사 블럭으로 선택이 따라간다.
+            this.setSelectedSegmentByTime(this.state.currentTime);
             this.drawWaveform();
             this.syncSidebar();
         });
@@ -878,6 +884,8 @@ export class ForcedAlignmentViewer {
         const wasPlaying = this.state.isPlaying;
         this.state.currentTime = Math.max(0, Math.min(this.state.duration, time));
         this.updateTimeDisplay();
+        // 파형·플레이바 등으로 시간을 옮기면 그 시각의 가사 블럭이 선택되게 한다.
+        this.setSelectedSegmentByTime(this.state.currentTime);
 
         try {
             // Seek 중 백엔드의 이전 재생 위치 이벤트에 의해 UI가 튕기는 것을 방지
@@ -1041,6 +1049,42 @@ export class ForcedAlignmentViewer {
                 }
             });
             if (seg.approx) this.ctx.setLineDash([]);
+
+            // 블럭 위에 해당 가사 표시 — 어느 블럭이 어느 줄인지 파형에서 바로
+            // 알 수 있게. 블럭 폭을 넘어가면 잘라내고(…), 너무 좁으면 생략.
+            const bx1 = Math.max(0, x1);
+            const bx2 = Math.min(width, x2);
+            const boxW = bx2 - bx1;
+            if (boxW > 24) {
+                const label = (getSyncText(seg) || '').trim();
+                if (label) {
+                    this.ctx.save();
+                    this.ctx.beginPath();
+                    this.ctx.rect(bx1 + 3, 0, boxW - 6, height);
+                    this.ctx.clip();
+                    this.ctx.font = '11px Inter, sans-serif';
+                    this.ctx.textBaseline = 'top';
+                    const isSelected = idx === this.state.selectedSegmentIndex;
+                    this.ctx.fillStyle = isSelected
+                        ? cssVar('--text-main', '#ffffff')
+                        : cssVar('--text-dim', 'rgba(255,255,255,0.75)');
+                    // 가독성 확보용 얇은 외곽선(파형 위에 겹쳐도 읽히게).
+                    this.ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+                    this.ctx.lineWidth = 2.5;
+                    this.ctx.strokeText(label, bx1 + 4, 3);
+                    this.ctx.fillText(label, bx1 + 4, 3);
+                    this.ctx.restore();
+                }
+            }
+
+            // 선택된 블럭 강조 — 클릭·시크로 타겟팅된 가사가 어느 것인지 표시.
+            if (idx === this.state.selectedSegmentIndex) {
+                this.ctx.save();
+                this.ctx.strokeStyle = cssVar('--accent-primary', '#4a9eff');
+                this.ctx.lineWidth = 2;
+                this.ctx.strokeRect(bx1 + 1, 1, Math.max(0, boxW - 2), height - 2);
+                this.ctx.restore();
+            }
 
             // Boundary Highlighting (on hover)
             const ht = this.state.hoveringTarget;
@@ -1697,12 +1741,47 @@ export class ForcedAlignmentViewer {
                     this.state.currentSyncIndex = idx;
                 }
 
+                // 클릭한 가사를 타겟으로 고정 — 재생하거나 다른 조작을 해도
+                // 시간이 이 블럭을 벗어나기 전까지는 계속 선택 상태로 남는다.
+                this.state.selectedSegmentIndex = idx;
+                this.drawWaveform();
+
                 this.syncSidebar(true);
             };
         });
 
         // Force an immediate sync and scroll
         this.syncSidebar(true);
+    }
+
+    /**
+     * 주어진 시각이 속한 가사 블럭 인덱스를 찾는다. 없으면 -1.
+     * 시간이 찍힌(start>0) 블럭만 대상 — 미싱크 줄은 위치가 없어 제외.
+     * end가 0(끝 미지정)이면 다음 블럭 시작 전까지로 본다.
+     */
+    findSegmentAtTime(time) {
+        const segs = this.state.segments || [];
+        for (let i = 0; i < segs.length; i++) {
+            const s = segs[i];
+            if (!(s.start > 0)) continue;
+            const end = s.end > 0 ? s.end : (segs[i + 1]?.start ?? this.state.duration);
+            if (time >= s.start && time < end) return i;
+        }
+        return -1;
+    }
+
+    /**
+     * 타겟 가사 블럭을 지정한다. 시각으로 옮겨온 경우(파형/플레이바) 그 시각의
+     * 블럭을 찾아 선택하고, 해당하는 블럭이 없으면 선택을 유지한다(재생 중
+     * 간주 구간에서 선택이 깜빡이며 풀리지 않도록).
+     */
+    setSelectedSegmentByTime(time) {
+        const idx = this.findSegmentAtTime(time);
+        if (idx !== -1 && idx !== this.state.selectedSegmentIndex) {
+            this.state.selectedSegmentIndex = idx;
+            this.syncSidebar(true);
+            this.drawWaveform();
+        }
     }
 
     syncSidebar(forceScroll = false) {
@@ -1745,11 +1824,25 @@ export class ForcedAlignmentViewer {
             } else {
                 item.classList.remove('syncing');
             }
+
+            // 타겟팅된 가사(선택) — 클릭으로 고정하거나 시간 이동으로 따라온 블럭
+            if (i === this.state.selectedSegmentIndex) {
+                if (!item.classList.contains('targeted')) {
+                    item.classList.add('targeted');
+                    shouldScroll = true;
+                }
+            } else {
+                item.classList.remove('targeted');
+            }
         });
 
         if (shouldScroll) {
-            // 탭 할 가사 위치(syncing)가 있으면 거기로, 없으면 재생 중(active) 위치로 스크롤
-            const targetClass = syncIndex !== -1 && syncIndex < this.state.segments.length ? '.syncing' : '.active';
+            // 선택(targeted)이 있으면 그걸 우선, 없으면 탭 할 위치(syncing),
+            // 그것도 없으면 재생 중(active) 위치로 스크롤.
+            const hasTargeted = this.state.selectedSegmentIndex >= 0;
+            const targetClass = hasTargeted
+                ? '.targeted'
+                : (syncIndex !== -1 && syncIndex < this.state.segments.length ? '.syncing' : '.active');
             const targetItem = container.querySelector(`.lyric-line-item${targetClass}`);
             if (targetItem) {
                 targetItem.scrollIntoView({ behavior: 'smooth', block: 'center' });

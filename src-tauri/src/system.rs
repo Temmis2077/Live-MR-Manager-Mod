@@ -171,6 +171,40 @@ pub async fn open_cache_folder(window: WebviewWindow) -> Result<(), String> {
     Ok(())
 }
 
+/// 이 곡의 MR 분리 결과가 들어있는 폴더를 파일 탐색기로 연다.
+/// 캐시 폴더 이름은 경로를 정규화·URL 인코딩한 값이라 사용자가 직접 찾기
+/// 어려우므로(유튜브 URL이 그대로 인코딩됨), 여기서 해석해 열어준다.
+/// 아직 분리하지 않은 곡이면 폴더가 없으므로 에러를 돌려준다.
+#[tauri::command]
+pub async fn open_mr_folder(window: WebviewWindow, path: String) -> Result<(), String> {
+    let separated_root = window.state::<crate::state::AppPaths>().separated.clone();
+    // get_separation_info와 같은 방식으로 실제 존재하는 캐시 폴더를 찾는다
+    // (경로 표기 변형 — youtu.be / youtube.com 등 — 을 모두 시도).
+    let dir = crate::youtube_url::cache_key_variants(&path)
+        .into_iter()
+        .map(|key| separated_root.join(urlencoding::encode(&key).to_string()))
+        .find(|d| d.is_dir())
+        .ok_or_else(|| "아직 MR 분리가 되지 않은 곡입니다.".to_string())?;
+
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        std::process::Command::new("explorer")
+            .arg(dir.to_string_lossy().to_string())
+            .creation_flags(0x08000000)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        std::process::Command::new("xdg-open")
+            .arg(&dir)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn export_backup(paths: State<'_, crate::state::AppPaths>) -> Result<(), String> {
     if let Some(path) = file_dialog_in_documents()
