@@ -501,6 +501,217 @@ pub async fn apply_alignment_tuning(penalty: f32, blank_penalty: Option<f32>, re
     }
 }
 
+/// 한 줄이 차지하는 타깃 토큰 범위. 줄별 단어 수를 누적해 만든다.
+/// 0폭 단어(타 언어·기호)만 있는 줄은 tok_from == tok_to로 비어 있다.
+struct LineTokenSpan {
+    tok_from: usize,
+    tok_to: usize,
+}
+
+/// 줄별로 word_spans/타깃 토큰 상의 범위를 계산한다.
+fn line_token_spans(
+    lyric_lines: &[String],
+    word_spans: &[(usize, usize, String)],
+) -> Vec<LineTokenSpan> {
+    let mut out = Vec::with_capacity(lyric_lines.len());
+    let mut wi = 0usize;
+    for line in lyric_lines {
+        let n_words = line.split_whitespace().count();
+        let word_from = wi;
+        let word_to = (wi + n_words).min(word_spans.len());
+        // 이 줄이 실제로 소비하는 토큰 구간 = 줄 안 단어 span들의 최소~최대
+        let mut tok_from = usize::MAX;
+        let mut tok_to = 0usize;
+        for w in word_from..word_to {
+            let (s, e, _) = &word_spans[w];
+            if e > s {
+                tok_from = tok_from.min(*s);
+                tok_to = tok_to.max(*e);
+            }
+        }
+        if tok_from == usize::MAX { tok_from = tok_to; }
+        out.push(LineTokenSpan { tok_from, tok_to });
+        wi = word_to;
+    }
+    out
+}
+
+/// 앵커 사이 구간을 독립적으로 재정렬해 전역 정렬의 밀림 전파를 끊는다.
+///
+/// 배경: 지금 정렬은 곡 전체를 한 번의 순차 CTC로 맞춘다. 그래서 중간에 한 번
+/// 어긋나면 복구 지점이 없어 그 뒤 모든 줄이 계속 밀린다(한/영 혼합, 코러스,
+/// 간주에서 반복적으로 겪은 실패 모드).
+///
+/// 대책: 전역 경로에서 **음향적으로 확신이 높은 줄을 앵커로 삼고**, 앵커 사이
+/// 구간만 그 시간 범위 안에서 다시 정렬한다. 구간이 좁아지면 그 안의 토큰이
+/// 해당 시간에 갇히므로, 한 번의 실수가 뒤로 전파되지 않는다.
+///
+/// 앵커 판정은 그 줄에 배정된 프레임에서의 평균 emission 확률(로그)로 한다 —
+/// 모델이 "여기서 이 글자를 들었다"고 강하게 말한 줄만 신뢰한다.
+fn refine_with_anchors(
+    aligner: &Aligner,
+    emission_probs: &Array2<f32>,
+    target_tokens: &[usize],
+    line_spans: &[LineTokenSpan],
+    path: &[usize],
+    trans_p: f32,
+    blank_p: f32,
+    rep_p: f32,
+) -> Option<Vec<usize>> {
+    let n_frames = path.len();
+    if n_frames == 0 || line_spans.len() < 3 {
+        return None;
+    }
+
+    // 1. 줄별로 배정된 프레임 구간과 평균 확신도를 구한다.
+    struct LineInfo { idx: usize, first: usize, last: usize, conf: f32 }
+    let mut infos: Vec<LineInfo> = Vec::new();
+    for (li, ls) in line_spans.iter().enumerate() {
+        if ls.tok_to <= ls.tok_from { continue; } // 토큰 없는 줄(타 언어 등)은 앵커 후보 아님
+        let mut first = usize::MAX;
+        let mut last = 0usize;
+        let mut sum = 0f32;
+        let mut cnt = 0usize;
+        for (f, &tok_idx) in path.iter().enumerate() {
+            if tok_idx == usize::MAX { continue; }
+            if tok_idx >= ls.tok_from && tok_idx < ls.tok_to {
+                if first == usize::MAX { first = f; }
+                last = f;
+                sum += emission_probs[[f, target_tokens[tok_idx]]];
+                cnt += 1;
+            }
+        }
+        if cnt == 0 || first == usize::MAX { continue; }
+        infos.push(LineInfo { idx: li, first, last, conf: sum / cnt as f32 });
+    }
+    if infos.len() < 3 { return None; }
+
+    // 2. 확신도 상위 줄을 앵커로 (중앙값 이상). 너무 촘촘하면 재정렬 효과가
+    //    없으므로 간격도 확보한다.
+    let mut confs: Vec<f32> = infos.iter().map(|i| i.conf).collect();
+    confs.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let median_conf = confs[confs.len() / 2];
+
+    let mut anchors: Vec<&LineInfo> = Vec::new();
+    for info in &infos {
+        if info.conf < median_conf { continue; }
+        // 단조 증가하는 앵커만 채택(순서가 뒤집힌 건 이미 잘못된 정렬).
+        if let Some(prev) = anchors.last() {
+            if info.first <= prev.last { continue; }
+        }
+        anchors.push(info);
+    }
+    if anchors.len() < 2 { return None; }
+
+    // 3. 앵커 사이 구간을 각각 재정렬해 새 경로를 만든다.
+    let mut new_path = path.to_vec();
+    let mut changed = false;
+    for pair in anchors.windows(2) {
+        let (a, b) = (pair[0], pair[1]);
+        // 두 앵커 사이에 있는 줄들의 토큰 구간
+        let tok_from = line_spans[a.idx].tok_to;
+        let tok_to = line_spans[b.idx].tok_from;
+        if tok_to <= tok_from { continue; }
+        // 그 사이 시간 구간 (앵커의 끝 ~ 다음 앵커의 시작)
+        let f_from = a.last + 1;
+        let f_to = b.first;
+        if f_to <= f_from { continue; }
+        // 토큰이 들어갈 최소 프레임도 안 되면 건드리지 않는다.
+        if (f_to - f_from) < (tok_to - tok_from) { continue; }
+
+        let sub_tokens = &target_tokens[tok_from..tok_to];
+        let sub = aligner.forced_align_range(
+            emission_probs, sub_tokens, f_from, f_to, trans_p, blank_p, rep_p,
+        );
+        if sub.len() != f_to - f_from { continue; }
+        // 로컬 토큰 인덱스를 전역 인덱스로 되돌려 경로에 반영.
+        for (k, &local) in sub.iter().enumerate() {
+            new_path[f_from + k] = if local == usize::MAX { usize::MAX } else { local + tok_from };
+        }
+        changed = true;
+    }
+
+    if changed {
+        sys_log(&format!(
+            "[Alignment] 앵커 {}개 기준으로 구간 재정렬 (총 {}줄)",
+            anchors.len(),
+            line_spans.len()
+        ));
+        Some(new_path)
+    } else {
+        None
+    }
+}
+
+/// 노래 가능한 글자 수 — 길이 타당성의 기준이 되는 줄 "무게".
+/// 공백·문장부호를 빼고 실제 발음되는 글자만 센다(최소 1).
+fn singable_len(text: &str) -> usize {
+    text.chars()
+        .filter(|c| c.is_alphanumeric())
+        .count()
+        .max(1)
+}
+
+/// 한 줄에 허용할 최대 길이 = 이 곡의 통상 속도 × 글자 수 × 이 배수.
+/// 늘여 부르기·멜리스마를 감안해 넉넉히 잡는다(오탐이 정탐보다 해롭다).
+const DURATION_SANITY_FACTOR: f64 = 3.5;
+/// 통상 속도와 무관하게 한 줄이 이보다 길면 신뢰하지 않는다.
+const DURATION_ABSOLUTE_CAP_MS: i64 = 15_000;
+
+/// 정렬 결과의 길이 타당성 검사·보정.
+///
+/// CTC 정렬은 음향적 근거가 약한 구간(간주·다른 언어 블록·잔향)에서 한 줄에
+/// 프레임을 과도하게 몰아줄 수 있다. 실제로 "한 줄인데 20초짜리 블럭"이 나왔다.
+///
+/// 곡 전체의 글자당 시간(중앙값)을 통상 속도로 보고, 그 배수를 크게 벗어난 줄은
+/// **시작 시각만 남기고 타당한 길이로 잘라낸다**. 시작은 보통 맞고(노래가 그때
+/// 시작된 건 음향적으로 잡힘) 끝이 흘러넘치는 형태라, 끝만 조정하는 게 안전하다.
+/// 잘라낸 뒤 생기는 빈 구간은 간주·타 언어 구간이므로 그대로 두면 된다.
+///
+/// 중앙값을 쓰는 이유: 평균은 문제의 20초 줄 자신에게 끌려가므로 기준이 오염된다.
+fn repair_implausible_durations(lines: &mut [LineAlignment]) -> usize {
+    if lines.len() < 4 {
+        return 0; // 표본이 너무 적어 통상 속도를 신뢰할 수 없음
+    }
+
+    // 글자당 ms 비율의 중앙값 = 이 곡의 통상 발화 속도
+    let mut rates: Vec<f64> = lines
+        .iter()
+        .filter_map(|l| {
+            let dur = (l.end_ms - l.start_ms) as f64;
+            if dur <= 0.0 { return None; }
+            Some(dur / singable_len(&l.text) as f64)
+        })
+        .collect();
+    if rates.len() < 4 {
+        return 0;
+    }
+    rates.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let median_rate = rates[rates.len() / 2];
+    if !(median_rate > 0.0) {
+        return 0;
+    }
+
+    let mut repaired = 0;
+    for line in lines.iter_mut() {
+        let dur = line.end_ms - line.start_ms;
+        if dur <= 0 { continue; }
+        let allowed = ((median_rate * DURATION_SANITY_FACTOR) * singable_len(&line.text) as f64) as i64;
+        let cap = allowed.min(DURATION_ABSOLUTE_CAP_MS).max(300);
+        if dur > cap {
+            let new_end = line.start_ms + cap;
+            line.end_ms = new_end;
+            // 줄 안의 단어 타임스탬프도 새 끝을 넘지 않게 맞춘다.
+            for w in line.words.iter_mut() {
+                if w.start_ms > new_end { w.start_ms = new_end; }
+                if w.end_ms > new_end { w.end_ms = new_end; }
+            }
+            repaired += 1;
+        }
+    }
+    repaired
+}
+
 fn perform_alignment_internal(
     emission_probs: Array2<f32>,
     tokens_path: &Path,
@@ -517,6 +728,16 @@ fn perform_alignment_internal(
     if target_tokens.is_empty() { return Err("유효한 가사 토큰이 없습니다.".to_string()); }
 
     let path = aligner.forced_align(&emission_probs, &target_tokens, trans_p, blank_p, rep_p);
+
+    // 확신도 높은 줄을 앵커로 잡고 그 사이 구간을 재정렬한다 — 전역 1회 정렬은
+    // 중간에 한 번 어긋나면 끝까지 밀리므로, 구간을 나눠 실수를 가둔다.
+    let line_spans = line_token_spans(&lyric_lines, &word_spans);
+    let path = refine_with_anchors(
+        &aligner, &emission_probs, &target_tokens, &line_spans,
+        &path, trans_p, blank_p, rep_p,
+    )
+    .unwrap_or(path);
+
     let frame_duration_ms = 20.0;
     let timestamps = aligner.get_word_timestamps(&path, &word_spans, frame_duration_ms);
 
@@ -557,6 +778,15 @@ fn perform_alignment_internal(
                 words: line_words,
             });
         }
+    }
+
+    // 음향 근거가 약한 구간에서 한 줄이 과도하게 늘어나는 것을 잡아낸다.
+    let repaired = repair_implausible_durations(&mut all_line_alignments);
+    if repaired > 0 {
+        sys_log(&format!(
+            "[Alignment] 길이 타당성 보정: {}줄이 통상 속도를 크게 벗어나 잘라냄",
+            repaired
+        ));
     }
 
     Ok(AlignmentResult {
@@ -876,29 +1106,52 @@ impl Aligner {
     }
 
     pub fn forced_align(&self, emission_probs: &Array2<f32>, target_tokens: &[usize], trans_penalty: f32, blank_penalty: f32, rep_penalty: f32) -> Vec<usize> {
+        self.forced_align_range(emission_probs, target_tokens, 0, emission_probs.nrows(), trans_penalty, blank_penalty, rep_penalty)
+    }
+
+    /// `forced_align`을 프레임 구간 `[frame_start, frame_end)` 에만 적용한다.
+    /// 앵커 사이 구간을 독립적으로 재정렬할 때 쓴다 — 구간을 좁히면 그 안의
+    /// 토큰들이 그 시간 범위 안에 갇히므로, 전역 정렬에서 한 번 밀린 결과가
+    /// 뒤까지 전파되지 않는다.
+    ///
+    /// 반환 길이는 `frame_end - frame_start`이고, 값은 `target_tokens` 기준의
+    /// **로컬** 인덱스(또는 blank는 `usize::MAX`)다.
+    pub fn forced_align_range(
+        &self,
+        emission_probs: &Array2<f32>,
+        target_tokens: &[usize],
+        frame_start: usize,
+        frame_end: usize,
+        trans_penalty: f32,
+        blank_penalty: f32,
+        rep_penalty: f32,
+    ) -> Vec<usize> {
         let mut extended = Vec::with_capacity(target_tokens.len() * 2 + 1);
         for &t in target_tokens { extended.push(self.blank_id); extended.push(t); }
         extended.push(self.blank_id);
-        let n_frames = emission_probs.nrows();
+        let total_frames = emission_probs.nrows();
+        let frame_end = frame_end.min(total_frames);
+        let n_frames = frame_end.saturating_sub(frame_start);
         let n_states = extended.len();
         if n_frames == 0 || n_states == 0 { return vec![]; }
+        let at = |t: usize, tok: usize| emission_probs[[frame_start + t, tok]];
         let mut dp = vec![vec![f32::NEG_INFINITY; n_states]; n_frames];
         let mut bp = vec![vec![0usize; n_states]; n_frames];
-        dp[0][0] = emission_probs[[0, extended[0]]];
-        if n_states > 1 { dp[0][1] = emission_probs[[0, extended[1]]]; }
+        dp[0][0] = at(0, extended[0]);
+        if n_states > 1 { dp[0][1] = at(0, extended[1]); }
         for t in 1..n_frames {
             if t % 50 == 0 && CANCEL_ALIGNMENT.load(Ordering::SeqCst) { break; } // Early exit for inner loops
             for s in 0..n_states {
-                let mut emit = emission_probs[[t, extended[s]]];
+                let mut emit = at(t, extended[s]);
                 if extended[s] == self.blank_id {
                     emit += blank_penalty;
                 }
-                
+
                 let mut best = dp[t - 1][s];
                 if extended[s] != self.blank_id {
                     best += rep_penalty;
                 }
-                
+
                 let mut best_from = s;
                 if s > 0 {
                     let val = dp[t - 1][s - 1] + trans_penalty;
@@ -1322,6 +1575,119 @@ mod aligner_tests {
         assert!(gap_word.start_ms >= timestamps[0].end_ms);
         assert!(gap_word.end_ms <= timestamps[2].start_ms);
         assert!(gap_word.end_ms > gap_word.start_ms);
+    }
+
+    #[test]
+    fn line_token_spans_maps_lines_to_token_ranges() {
+        let vocab_path = write_test_vocab("spans");
+        let aligner = Aligner::new(vocab_path.to_str().unwrap()).unwrap();
+        std::fs::remove_file(&vocab_path).ok();
+
+        // 2번째 줄은 영어 전용 → 토큰을 소비하지 않아 빈 구간이어야 한다.
+        let text = "나는 가수\nonly english\n안녕 다";
+        let (_tokens, word_spans) = aligner.tokenize(text);
+        let lines: Vec<String> = text.lines().map(|s| s.to_string()).collect();
+        let spans = line_token_spans(&lines, &word_spans);
+
+        assert_eq!(spans.len(), 3);
+        assert!(spans[0].tok_to > spans[0].tok_from, "한국어 줄은 토큰 소비");
+        assert_eq!(spans[1].tok_from, spans[1].tok_to, "영어 전용 줄은 토큰 없음");
+        assert!(spans[2].tok_to > spans[2].tok_from, "한국어 줄은 토큰 소비");
+        // 줄 순서대로 토큰 구간이 증가해야 한다.
+        assert!(spans[2].tok_from >= spans[0].tok_to);
+    }
+
+    /// 앵커 재정렬이 "구간을 가두는" 핵심 동작을 하는지: 뒤쪽 구간을 다시
+    /// 정렬해도 앵커가 잡아둔 시간 범위를 벗어나지 않아야 한다.
+    #[test]
+    fn anchor_refinement_keeps_tokens_inside_their_frame_window() {
+        let vocab_path = write_test_vocab("anchor");
+        let aligner = Aligner::new(vocab_path.to_str().unwrap()).unwrap();
+        std::fs::remove_file(&vocab_path).ok();
+
+        let tokens = vec![
+            *aligner.token_to_id.get("나").unwrap(),
+            *aligner.token_to_id.get("는").unwrap(),
+        ];
+        // 40프레임 중 20~30 구간에서만 해당 토큰 확률이 높은 emission을 만든다.
+        let vocab = 10;
+        let mut e = Array2::<f32>::from_elem((40, vocab), -8.0);
+        for f in 0..40 { e[[f, aligner.blank_id]] = -0.2; }
+        for f in 20..25 { e[[f, tokens[0]]] = 5.0; }
+        for f in 25..30 { e[[f, tokens[1]]] = 5.0; }
+
+        // 구간 [20,30)으로 제한해 정렬하면 두 토큰이 그 안에만 배치돼야 한다.
+        let sub = aligner.forced_align_range(&e, &tokens, 20, 30, -0.05, 0.0, 0.0);
+        assert_eq!(sub.len(), 10, "반환 길이는 구간 길이와 같아야 함");
+        let visited: Vec<usize> = sub.iter().copied().filter(|&t| t != usize::MAX).collect();
+        assert!(!visited.is_empty(), "구간 안에서 토큰이 배치돼야 함");
+        assert!(visited.iter().all(|&t| t < tokens.len()), "로컬 인덱스 범위 유지");
+
+        // 전체 구간 정렬과 비교 — 구간 제한이 실제로 다른 결과를 만들 수 있어야
+        // 의미가 있다(같은 함수로 전체를 돌린 것과 길이가 다름).
+        let full = aligner.forced_align(&e, &tokens, -0.05, 0.0, 0.0);
+        assert_eq!(full.len(), 40);
+    }
+
+    fn mk_line(text: &str, start_ms: i64, end_ms: i64) -> LineAlignment {
+        LineAlignment {
+            text: text.to_string(),
+            extracted_text: String::new(),
+            start_ms,
+            end_ms,
+            words: vec![WordAlignment { word: text.to_string(), start_ms, end_ms }],
+        }
+    }
+
+    #[test]
+    fn repairs_line_that_swallowed_a_foreign_or_instrumental_section() {
+        // 통상 6글자에 ~1.2초인 곡에서, 한 줄만 20초를 삼킨 상황.
+        let mut lines = vec![
+            mk_line("아무도안믿었던", 1_000, 2_200),
+            mk_line("사랑의종말론", 2_200, 3_400),
+            mk_line("왔다네정말로", 3_400, 23_400), // ← 20초, 비정상
+            mk_line("멸종위기사랑", 23_400, 24_600),
+            mk_line("내일이면인류가", 24_600, 25_800),
+        ];
+        let n = repair_implausible_durations(&mut lines);
+        assert_eq!(n, 1, "비정상 줄 1개만 보정돼야 함");
+
+        // 시작은 유지, 끝만 타당한 길이로 잘림.
+        assert_eq!(lines[2].start_ms, 3_400, "시작 시각은 건드리지 않음");
+        let dur = lines[2].end_ms - lines[2].start_ms;
+        assert!(dur < 5_000, "20초가 타당한 길이로 잘려야 함: {}ms", dur);
+        assert!(dur > 0);
+        // 단어 타임스탬프도 새 끝을 넘지 않아야 함.
+        assert!(lines[2].words[0].end_ms <= lines[2].end_ms);
+
+        // 정상 줄들은 그대로.
+        assert_eq!(lines[0].end_ms, 2_200);
+        assert_eq!(lines[4].end_ms, 25_800);
+    }
+
+    #[test]
+    fn repair_leaves_normal_alignment_untouched() {
+        // 길이가 글자 수에 비례해 자연스러운 경우 — 아무것도 건드리면 안 됨.
+        let mut lines = vec![
+            mk_line("가나다", 0, 600),
+            mk_line("가나다라마바", 600, 1_800),
+            mk_line("가나", 1_800, 2_200),
+            mk_line("가나다라", 2_200, 3_000),
+            mk_line("가나다라마", 3_000, 4_000),
+        ];
+        let before: Vec<_> = lines.iter().map(|l| (l.start_ms, l.end_ms)).collect();
+        let n = repair_implausible_durations(&mut lines);
+        assert_eq!(n, 0, "정상 정렬은 보정하지 않아야 함");
+        let after: Vec<_> = lines.iter().map(|l| (l.start_ms, l.end_ms)).collect();
+        assert_eq!(before, after);
+    }
+
+    #[test]
+    fn repair_skips_when_too_few_lines_to_judge() {
+        // 표본이 적으면 통상 속도를 신뢰할 수 없으므로 손대지 않는다.
+        let mut lines = vec![mk_line("가", 0, 30_000), mk_line("나", 30_000, 30_500)];
+        assert_eq!(repair_implausible_durations(&mut lines), 0);
+        assert_eq!(lines[0].end_ms, 30_000, "표본 부족 시 원본 유지");
     }
 
     /// 다른 언어 줄이 낀 혼합 곡에서, 그 구간을 CTC blank가 흡수해 자기 언어
