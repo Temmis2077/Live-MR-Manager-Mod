@@ -173,11 +173,10 @@ async function initApp() {
     await refreshOutputDevices();
   } catch (err) {}
 
-  try {
-    const { initTrackMixer, refreshMixerState } = await import('./js/track-mixer.js');
-    initTrackMixer();
-    await refreshMixerState();
-  } catch (err) {}
+  // 트랙 믹서(페이더·음소거/솔로·메트로놈·채널 라우팅·지연 보정)는 개발용
+  // 최소 UI였어서 이번 릴리즈에서는 화면에서 뺐다. 백엔드 기능은 그대로 살아
+  // 있고 안전한 기본값으로 동작한다(리미터 켜짐, MR 채널 꺼짐, 메트로놈 꺼짐).
+  // 제대로 된 믹서 UI를 만들 때 src/js/track-mixer.js를 다시 연결하면 된다.
 
   try {
     const { initDereverbControls, refreshDereverbStatus } = await import('./js/dereverb.js');

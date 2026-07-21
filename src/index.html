@@ -834,82 +834,6 @@
                 </div>
               </div>
 
-              <!-- 트랙 믹서 (개발용 최소 UI) -->
-              <div class="ai-model-card" style="flex-direction: column; align-items: stretch; gap: 10px;">
-                <div class="ai-info-left">
-                  <h2 class="ai-title-large">트랙 믹서 (개발용)</h2>
-                  <div class="ai-model-desc">보컬/MR 독립 페이더 · 음소거 · 솔로. 볼륨·밸런스 위에 곱해지는 트림입니다.</div>
-                  <label style="display:flex; align-items:center; gap:6px; margin-top:8px; font-size:0.78rem; cursor:pointer;">
-                    <input type="checkbox" id="limiter-enable" checked style="width:15px; height:15px;">
-                    출력 리미터 (합산 클리핑 방지 · 기본 켜짐)
-                  </label>
-                </div>
-                <div class="track-mixer-row" data-track="vocal">
-                  <span class="track-mixer-label">보컬</span>
-                  <input type="range" min="0" max="100" value="100" class="track-fader" data-track="vocal">
-                  <span class="track-fader-val" data-track="vocal">100%</span>
-                  <button class="btn-ai-action secondary track-mute" data-track="vocal">음소거</button>
-                  <button class="btn-ai-action secondary track-solo" data-track="vocal">솔로</button>
-                </div>
-                <div class="track-mixer-row" data-track="inst">
-                  <span class="track-mixer-label">MR</span>
-                  <input type="range" min="0" max="100" value="100" class="track-fader" data-track="inst">
-                  <span class="track-fader-val" data-track="inst">100%</span>
-                  <button class="btn-ai-action secondary track-mute" data-track="inst">음소거</button>
-                  <button class="btn-ai-action secondary track-solo" data-track="inst">솔로</button>
-                </div>
-
-                <!-- 메트로놈 -->
-                <div class="track-mixer-row" data-track="metro">
-                  <span class="track-mixer-label">메트로놈</span>
-                  <input type="range" min="0" max="100" value="80" class="track-fader" data-track="metro">
-                  <span class="track-fader-val" data-track="metro">80%</span>
-                  <button class="btn-ai-action secondary metro-enable">켜기</button>
-                  <label style="font-size:0.76rem; color:var(--text-muted); display:flex; align-items:center; gap:4px;">BPM
-                    <input type="number" id="metro-bpm" min="0" max="300" value="0" style="width:56px; padding:4px 6px; border-radius:6px; background:var(--surface-1); color:var(--text-main); border:1px solid var(--glass-border);" title="0 = 곡 자동(미구현 시 120)">
-                  </label>
-                  <button class="btn-ai-action secondary metro-tap" title="박자에 맞춰 두드리세요. 자동 탐지 BPM에서 시작해 탭으로 보정됩니다.">탭</button>
-                </div>
-
-                <!-- 채널 라우팅 매트릭스 -->
-                <div style="margin-top:6px; font-size:0.8rem; font-weight:700;">채널 라우팅</div>
-                <div class="route-matrix">
-                  <div class="route-head"></div>
-                  <div class="route-head">보컬</div>
-                  <div class="route-head">MR</div>
-                  <div class="route-head">메트로놈</div>
-
-                  <div class="route-ch-label">모니터</div>
-                  <input type="checkbox" class="route-cb" data-channel="monitor" data-source="vocal">
-                  <input type="checkbox" class="route-cb" data-channel="monitor" data-source="inst">
-                  <input type="checkbox" class="route-cb" data-channel="monitor" data-source="metro">
-
-                  <div class="route-ch-label">MR 출력</div>
-                  <input type="checkbox" class="route-cb" data-channel="mr" data-source="vocal">
-                  <input type="checkbox" class="route-cb" data-channel="mr" data-source="inst">
-                  <input type="checkbox" class="route-cb" data-channel="mr" data-source="metro">
-                </div>
-
-                <!-- MR 채널 출력 장치 -->
-                <div class="track-mixer-row" style="margin-top:4px;">
-                  <span class="track-mixer-label" style="width:auto;">MR 채널 장치</span>
-                  <select id="mr-output-device-select" style="flex:1; min-width:160px; padding:8px 10px; border-radius:8px; background:var(--surface-1); color:var(--text-main); border:1px solid var(--glass-border);"></select>
-                </div>
-
-                <!-- 지연 보정 (버스별) -->
-                <div style="margin-top:6px; font-size:0.8rem; font-weight:700;">지연 보정 <span style="font-weight:400; color:var(--text-muted); font-size:0.72rem;">방송/녹음에서 목소리와 MR 정렬용 · ms 늘리면 그 채널이 늦게 나감</span></div>
-                <div class="track-mixer-row">
-                  <span class="track-mixer-label" style="width:auto;">모니터</span>
-                  <input type="number" id="mon-delay-ms" min="0" max="2000" value="0" style="width:70px; padding:6px 8px; border-radius:6px; background:var(--surface-1); color:var(--text-main); border:1px solid var(--glass-border);"> ms
-                  <span class="bus-est-label" data-bus="monitor" style="font-size:0.72rem; color:var(--text-muted);"></span>
-                </div>
-                <div class="track-mixer-row">
-                  <span class="track-mixer-label" style="width:auto;">MR 출력</span>
-                  <input type="number" id="mr-delay-ms" min="0" max="2000" value="0" style="width:70px; padding:6px 8px; border-radius:6px; background:var(--surface-1); color:var(--text-main); border:1px solid var(--glass-border);"> ms
-                  <span class="bus-est-label" data-bus="mr" style="font-size:0.72rem; color:var(--text-muted);"></span>
-                </div>
-              </div>
-
               <!-- MR 캐시 저장 형식 -->
               <div class="ai-model-card mr-cache-format-card">
                 <div class="ai-info-left">
@@ -986,6 +910,29 @@
                 </div>
                 <div class="ai-actions-right" style="justify-content: flex-start;">
                   <button id="btn-open-gpu-pack" class="btn-ai-action secondary">폴더 열기</button>
+                </div>
+              </div>
+
+              <!-- 정렬 디리버브 (가사 정렬 정확도) -->
+              <div class="ai-model-card">
+                <div class="ai-info-left" style="flex: 1;">
+                  <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px;">
+                    <div id="dereverb-status" class="ai-status-badge status-offline">확인 중...</div>
+                  </div>
+                  <h2 class="ai-title-large" style="margin: 0 0 8px;">정렬 디리버브 (선택)</h2>
+                  <div class="ai-model-desc">
+                    분리된 보컬에서 <strong>잔향·이펙트를 걷어낸 뒤 가사 정렬</strong>을 수행해
+                    정확도를 높입니다. 리버브가 심한 곡이나 영어 가사에서 특히 효과가 있습니다.
+                    <br><strong>재생에는 영향이 없습니다</strong> — 정렬할 때만 쓰고 결과를 캐시합니다.
+                    <br>GPU 가속 팩이 필요하며, 모델이 없거나 실패하면 원본 보컬로 정렬합니다.
+                  </div>
+                  <label style="display:flex; align-items:center; gap:6px; margin-top:10px; font-size:0.8rem; cursor:pointer;">
+                    <input type="checkbox" id="dereverb-enable" checked style="width:15px; height:15px;">
+                    가사 정렬에 디리버브 사용
+                  </label>
+                </div>
+                <div class="ai-actions-right" style="justify-content: flex-start;">
+                  <button type="button" id="dereverb-open-dir" class="btn-ai-action secondary" title="변환한 디리버브 ONNX 모델을 이 폴더에 두세요.">모델 폴더</button>
                 </div>
               </div>
 
@@ -1114,18 +1061,6 @@
                 </svg>
               </button>
               <div class="section-body">
-                <!-- 정렬 디리버브 (정확도 향상) -->
-                <div class="dereverb-bar" style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:8px 10px; margin-bottom:10px; background:var(--surface-1); border:1px solid var(--glass-border); border-radius:8px;">
-                  <label style="display:flex; align-items:center; gap:6px; font-size:0.8rem; cursor:pointer;">
-                    <input type="checkbox" id="dereverb-enable" checked style="width:15px; height:15px;">
-                    <strong>정렬 디리버브</strong>
-                  </label>
-                  <span style="font-size:0.72rem; color:var(--text-muted); flex:1; min-width:180px;">
-                    분리된 보컬의 잔향·이펙트를 걷어내고 정렬해 정확도를 높입니다(영어·리버브 심한 곡). 재생엔 영향 없음.
-                  </span>
-                  <span id="dereverb-status" style="font-size:0.72rem; font-weight:700;"></span>
-                  <button type="button" class="app-btn" id="dereverb-open-dir" title="변환한 디리버브 ONNX 모델을 이 폴더에 두세요.">모델 폴더</button>
-                </div>
                 <div id="alignment-queue-actions" style="display:none; justify-content:flex-end; margin-bottom:10px;">
                   <button type="button" class="app-btn" id="alignment-clear-all" title="처리 중인 정렬은 취소하고 대기·완료·오류 항목을 모두 지웁니다.">대기열 전체 지우기</button>
                 </div>

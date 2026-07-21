@@ -21,16 +21,16 @@ export async function refreshDereverbStatus() {
     if (st) {
       // GPU 가속 팩이 없으면 모델이 있어도 건너뛴다(CPU로는 비현실적으로 느림) —
       // 그 사실을 먼저 알려서 "왜 안 되지" 혼란을 막는다.
+      let label, cls;
       if (!s.installed) {
-        st.textContent = '모델 없음 (원본으로 정렬)';
-        st.style.color = 'var(--text-muted)';
+        label = '모델 없음'; cls = 'status-offline';
       } else if (!s.gpuPackInstalled) {
-        st.textContent = 'GPU 가속 팩 필요 (원본으로 정렬)';
-        st.style.color = '#d9a441';
+        label = 'GPU 가속 팩 필요'; cls = 'status-offline';
       } else {
-        st.textContent = '모델 설치됨';
-        st.style.color = 'var(--accent-primary)';
+        label = '사용 가능'; cls = 'status-online';
       }
+      st.textContent = label;
+      st.className = 'ai-status-badge ' + cls;
     }
   } catch (_) {}
 }
