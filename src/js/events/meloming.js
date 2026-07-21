@@ -5,6 +5,30 @@ import { invoke, listen } from '../tauri-bridge.js';
 import { showNotification } from '../utils.js';
 import { switchTab } from './navigation.js';
 
+/**
+ * 멜로밍 기능 노출 여부.
+ *
+ * 현재 멜로밍 인증 키를 받지 못해 로그인·가져오기·보내기가 실제로 동작할 수
+ * 없다. 눌러도 실패하는 버튼을 두면 "고장난 앱"으로 보이므로 **UI만** 숨긴다.
+ * 백엔드 커맨드와 이 모듈의 로직은 그대로 두므로, 키를 받으면 이 값을 true로
+ * 되돌리는 것만으로 복구된다.
+ */
+const MELOMING_UI_ENABLED = false;
+
+/** 멜로밍 관련 화면 요소를 모두 숨긴다(사이드탭·헤더 계정·설정 카드). */
+function hideMelomingUi() {
+  const nav = document.getElementById('nav-meloming');
+  if (nav) nav.hidden = true;
+
+  const account = document.getElementById('meloming-account');
+  if (account) account.hidden = true;
+
+  // 설정 탭의 "멜로밍 노래책" 그룹 전체(헤더 포함)를 숨긴다.
+  const pull = document.getElementById('btn-meloming-pull');
+  const group = pull ? pull.closest('.settings-group') : null;
+  if (group) group.hidden = true;
+}
+
 const PLACEHOLDER_AVATAR = './assets/images/app-icon.png';
 
 let pendingOAuthState = null;
@@ -222,6 +246,13 @@ async function runMelomingPush(pullBtn, pushBtn) {
 }
 
 export async function initMelomingListeners() {
+  // 인증 키가 없어 실제로 동작할 수 없는 동안에는 화면에서 감추고 배선하지 않는다.
+  // (백엔드 커맨드는 그대로 살아 있어 플래그만 되돌리면 복구된다.)
+  if (!MELOMING_UI_ENABLED) {
+    hideMelomingUi();
+    return;
+  }
+
   setupAccountWidget();
   await refreshAccountWidget();
 
