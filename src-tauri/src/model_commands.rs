@@ -397,11 +397,16 @@ pub async fn youtube_metadata_fetcher(url: String) -> Result<SongMetadata, Strin
         Ok(m) => {
             let secs = m.duration.unwrap_or(0.0) as u64;
             let duration = format!("{}:{:02}", secs / 60, secs % 60);
+            let raw_title = m.title.unwrap_or_else(|| "Unknown Video".into());
+            // 영상 제목이 "아티스트 - 곡제목" 류의 규칙적인 패턴을 따르는 경우가
+            // 많아, 그대로 쓰지 않고 추정해서 프리필한다(곡 추가 창에서 바로
+            // 편집 가능하므로 잘못 추정돼도 기존 "영상 제목 그대로"보다 나쁘지 않음).
+            let parsed = crate::title_parser::parse_youtube_title(&raw_title, m.uploader.as_deref());
             Ok(SongMetadata {
-                id: None, title: m.title.unwrap_or_else(|| "Unknown Video".into()), 
+                id: None, title: parsed.title,
                 thumbnail: m.thumbnail.unwrap_or_default(), duration,
                 source: "youtube".into(), path: url, pitch: Some(0.0), tempo: Some(1.0), volume: Some(100.0),
-                artist: m.uploader, tags: None, genre: None, categories: None,
+                artist: parsed.artist, tags: None, genre: None, categories: None,
                 play_count: Some(0), 
                 date_added: Some(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs()),
                 is_mr: Some(false), is_separated: Some(false),

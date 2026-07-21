@@ -17,6 +17,7 @@ pub mod onnx_engine;
 mod library;
 pub mod gpu_pack;
 pub mod dereverb;
+mod title_parser;
 mod search;
 mod meloming;
 mod key_bpm;
