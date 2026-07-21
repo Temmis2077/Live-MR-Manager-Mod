@@ -76,6 +76,60 @@ export function dominantScriptLang(text) {
  * @param enLines 영어 모델 결과 lines
  * @returns 병합된 lines (길이가 다르면 긴 쪽 기준, 없는 쪽은 있는 쪽 사용)
  */
+const MIN_GAP_MS = 200;
+
+/** 배치 비중 — 글자가 많은 줄이 더 오래 불린다고 본다. */
+function lineWeight(text) {
+    return Math.max(1, String(text || '').replace(/\s+/g, '').length);
+}
+
+/** lines를 [fromMs, toMs] 구간에 글자 수 비례로 균등 배치한다(제자리 수정). */
+function distributeInGap(lines, fromMs, toMs) {
+    const span = Math.max(0, toMs - fromMs);
+    const total = lines.reduce((s, l) => s + lineWeight(l.text), 0);
+    let cursor = fromMs;
+    lines.forEach((l) => {
+        const share = total > 0 ? (span * lineWeight(l.text)) / total : 0;
+        l.start_ms = Math.round(cursor);
+        cursor += share;
+        l.end_ms = Math.round(Math.max(l.start_ms + MIN_GAP_MS, cursor));
+    });
+}
+
+/** run이 [fromMs, toMs] 안에 순서대로(최소 간격 확보) 들어가 있는지. */
+function runFitsGap(lines, fromMs, toMs) {
+    let prev = fromMs;
+    for (const l of lines) {
+        if (typeof l.start_ms !== 'number') return false;
+        if (l.start_ms < prev || l.start_ms > toMs) return false;
+        prev = l.start_ms + MIN_GAP_MS;
+    }
+    return prev <= toMs + MIN_GAP_MS;
+}
+
+/**
+ * 듀얼(한국어+영어) 정렬 결과를 줄 단위로 병합한다.
+ *
+ * 두 결과는 같은 가사 입력에서 나오므로 줄 순서·개수가 같다(인덱스 병합).
+ * 줄마다 우세 스크립트 언어의 결과를 채택 — 그 줄을 실제 음향과 정렬한 건
+ * 해당 언어 모델이고, 반대 모델은 그 줄을 보간만 하기 때문이다.
+ *
+ * **문제**: 두 패스는 서로 다른 Viterbi 경로라 시간축이 어긋난다. 특히 곡의
+ * 소수 언어 쪽 모델은 다른 언어 노래 구간을 지나며 누적 드리프트가 크다
+ * (실측: 한국어 위주 곡에서 한국어 줄은 오차 0.03~0.5초인데, 영어 줄은
+ * 뒤로 갈수록 8초 → 16초까지 밀림).
+ *
+ * 예전에는 순서가 뒤집히면 앞 줄 시작 시각으로 클램프했는데, 그러면 밀린 줄
+ * 하나가 뒤따르는 정확한 줄들을 전부 자기 시각으로 끌어당겨 **여러 줄이 한 점에
+ * 쌓였다**(실측: 6줄이 같은 타임스탬프).
+ *
+ * 그래서 **줄 수가 많은 쪽 패스를 기준(anchor)으로 삼고**, 소수 언어 줄들은
+ * 앵커 사이 구간에 넣는다. 자기 시각이 그 구간에 순서대로 들어맞으면 그대로
+ * 두고(정확한 정렬을 버리지 않는다), 구간을 벗어나면 글자 수 비례로 재배치한다.
+ *
+ * @param koLines 한국어 모델 결과 lines ({text, start_ms, end_ms})
+ * @param enLines 영어 모델 결과 lines
+ */
 export function mergeDualAlignmentLines(koLines, enLines) {
     const ko = Array.isArray(koLines) ? koLines : [];
     const en = Array.isArray(enLines) ? enLines : [];
@@ -84,24 +138,59 @@ export function mergeDualAlignmentLines(koLines, enLines) {
     for (let i = 0; i < n; i++) {
         const k = ko[i];
         const e = en[i];
-        let pick;
-        if (k && e) {
-            pick = dominantScriptLang((k.text || e.text || '')) === 'en' ? e : k;
-        } else {
-            pick = k || e;
-        }
-        merged.push({ ...pick });
+        const text = (k && k.text) || (e && e.text) || '';
+        const lang = dominantScriptLang(text);
+        const pick = (k && e) ? (lang === 'en' ? e : k) : (k || e);
+        merged.push({ ...pick, _lang: lang });
     }
-    // 시간 단조성 보정: 두 독립 경로의 시각이 섞여 순서가 뒤집힌 줄은
-    // 앞 줄 시작 이후로 밀고 최소 길이(0.2s)를 보장한다.
+
+    // 기준 패스 = 줄이 더 많은 언어. 앵커가 많을수록 시간축이 안정적이다.
+    let koCount = 0;
+    merged.forEach((l) => { if (l._lang === 'ko') koCount++; });
+    const refLang = koCount >= merged.length - koCount ? 'ko' : 'en';
+
+    // 기준 언어 줄(앵커) 사이의 비기준 줄 묶음을 구간에 맞춰 배치한다.
+    const anchorIdx = [];
+    merged.forEach((l, i) => {
+        if (l._lang === refLang && typeof l.start_ms === 'number') anchorIdx.push(i);
+    });
+
+    if (anchorIdx.length > 0) {
+        let cursor = 0;
+        for (let a = 0; a <= anchorIdx.length; a++) {
+            const from = a === 0 ? 0 : anchorIdx[a - 1];
+            const to = a === anchorIdx.length ? merged.length : anchorIdx[a];
+            const run = merged.slice(a === 0 ? 0 : from + 1, to);
+            if (run.length === 0) { cursor = to; continue; }
+
+            const prevAnchor = a === 0 ? null : merged[from];
+            const nextAnchor = a === anchorIdx.length ? null : merged[to];
+            const gapFrom = prevAnchor
+                ? Math.max(prevAnchor.start_ms + MIN_GAP_MS, prevAnchor.end_ms || 0)
+                : 0;
+            const gapTo = nextAnchor
+                ? nextAnchor.start_ms - MIN_GAP_MS
+                : Math.max(gapFrom, (run[run.length - 1]?.end_ms) || gapFrom);
+
+            if (gapTo <= gapFrom || !runFitsGap(run, gapFrom, gapTo)) {
+                distributeInGap(run, gapFrom, Math.max(gapFrom, gapTo));
+            }
+            cursor = to;
+        }
+    }
+
+    // 마지막 안전망: 그래도 남은 역전은 최소 간격을 주며 밀어낸다.
+    // (예전처럼 같은 시각으로 눌러 쌓이지 않도록 반드시 MIN_GAP_MS를 더한다.)
     let prevStart = -Infinity;
     merged.forEach((line) => {
         if (typeof line.start_ms !== 'number') return;
         if (line.start_ms < prevStart) line.start_ms = prevStart;
-        if (typeof line.end_ms !== 'number' || line.end_ms < line.start_ms + 200) {
-            line.end_ms = line.start_ms + 200;
+        if (typeof line.end_ms !== 'number' || line.end_ms < line.start_ms + MIN_GAP_MS) {
+            line.end_ms = line.start_ms + MIN_GAP_MS;
         }
-        prevStart = line.start_ms;
+        prevStart = line.start_ms + MIN_GAP_MS;
     });
+
+    merged.forEach((l) => { delete l._lang; });
     return merged;
 }

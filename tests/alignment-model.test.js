@@ -93,7 +93,7 @@ describe('mergeDualAlignmentLines (랩/혼합 줄별 병합)', () => {
     expect(merged[1].start_ms).toBe(4000); // 영어 줄 → en 결과
   });
 
-  it('repairs monotonicity when mixed passes disagree on ordering', () => {
+  it('repairs monotonicity without stacking lines on one timestamp', () => {
     const ko = [
       { text: '한국어 줄', start_ms: 10000, end_ms: 12000 },
       { text: 'english line', start_ms: 12000, end_ms: 14000 },
@@ -104,8 +104,73 @@ describe('mergeDualAlignmentLines (랩/혼합 줄별 병합)', () => {
     ];
     const merged = mergeDualAlignmentLines(ko, en);
     expect(merged[0].start_ms).toBe(10000);
-    expect(merged[1].start_ms).toBe(10000); // 앞 줄 시작 이후로 클램프
+    // 예전엔 앞 줄과 같은 10000으로 눌렀는데, 그러면 여러 줄이 한 점에 쌓인다.
+    // 이제는 앵커 뒤 구간으로 밀어 서로 다른 시각을 갖는다.
+    expect(merged[1].start_ms).toBeGreaterThan(merged[0].start_ms);
     expect(merged[1].end_ms).toBeGreaterThanOrEqual(merged[1].start_ms + 200);
+  });
+
+  it('드리프트한 소수 언어 패스가 정확한 다수 언어 줄을 끌어당기지 않는다', () => {
+    // 실측 사례(멸종위기사랑): 한국어 위주 곡에서 한국어 패스는 오차 0.03~0.5초로
+    // 정확했지만, 영어 패스는 뒤로 갈수록 8초 → 16초까지 밀렸다. 예전 병합은
+    // 밀린 영어 줄에 뒤따르는 한국어 줄들을 전부 같은 시각으로 눌러 붙였다.
+    const koPass = [
+      { text: '왔다네 정말로', start_ms: 18480, end_ms: 21000 },
+      { text: '아무도 안 믿었던', start_ms: 21060, end_ms: 26000 },
+      { text: '사랑의 종말론', start_ms: 26860, end_ms: 29000 },
+      // 영어 줄은 한국어 모델이 보간만 한 값
+      { text: "It's over tonight", start_ms: 29500, end_ms: 30000 },
+      { text: 'God mercy', start_ms: 30000, end_ms: 30500 },
+      { text: 'Where the hell', start_ms: 30500, end_ms: 31000 },
+      { text: 'Did you hear that', start_ms: 31000, end_ms: 31500 },
+      { text: 'You heard that', start_ms: 31500, end_ms: 32000 },
+      { text: "What's it sound", start_ms: 32000, end_ms: 32500 },
+      { text: 'Back in the day', start_ms: 32500, end_ms: 33000 },
+      // 한국어 줄 — 정확
+      { text: '한 사람당 하나의', start_ms: 52540, end_ms: 55000 },
+      { text: '사랑이 있었대', start_ms: 55450, end_ms: 58000 },
+      { text: '내일이면', start_ms: 58260, end_ms: 60000 },
+      { text: '인류가 잃어버릴', start_ms: 60770, end_ms: 63000 },
+      { text: '멸종위기사랑', start_ms: 63880, end_ms: 66000 },
+    ];
+    const enPass = koPass.map((l) => ({ ...l }));
+    // 영어 패스: 첫 줄은 맞지만 뒤로 갈수록 누적 드리프트
+    const drifted = {
+      "It's over tonight": 28000,
+      'God mercy': 34600,
+      'Where the hell': 47360,
+      'Did you hear that': 55740,
+      'You heard that': 60960,
+      "What's it sound": 64100,
+      'Back in the day': 66960, // 실제로는 50730이어야 함 — 16초 밀림
+    };
+    enPass.forEach((l) => {
+      if (drifted[l.text] != null) { l.start_ms = drifted[l.text]; l.end_ms = l.start_ms + 1500; }
+    });
+
+    const merged = mergeDualAlignmentLines(koPass, enPass);
+
+    // 1) 어떤 두 줄도 같은 시각에 쌓이지 않는다 (예전 실패: 6줄이 01:06.96)
+    const starts = merged.map((l) => l.start_ms);
+    expect(new Set(starts).size).toBe(starts.length);
+
+    // 2) 시간이 단조 증가한다
+    for (let i = 1; i < starts.length; i++) {
+      expect(starts[i]).toBeGreaterThan(starts[i - 1]);
+    }
+
+    // 3) 정확했던 한국어 줄들은 그대로 유지된다 (드리프트에 끌려가지 않음)
+    const byText = Object.fromEntries(merged.map((l) => [l.text, l.start_ms]));
+    expect(byText['한 사람당 하나의']).toBe(52540);
+    expect(byText['멸종위기사랑']).toBe(63880);
+    expect(byText['왔다네 정말로']).toBe(18480);
+
+    // 4) 영어 줄들은 앞뒤 한국어 앵커 사이(사랑의 종말론 ~ 한 사람당 하나의)에 놓인다
+    const engTexts = Object.keys(drifted);
+    engTexts.forEach((t) => {
+      expect(byText[t]).toBeGreaterThan(26860);
+      expect(byText[t]).toBeLessThan(52540);
+    });
   });
 
   it('handles length mismatch by falling back to whichever side exists', () => {
