@@ -1051,28 +1051,32 @@ export class ForcedAlignmentViewer {
             if (seg.approx) this.ctx.setLineDash([]);
 
             // 블럭 위에 해당 가사 표시 — 어느 블럭이 어느 줄인지 파형에서 바로
-            // 알 수 있게. 블럭 폭을 넘어가면 잘라내고(…), 너무 좁으면 생략.
+            // 알 수 있게. 블럭 폭을 넘어가면 잘라내고, 너무 좁으면 생략.
             const bx1 = Math.max(0, x1);
             const bx2 = Math.min(width, x2);
             const boxW = bx2 - bx1;
             if (boxW > 24) {
                 const label = (getSyncText(seg) || '').trim();
                 if (label) {
+                    const isSelected = idx === this.state.selectedSegmentIndex;
                     this.ctx.save();
                     this.ctx.beginPath();
                     this.ctx.rect(bx1 + 3, 0, boxW - 6, height);
                     this.ctx.clip();
                     this.ctx.font = '11px Inter, sans-serif';
                     this.ctx.textBaseline = 'top';
-                    const isSelected = idx === this.state.selectedSegmentIndex;
+                    // 글자 폭에 맞춘 작은 반투명 칩을 깔아 가독성을 확보한다.
+                    // (두꺼운 외곽선을 쓰면 글자 획보다 테두리가 굵어져 상단이
+                    //  검게 뭉개지고 파형 영역 전체가 답답해 보인다.)
+                    const tw = Math.min(this.ctx.measureText(label).width, boxW - 8);
+                    this.ctx.fillStyle = isSelected
+                        ? 'rgba(0, 0, 0, 0.55)'
+                        : 'rgba(0, 0, 0, 0.35)';
+                    this.ctx.fillRect(bx1 + 3, 2, tw + 6, 15);
                     this.ctx.fillStyle = isSelected
                         ? cssVar('--text-main', '#ffffff')
-                        : cssVar('--text-dim', 'rgba(255,255,255,0.75)');
-                    // 가독성 확보용 얇은 외곽선(파형 위에 겹쳐도 읽히게).
-                    this.ctx.strokeStyle = 'rgba(0,0,0,0.55)';
-                    this.ctx.lineWidth = 2.5;
-                    this.ctx.strokeText(label, bx1 + 4, 3);
-                    this.ctx.fillText(label, bx1 + 4, 3);
+                        : cssVar('--text-dim', 'rgba(255,255,255,0.7)');
+                    this.ctx.fillText(label, bx1 + 6, 4);
                     this.ctx.restore();
                 }
             }
@@ -1121,6 +1125,10 @@ export class ForcedAlignmentViewer {
         if (this.state.waveformPoints) {
             this.ctx.beginPath();
             this.ctx.strokeStyle = palette.waveformStroke;
+            // lineWidth를 명시한다 — 이걸 안 하면 위 세그먼트 루프에서 마지막으로
+            // 설정된 값(경계 hover=2, 경계 선택=3)을 그대로 물려받아, 경계를
+            // 선택하기만 해도 파형 선이 3배 굵어져 뭉개져 보였다.
+            this.ctx.lineWidth = 1;
             const points = this.state.waveformPoints;
             for (let i = 0; i < width; i++) {
                 const targetTime = this.xToTime(i);
