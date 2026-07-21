@@ -798,7 +798,29 @@ impl Aligner {
         }
     }
 
+    /// 이 줄에 이 모델이 표현할 수 있는 글자가 하나도 없는지 — 랩/혼합(한+영)
+    /// 곡에서 한쪽 모델 패스가 다른 언어로만 된 줄 전체를 만났을 때 true.
+    /// (줄 안에 낀 단어 하나가 다른 언어인 경우는 해당 없음 — 그건 기존대로
+    /// 0폭으로 둔다. "완전히 낯선 줄 전체"만 다르게 취급한다.)
+    fn is_line_foreign(&self, line: &str) -> bool {
+        !line.chars().any(|c| self.is_representable_char(c))
+    }
+
     pub fn tokenize(&self, text: &str) -> (Vec<usize>, Vec<(usize, usize, String)>) {
+        // 줄 단위로 "이 줄 전체가 이 모델에 낯선 언어인지" 미리 계산해 단어별로
+        // 펼쳐둔다(랩/혼합 곡에서 한쪽 언어 모델 패스가 다른 언어 블록 전체를
+        // 만나는 경우를 감지하기 위함). split_whitespace는 줄바꿈도 공백으로
+        // 취급하므로, 줄별로 순회한 단어 순서가 text.split_whitespace() 전체
+        // 순서와 정확히 일치한다.
+        let foreign_line_flags: Vec<bool> = {
+            let mut flags = Vec::new();
+            for line in text.lines() {
+                let foreign = self.is_line_foreign(line);
+                for _ in line.split_whitespace() { flags.push(foreign); }
+            }
+            flags
+        };
+
         let mut ids = Vec::new();
         let mut word_spans = Vec::new();
         let words: Vec<&str> = text.split_whitespace().collect();
@@ -815,10 +837,25 @@ impl Aligner {
                 .map(|c| if c == '\u{2019}' { '\'' } else { c })
                 .collect();
 
-            // 남는 글자가 없으면(순수 기호/숫자/타 언어 단어) 정렬 대상에서
-            // 제외 — zero-width span으로 두고 get_word_timestamps가 이웃 사이
-            // 시간을 나눠 보간한다. word_spans엔 원문 그대로 보존.
             if filtered.is_empty() {
+                let is_foreign_line = foreign_line_flags.get(wi).copied().unwrap_or(false);
+                if is_foreign_line {
+                    // 줄 전체가 다른 언어라 이 모델은 단 한 글자도 인식 못 함.
+                    // 0폭으로 두면 forced_align이 이 구간의 실제 노래 길이를
+                    // 통째로 무시해, 순차 정렬 특성상 그 뒤 모든 줄이 복구
+                    // 불가능하게 밀린다(괄호 코러스 삭제와 같은 근본 원인).
+                    // 이 구간의 인식 정확도는 필요 없다(랩/혼합 모드는 자기
+                    // 언어 줄의 결과만 채택) — 글자 수만큼 UNK를 채워 "여기에
+                    // 실제 시간이 든다"는 것만 정렬기에 알려주면 된다.
+                    let n = word.chars().count().max(1);
+                    for _ in 0..n { ids.push(self.unk_id); }
+                    word_spans.push((start_idx, ids.len(), word.to_string()));
+                    if wi < words.len() - 1 { if let Some(sid) = self.space_id { ids.push(sid); } }
+                    continue;
+                }
+                // 같은 줄 안에 낀 낱개 기호·숫자·타언어 단어(기존 동작 그대로):
+                // zero-width span으로 두고 get_word_timestamps가 이웃 사이
+                // 시간을 나눠 보간한다. word_spans엔 원문 그대로 보존.
                 word_spans.push((start_idx, start_idx, word.to_string()));
                 if wi < words.len() - 1 { if let Some(sid) = self.space_id { ids.push(sid); } }
                 continue;
@@ -1284,6 +1321,37 @@ mod aligner_tests {
         // not merely mapped to unk_id.
         let unk_count = ids.iter().filter(|&&id| id == aligner.unk_id).count();
         assert_eq!(unk_count, 0, "skipped word must not contribute any UNK ids");
+    }
+
+    #[test]
+    fn tokenize_pads_wholly_foreign_lines_instead_of_zero_width() {
+        // 랩/혼합 곡: 한국어 모델 패스가 영어로만 된 줄 전체를 만나는 경우.
+        // "hater"(줄 안에 낀 단어)와 달리, 줄 전체가 영어면 그 구간에 실제
+        // 노래 길이만큼 시간이 있다는 걸 정렬기에 알려줘야 그 뒤 줄이 안 밀린다.
+        let vocab_path = write_test_vocab("foreign_line");
+        let aligner = Aligner::new(vocab_path.to_str().unwrap()).unwrap();
+
+        let text = "나는 간다\nIt's over tonight\n다시 온다";
+        let (ids, spans) = aligner.tokenize(text);
+        std::fs::remove_file(&vocab_path).ok();
+
+        // "나는","간다","It's","over","tonight","다시","온다" — 7단어.
+        assert_eq!(spans.len(), 7);
+
+        // 한국어 단어들은 여전히 실제 폭을 가진다.
+        assert_ne!(spans[0].0, spans[0].1, "나는");
+        assert_ne!(spans[1].0, spans[1].1, "간다");
+        // 영어 줄의 단어들("It's","over","tonight")은 이제 0폭이 아니라
+        // 글자 수만큼 UNK로 채워진다.
+        for i in 2..5 {
+            assert_ne!(spans[i].0, spans[i].1, "영어 줄 단어는 더 이상 0폭이 아니어야 함 (idx {})", i);
+        }
+        assert_ne!(spans[5].0, spans[5].1, "다시");
+        assert_ne!(spans[6].0, spans[6].1, "온다");
+
+        // 이번엔 UNK가 실제로 채워졌어야 한다("hater" 테스트와 반대).
+        let unk_count = ids.iter().filter(|&&id| id == aligner.unk_id).count();
+        assert!(unk_count > 0, "완전히 낯선 줄은 UNK로 시간 예산을 채워야 함");
     }
 
     #[test]
