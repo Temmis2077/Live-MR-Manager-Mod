@@ -280,20 +280,47 @@ export function getIntroSkipTargetSec(markers, toleranceSec = 1) {
  * Returns the number of segments updated.
  */
 /**
+ * 곡 구조 지시어 — 실제로 불리지 않는 라벨. 백엔드
+ * `alignment.rs::is_structure_directive`와 **같은 목록을 유지해야 한다**
+ * (아래 normalizeForMatch가 백엔드 clean_lyrics와 같은 결과를 내야 하므로).
+ */
+const STRUCTURE_DIRECTIVES = new Set([
+  'verse', 'chorus', 'pre-chorus', 'prechorus', 'post-chorus', 'postchorus',
+  'bridge', 'intro', 'outro', 'hook', 'refrain', 'interlude', 'instrumental',
+  'ad-lib', 'adlib', 'rap', 'spoken', 'guitar solo', 'solo', 'drop',
+  'build-up', 'buildup', 'breakdown', 'fade out', 'fade in', 'repeat',
+  '인트로', '벌스', '후렴', '브릿지', '간주', '아웃트로', '랩', '훅',
+  '프리코러스', '포스트코러스', '코러스', '절', '다리', '전주', '후주',
+  '애드립', '간주중', '반복',
+]);
+
+function isStructureDirective(inner) {
+  // 뒤에 붙는 숫자/공백 허용("verse 2", "후렴 1") — 백엔드와 동일 규칙.
+  const base = (inner || '').trim().toLowerCase().replace(/[\s\d]+$/, '');
+  return STRUCTURE_DIRECTIVES.has(base);
+}
+
+/**
  * 정렬 결과 매칭용 텍스트 정규화.
  *
- * 백엔드(alignment.rs::clean_lyrics)는 정렬 전 가사에서 대괄호/괄호 메타
- * ([Chorus]/(Intro))를 지우고 `?!.,-+_~` 등을 공백으로 치환하며, 토크나이저는
- * 따옴표("")·특수기호도 걷어낸다. 그래서 백엔드가 돌려주는 줄 텍스트는 원본
- * LRC 세그먼트 텍스트와 문장부호가 달라, 예전엔 문장부호가 든 줄(따옴표로
- * 감싼 줄, `don't`, `baby,`, `faith-departed` 등)이 정확히 일치하지 않아
- * 정렬이 병합되지 않았다. 양쪽을 같은 규칙으로 정규화해 비교한다:
- * 소문자화 → 괄호 메타 제거 → 글자/숫자 외 문자를 공백으로 → 공백 정리.
+ * 백엔드(alignment.rs::clean_lyrics)는 정렬 전 가사에서 `?!.,-+_~` 등을 공백으로
+ * 치환하고, 토크나이저는 따옴표("")·특수기호도 걷어낸다. 그래서 백엔드가
+ * 돌려주는 줄 텍스트는 원본 LRC 세그먼트 텍스트와 문장부호가 달라, 예전엔
+ * 문장부호가 든 줄(따옴표로 감싼 줄, `don't`, `baby,`, `faith-departed` 등)이
+ * 정확히 일치하지 않아 정렬이 병합되지 않았다. 양쪽을 같은 규칙으로 정규화해
+ * 비교한다: 소문자화 → 괄호 처리 → 글자/숫자 외 문자를 공백으로 → 공백 정리.
+ *
+ * **괄호 처리는 백엔드 clean_lyrics와 반드시 일치해야 한다.** 곡 구조
+ * 지시어([Chorus]/(Intro))만 통째로 지우고, 그 외 괄호(실제로 불리는 코러스
+ * 가사 — "God mercy (God mercy on this ground)")는 표시만 벗기고 안의 텍스트를
+ * 남긴다. 예전엔 여기서 괄호 내용을 무조건 지웠는데, 백엔드가 내용을 남기도록
+ * 바뀌면서 양쪽 키가 어긋나 그런 줄이 아예 배치되지 않았다.
  */
 function normalizeForMatch(s) {
   return (s || '')
     .toLowerCase()
-    .replace(/[\[(<][^\])>]*[\])>]/g, ' ') // 대괄호/괄호/꺾쇠 메타 제거(백엔드와 동일)
+    .replace(/[[({<]([^[\](){}<>]*)[\])}>]/g, (_m, inner) =>
+      isStructureDirective(inner) ? ' ' : ` ${inner} `)
     .replace(/[^\p{L}\p{N}]+/gu, ' ')      // 글자·숫자 외(문장부호·따옴표·기호) → 공백
     .trim()
     .replace(/\s+/g, ' ');

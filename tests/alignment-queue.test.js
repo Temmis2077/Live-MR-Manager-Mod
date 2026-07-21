@@ -83,6 +83,39 @@ describe('mergeAlignmentResult', () => {
     expect(segments[2].start).toBeCloseTo(5);
   });
 
+  it('places lines whose parentheses hold real chorus lyrics', () => {
+    // 백엔드 clean_lyrics는 구조 지시어가 아닌 괄호는 표시만 벗기고 안의 가사를
+    // 남긴다(실제로 불리는 코러스라 정렬 대상에 있어야 함). 프론트 정규화도
+    // 같은 규칙이어야 매칭된다 — 예전엔 여기서 괄호 내용을 지워서 이런 줄이
+    // 아예 배치되지 않았다.
+    const segments = [
+      { text: 'God mercy (God mercy on this ground)', start: 0, end: 0 },
+      { text: 'Where the hell (where the hell is EROS going)', start: 0, end: 0 },
+    ];
+    const lines = [
+      { text: 'God mercy  God mercy on this ground', start_ms: 1000, end_ms: 2000 },
+      { text: 'Where the hell  where the hell is EROS going', start_ms: 3000, end_ms: 4000 },
+    ];
+    expect(mergeAlignmentResult(segments, lines)).toBe(2);
+    expect(segments[0].start).toBeCloseTo(1);
+    expect(segments[1].start).toBeCloseTo(3);
+  });
+
+  it('still strips structure directives so they match the backend', () => {
+    // 구조 지시어는 백엔드가 통째로 지우므로, 프론트도 지워야 키가 맞는다.
+    const segments = [
+      { text: '[Chorus] 사랑해', start: 0, end: 0 },
+      { text: '(Verse 2) 오늘도 걸어', start: 0, end: 0 },
+    ];
+    const lines = [
+      { text: '사랑해', start_ms: 1000, end_ms: 2000 },
+      { text: '오늘도 걸어', start_ms: 3000, end_ms: 4000 },
+    ];
+    expect(mergeAlignmentResult(segments, lines)).toBe(2);
+    expect(segments[0].start).toBeCloseTo(1);
+    expect(segments[1].start).toBeCloseTo(3);
+  });
+
   it('does not reuse one alignment line for two identical lyric lines', () => {
     const segments = [
       { text: '후렴', start: 0, end: 0 },
