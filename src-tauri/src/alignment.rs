@@ -32,15 +32,50 @@ pub static CANCEL_ALIGNMENT: AtomicBool = AtomicBool::new(false);
 pub static ALIGNMENT_QUEUE_LOCK: once_cell::sync::Lazy<tokio::sync::Mutex<()>> =
     once_cell::sync::Lazy::new(|| tokio::sync::Mutex::new(()));
 
+/// 곡 구조 지시어(실제로 불리지 않는 라벨) 판별 — 대소문자 무시, 트림 후 전체
+/// 일치만 인정한다("Chorus"는 지시어, "Chorus of angels"는 실제 가사이므로 유지).
+/// 뒤에 숫자가 붙는 것도 허용("Verse 2", "후렴 1").
+fn is_structure_directive(inner: &str) -> bool {
+    const LABELS: &[&str] = &[
+        // 영어
+        "verse", "chorus", "pre-chorus", "prechorus", "post-chorus", "postchorus",
+        "bridge", "intro", "outro", "hook", "refrain", "interlude", "instrumental",
+        "ad-lib", "adlib", "rap", "spoken", "guitar solo", "solo", "drop",
+        "build-up", "buildup", "breakdown", "fade out", "fade in", "repeat",
+        // 한국어
+        "인트로", "벌스", "후렴", "브릿지", "간주", "아웃트로", "랩", "훅",
+        "프리코러스", "포스트코러스", "코러스", "절", "다리", "전주", "후주",
+        "애드립", "간주중", "반복",
+    ];
+    let normalized = inner.trim().to_lowercase();
+    let base = normalized
+        .trim_end_matches(|c: char| c.is_ascii_digit() || c.is_whitespace());
+    LABELS.contains(&base)
+}
+
 fn clean_lyrics(text: &str) -> String {
-    // 괄호 안의 메타데이터 제거 (e.g. [Chorus], (Intro))
-    let re_brackets = Regex::new(r"\[.*?\]|\(.*?\)|<.*?>").unwrap();
-    let cleaned = re_brackets.replace_all(text, "");
-    
+    // 괄호/브래킷 처리: 안에 있는 게 "곡 구조 지시어"(예: [Chorus], (Intro))면
+    // 통째로 제거하지만, 그게 아니면(예: "사랑해 (사랑해)"의 코러스 가사)
+    // 괄호 표시만 벗기고 안의 가사는 남긴다.
+    //
+    // 이유: forced_align은 곡 전체를 한 번에 순차 정렬하는데, 오디오엔 실제로
+    // 불린 코러스가 있는데 정렬 대상 텍스트에서 그 부분이 통째로 사라지면
+    // 프레임-토큰 대응이 어긋나 그 이후 모든 줄이 밀린다(복구 불가능한 드리프트).
+    // 실제 가사는 지우지 않고 남겨야 정렬이 오디오와 계속 맞는다.
+    let re_brackets = Regex::new(r"[\[({<]([^\[\](){}<>]*)[\])}>]").unwrap();
+    let cleaned = re_brackets.replace_all(text, |caps: &regex::Captures| {
+        let inner = &caps[1];
+        if is_structure_directive(inner) {
+            String::new()
+        } else {
+            format!(" {} ", inner.trim())
+        }
+    });
+
     // 단순 특수문자 제거 (정렬에 방해되는 기호들)
     let re_symbols = Regex::new(r"[\?!\.,\-\+_~]").unwrap();
     let cleaned = re_symbols.replace_all(&cleaned, " ");
-    
+
     cleaned.to_string()
 }
 
@@ -1089,6 +1124,36 @@ impl Aligner {
 #[cfg(test)]
 mod aligner_tests {
     use super::*;
+
+    #[test]
+    fn clean_lyrics_strips_structure_directives_only() {
+        // 곡 구조 지시어는 통째로 제거.
+        assert_eq!(clean_lyrics("[Chorus]\n사랑해").trim(), "사랑해");
+        assert_eq!(clean_lyrics("(Verse 2) 오늘도 걸어").trim(), "오늘도 걸어");
+        assert_eq!(clean_lyrics("[후렴]\n너를 사랑해").trim(), "너를 사랑해");
+        assert_eq!(clean_lyrics("<Instrumental>").trim(), "");
+    }
+
+    #[test]
+    fn clean_lyrics_keeps_real_chorus_lyrics() {
+        // 괄호 안이 실제 가사(코러스/에코)면 표시만 벗기고 텍스트는 남긴다 —
+        // 이게 없으면 forced_align이 곡 전체 순차 정렬에서 오디오에 있는
+        // 코러스와 텍스트가 어긋나 그 이후 줄이 전부 밀린다.
+        let cleaned = clean_lyrics("사랑해 (사랑해) 널");
+        assert!(cleaned.contains("사랑해"));
+        // 괄호로 감싸졌던 "사랑해"도 남아 있어야 하므로, "사랑해"가 최소 2번 등장.
+        assert_eq!(cleaned.matches("사랑해").count(), 2);
+
+        let cleaned_en = clean_lyrics("You're the one (the only one)");
+        assert!(cleaned_en.contains("the only one"));
+    }
+
+    #[test]
+    fn clean_lyrics_directive_match_is_whole_content_only() {
+        // "Chorus"는 지시어지만 "Chorus of angels"는 실제 가사 문구이므로 유지.
+        let cleaned = clean_lyrics("(Chorus of angels) sings");
+        assert!(cleaned.contains("Chorus of angels"));
+    }
 
     #[test]
     fn lrc_sync_status_detects_real_timestamps() {
